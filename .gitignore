@@ -1,5 +1,11 @@
 ﻿# Python virtual environment
 .venv/
+venv/
+
+# Python bytecode/cache
+__pycache__/
+*.py[cod]
+*$py.class
 
 # pytest cache
 .pytest_cache/
