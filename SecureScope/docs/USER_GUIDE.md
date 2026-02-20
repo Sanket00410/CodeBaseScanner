@@ -289,6 +289,9 @@ Optional runtime controls:
 - `USS_RUNTIME_TOOLS`
 - `USS_TOOLS_DIR`
 - `USS_MAX_FINDINGS` (`0` = unlimited)
+- `USS_RUNTIME_AUTH_TOKEN` (Bearer token without `Bearer ` prefix)
+- `USS_RUNTIME_AUTH_COOKIE` (raw `Cookie` header value)
+- `USS_RUNTIME_AUTH_HEADER_NAME` + `USS_RUNTIME_AUTH_HEADER_VALUE` (custom auth header pair)
 
 Use these when customizing deployment paths or toolchains.
 
@@ -297,6 +300,7 @@ Use these when customizing deployment paths or toolchains.
 1. Launch app.
 2. Set role to `Security Analyst`.
 3. Enter target path or URL.
-4. Click `Run Scan`.
-5. Review Vulnerability detail and export HTML/PDF.
+4. For runtime URL/IP targets, optionally fill `Authenticated Crawl` fields (token/cookie/custom header).
+5. Click `Run Scan`.
+6. Review Vulnerability detail and export HTML/PDF.
 

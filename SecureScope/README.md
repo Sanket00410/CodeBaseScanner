@@ -144,6 +144,19 @@ $env:USS_RUNTIME_TOOLS = "runtime_http_probe,nuclei,nikto,nmap,zap-baseline"
 $env:USS_MAX_FINDINGS = "0"
 ```
 
+For authenticated runtime crawl (logged-in APIs behind auth/session):
+
+```powershell
+$env:USS_RUNTIME_AUTH_TOKEN = "<bearer-token-without-prefix>"
+$env:USS_RUNTIME_AUTH_COOKIE = "sessionid=abc123; csrftoken=xyz789"
+$env:USS_RUNTIME_AUTH_HEADER_NAME = "X-API-Key"
+$env:USS_RUNTIME_AUTH_HEADER_VALUE = "<api-key-value>"
+```
+
+Notes:
+- UI has matching fields in runtime mode (`Target Folder / IP / SSH` set to URL/IP/localhost).
+- Values are used for live crawl/tool execution and are not written into report payloads as raw secrets.
+
 Per-tool bootstrap/check from CLI:
 
 ```powershell
