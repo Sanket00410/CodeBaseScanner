@@ -12,6 +12,14 @@ Detailed usage guide:
 - Existing Python scan engine: `python -m universal_security_scanner.cli scan`
 - Full scanner coverage inherited from `UniversalSecurityScanner`:
   - Built-in rules and plugin engine
+  - Expanded backend webapp coverage (file/line-level):
+    SQLi, NoSQLi, Command Injection, LDAP Injection, SSRF, XSS, SSTI, Path Traversal, XXE,
+    auth/authz flaws, JWT misconfiguration, open redirect, mass assignment, prototype pollution,
+    weak crypto, insecure RNG, hardcoded secrets, insecure cookie flags, CSRF disabled,
+    permissive CORS, unrestricted upload, sensitive logging, and security misconfiguration
+  - Runtime/API endpoint hardening checks:
+    endpoint discovery crawl, API/doc exposure checks, auth-aware API coverage, TRACE method exposure,
+    cookie security flags, stack trace disclosure, sensitive API payload keys, auth endpoint cache-control checks
   - Existing security implementation detection
   - Vulnerability and fixed-code findings
   - External analyzers with target-aware routing:

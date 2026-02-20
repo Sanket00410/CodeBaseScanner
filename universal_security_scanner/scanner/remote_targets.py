@@ -37,10 +37,25 @@ HTTP_PROBES = [
     "/sitemap.xml",
     "/swagger.json",
     "/openapi.json",
+    "/api-docs",
+    "/v3/api-docs",
+    "/graphql",
+    "/graphiql",
+    "/health",
+    "/metrics",
     "/actuator/health",
     "/actuator/env",
+    "/api/health",
+    "/api/v1/health",
+    "/api/v1/users",
+    "/api/v1/auth/login",
+    "/auth/login",
+    "/signin",
+    "/login",
+    "/logout",
     "/.env",
     "/.git/config",
+    "/.well-known/security.txt",
     "/admin",
     "/debug",
 ]
@@ -264,7 +279,13 @@ def scan_runtime_http_target(
     else:
         _evaluate_http_responses(normalized_base, path_responses, findings, controls)
 
-    _evaluate_discovered_runtime_endpoints(normalized_base, responses_by_url, findings, controls)
+    _evaluate_discovered_runtime_endpoints(
+        normalized_base,
+        responses_by_url,
+        findings,
+        controls,
+        auth_enabled=bool(auth_context.get("enabled")),
+    )
 
     completed_steps += 1
     if progress_callback:
@@ -647,6 +668,8 @@ def _evaluate_http_responses(
                 evidence=f"access-control-allow-origin=* allow-credentials={allow_credentials}",
             )
         )
+    for cookie_finding in _cookie_flag_findings(f"{base_url}/", headers):
+        findings.append(cookie_finding)
 
     tech_banner = headers.get("server") or headers.get("x-powered-by")
     if tech_banner:
@@ -664,6 +687,24 @@ def _evaluate_http_responses(
                 rule_id="RUNTIME-INFO-DISCLOSURE-001",
                 cwe="CWE-200",
                 evidence=tech_banner,
+            )
+        )
+
+    if re.search(r"(traceback|exception|stack trace|at\s+[a-zA-Z0-9_.]+\()", root_body, flags=re.IGNORECASE):
+        findings.append(
+            Finding(
+                vulnerability_type="Runtime Error Information Disclosure",
+                severity=Severity.MEDIUM,
+                file_path=f"{base_url}/",
+                line_number=1,
+                business_impact="Verbose error traces can expose internals useful for targeted exploitation.",
+                recommendation="Disable verbose stack traces in production and return generic error responses.",
+                reference="https://owasp.org/Top10/A05_2021-Security_Misconfiguration/",
+                owasp_category="A05:2021 - Security Misconfiguration",
+                description="Root response appears to contain stack trace or exception details.",
+                rule_id="RUNTIME-STACKTRACE-001",
+                cwe="CWE-209",
+                evidence=root_body[:240],
             )
         )
 
@@ -685,6 +726,29 @@ def _evaluate_http_responses(
             )
         )
 
+    try:
+        options_response = _http_probe_url(f"{base_url}/", method="OPTIONS")
+        allow_header = str((options_response.get("headers", {}) or {}).get("allow") or "").upper()
+        if "TRACE" in allow_header:
+            findings.append(
+                Finding(
+                    vulnerability_type="Unsafe HTTP Method Exposed (TRACE)",
+                    severity=Severity.MEDIUM,
+                    file_path=f"{base_url}/",
+                    line_number=1,
+                    business_impact="TRACE can aid credential leakage and cross-domain tracing attacks.",
+                    recommendation="Disable TRACE at application and reverse proxy/load balancer layers.",
+                    reference="https://owasp.org/www-community/attacks/Cross_Site_Tracing",
+                    owasp_category="A05:2021 - Security Misconfiguration",
+                    description="OPTIONS response advertises TRACE method support.",
+                    rule_id="RUNTIME-METHOD-TRACE-001",
+                    cwe="CWE-16",
+                    evidence=f"Allow header: {allow_header}",
+                )
+            )
+    except Exception:
+        pass
+
     endpoint_rules: list[tuple[str, Severity, str, str, str, str, str]] = [
         (
             "/swagger.json",
@@ -705,6 +769,42 @@ def _evaluate_http_responses(
             "Restrict API schema endpoints to authenticated internal users or disable in production.",
         ),
         (
+            "/api-docs",
+            Severity.MEDIUM,
+            "API Documentation Endpoint Exposed",
+            "CWE-200",
+            "A05:2021 - Security Misconfiguration",
+            "Public API documentation can reveal endpoint inventory, schemas, and authentication flows.",
+            "Restrict API docs to authenticated internal users or private networks.",
+        ),
+        (
+            "/v3/api-docs",
+            Severity.MEDIUM,
+            "API Documentation Endpoint Exposed",
+            "CWE-200",
+            "A05:2021 - Security Misconfiguration",
+            "Public API documentation can reveal endpoint inventory, schemas, and authentication flows.",
+            "Restrict API docs to authenticated internal users or private networks.",
+        ),
+        (
+            "/graphql",
+            Severity.MEDIUM,
+            "GraphQL Endpoint Publicly Reachable",
+            "CWE-284",
+            "A01:2021 - Broken Access Control",
+            "Public GraphQL endpoints can expose broad data surfaces if authz is weak.",
+            "Require strict authz and disable introspection in production where possible.",
+        ),
+        (
+            "/graphiql",
+            Severity.MEDIUM,
+            "GraphiQL Console Exposed",
+            "CWE-200",
+            "A05:2021 - Security Misconfiguration",
+            "Public interactive consoles increase attack surface and reconnaissance speed.",
+            "Disable GraphiQL in production or restrict to trusted environments.",
+        ),
+        (
             "/actuator/health",
             Severity.MEDIUM,
             "Actuator Endpoint Exposed",
@@ -712,6 +812,24 @@ def _evaluate_http_responses(
             "A05:2021 - Security Misconfiguration",
             "Operational endpoints can reveal service metadata useful to attackers.",
             "Protect actuator endpoints behind authentication and network controls.",
+        ),
+        (
+            "/metrics",
+            Severity.MEDIUM,
+            "Metrics Endpoint Exposed",
+            "CWE-200",
+            "A05:2021 - Security Misconfiguration",
+            "Metrics often reveal infrastructure and business operational details useful to attackers.",
+            "Protect metrics endpoints with authentication and network segmentation.",
+        ),
+        (
+            "/health",
+            Severity.LOW,
+            "Health Endpoint Publicly Reachable",
+            "CWE-200",
+            "A05:2021 - Security Misconfiguration",
+            "Health endpoints can help attackers validate target availability and deployment posture.",
+            "Return minimal health data for public callers and restrict detailed output.",
         ),
         (
             "/actuator/env",
@@ -922,8 +1040,8 @@ def _http_probe(base_url: str, endpoint: str) -> dict[str, Any]:
     return _http_probe_url(url)
 
 
-def _http_probe_url(url: str) -> dict[str, Any]:
-    request = Request(url, method="GET", headers=_runtime_request_headers())
+def _http_probe_url(url: str, method: str = "GET") -> dict[str, Any]:
+    request = Request(url, method=method.upper(), headers=_runtime_request_headers())
     timeout_seconds = float(os.getenv("USS_REMOTE_HTTP_TIMEOUT_SECONDS", "6"))
 
     try:
@@ -1161,9 +1279,11 @@ def _evaluate_discovered_runtime_endpoints(
     responses_by_url: dict[str, dict[str, Any]],
     findings: list[Finding],
     controls: list[SecurityControl],
+    auth_enabled: bool = False,
 ) -> None:
     discovered_count = 0
     api_count = 0
+    authenticated_api_hits = 0
     for url, response in responses_by_url.items():
         status = int(response.get("status") or 0)
         if status <= 0:
@@ -1176,13 +1296,24 @@ def _evaluate_discovered_runtime_endpoints(
         path = urlparse(url).path or "/"
         lower_path = path.lower()
 
-        is_api = lower_path.startswith("/api") or "graphql" in lower_path or "openapi" in lower_path or "swagger" in lower_path
+        for cookie_finding in _cookie_flag_findings(url, headers):
+            findings.append(cookie_finding)
+
+        is_api = (
+            lower_path.startswith("/api")
+            or "graphql" in lower_path
+            or "openapi" in lower_path
+            or "swagger" in lower_path
+            or "api-docs" in lower_path
+        )
         if is_api:
             api_count += 1
+            if auth_enabled and status not in {401, 403}:
+                authenticated_api_hits += 1
 
         if is_api and 200 <= status < 300:
             auth_header = str(headers.get("www-authenticate") or "")
-            if not auth_header:
+            if not auth_header and not auth_enabled and not _is_public_api_path(lower_path):
                 findings.append(
                     Finding(
                         vulnerability_type="Potential Unauthenticated API Endpoint",
@@ -1199,6 +1330,28 @@ def _evaluate_discovered_runtime_endpoints(
                         evidence=f"{url} -> HTTP {status}",
                     )
                 )
+
+        is_auth_surface = any(token in lower_path for token in ("/auth", "/login", "/signin", "/session", "/token"))
+        cache_control = str(headers.get("cache-control") or "").lower()
+        if is_auth_surface and 200 <= status < 400 and not any(
+            marker in cache_control for marker in ("no-store", "private", "no-cache")
+        ):
+            findings.append(
+                Finding(
+                    vulnerability_type="Authentication Endpoint Cache-Control Weakness",
+                    severity=Severity.MEDIUM,
+                    file_path=url,
+                    line_number=1,
+                    business_impact="Cached authentication responses may expose tokens or user data on shared devices/proxies.",
+                    recommendation="Set Cache-Control: no-store for authentication endpoints and sensitive responses.",
+                    reference="https://owasp.org/www-project-cheat-sheets/cheatsheets/REST_Security_Cheat_Sheet.html",
+                    owasp_category="A05:2021 - Security Misconfiguration",
+                    description="Authentication-like endpoint response lacks strict anti-caching directives.",
+                    rule_id="RUNTIME-AUTH-CACHE-001",
+                    cwe="CWE-525",
+                    evidence=f"{url} cache-control={cache_control or 'missing'}",
+                )
+            )
 
         if is_api and "json" in content_type and re.search(
             r'"(?:password|passwd|secret|token|api[_-]?key|authorization)"\s*:',
@@ -1221,6 +1374,43 @@ def _evaluate_discovered_runtime_endpoints(
                     evidence=body[:240],
                 )
             )
+        if status >= 500 and re.search(r"(traceback|exception|stack trace|error:)", body, flags=re.IGNORECASE):
+            findings.append(
+                Finding(
+                    vulnerability_type="Verbose Runtime Error from Endpoint",
+                    severity=Severity.MEDIUM,
+                    file_path=url,
+                    line_number=1,
+                    business_impact="Detailed runtime errors can reveal internals and accelerate exploit development.",
+                    recommendation="Return generic error responses and capture detailed traces only in protected logs.",
+                    reference="https://owasp.org/Top10/A05_2021-Security_Misconfiguration/",
+                    owasp_category="A05:2021 - Security Misconfiguration",
+                    description=f"Endpoint returned HTTP {status} with verbose runtime error patterns.",
+                    rule_id="RUNTIME-ENDPOINT-STACKTRACE-001",
+                    cwe="CWE-209",
+                    evidence=body[:240],
+                )
+            )
+
+    if auth_enabled and authenticated_api_hits > 0:
+        controls.append(
+            SecurityControl(
+                control_id="CTRL-RUNTIME-AUTH-COVERAGE",
+                name="Authenticated Runtime API Coverage",
+                category="Runtime Attack Surface",
+                description="Runtime scan successfully exercised API endpoints using supplied authentication context.",
+                status="Implemented",
+                coverage_level="High" if authenticated_api_hits >= 5 else "Medium",
+                standard_mappings=["OWASP WSTG-ATHN", "OWASP API Top 10", "NIST AC-6"],
+                evidence=[
+                    {
+                        "file_path": f"{base_url}/",
+                        "line_number": 1,
+                        "snippet": f"authenticated_api_hits={authenticated_api_hits}",
+                    }
+                ],
+            )
+        )
 
     controls.append(
         SecurityControl(
@@ -1235,8 +1425,91 @@ def _evaluate_discovered_runtime_endpoints(
                 {
                     "file_path": f"{base_url}/",
                     "line_number": 1,
-                    "snippet": f"Discovered endpoints={discovered_count}, api_endpoints={api_count}",
+                    "snippet": (
+                        f"Discovered endpoints={discovered_count}, api_endpoints={api_count}, "
+                        f"auth_enabled={auth_enabled}"
+                    ),
                 }
             ],
         )
     )
+
+
+def _is_public_api_path(path: str) -> bool:
+    public_tokens = (
+        "/health",
+        "/metrics",
+        "/status",
+        "swagger",
+        "openapi",
+        "api-docs",
+        "/docs",
+        "/robots.txt",
+    )
+    return any(token in path for token in public_tokens)
+
+
+def _cookie_flag_findings(file_path: str, headers: dict[str, Any]) -> list[Finding]:
+    raw_set_cookie = str(headers.get("set-cookie") or "")
+    if not raw_set_cookie:
+        return []
+
+    findings: list[Finding] = []
+    cookie_entries = [entry.strip() for entry in re.split(r",(?=[^;=,\s]+=[^;=,\s]+)", raw_set_cookie) if entry.strip()]
+    for cookie_entry in cookie_entries:
+        lower_cookie = cookie_entry.lower()
+        cookie_name = cookie_entry.split("=", 1)[0].strip() if "=" in cookie_entry else "cookie"
+        if not re.search(r"(session|auth|token|jwt|sid|csrftoken)", cookie_name, flags=re.IGNORECASE):
+            continue
+        if "secure" not in lower_cookie:
+            findings.append(
+                Finding(
+                    vulnerability_type="Session Cookie Missing Secure Flag",
+                    severity=Severity.HIGH,
+                    file_path=file_path,
+                    line_number=1,
+                    business_impact="Session cookie can be transmitted over insecure channels and intercepted.",
+                    recommendation="Set Secure flag on all authentication/session cookies.",
+                    reference="https://owasp.org/www-community/controls/SecureCookieAttribute",
+                    owasp_category="A02:2021 - Cryptographic Failures",
+                    description=f"Cookie '{cookie_name}' does not include Secure attribute.",
+                    rule_id="RUNTIME-COOKIE-SECURE-001",
+                    cwe="CWE-614",
+                    evidence=cookie_entry[:240],
+                )
+            )
+        if "httponly" not in lower_cookie:
+            findings.append(
+                Finding(
+                    vulnerability_type="Session Cookie Missing HttpOnly Flag",
+                    severity=Severity.MEDIUM,
+                    file_path=file_path,
+                    line_number=1,
+                    business_impact="Cookie can be read by client-side scripts during XSS exploitation.",
+                    recommendation="Set HttpOnly on all session/authentication cookies.",
+                    reference="https://owasp.org/www-community/HttpOnly",
+                    owasp_category="A03:2021 - Injection",
+                    description=f"Cookie '{cookie_name}' does not include HttpOnly attribute.",
+                    rule_id="RUNTIME-COOKIE-HTTPONLY-001",
+                    cwe="CWE-1004",
+                    evidence=cookie_entry[:240],
+                )
+            )
+        if "samesite" not in lower_cookie:
+            findings.append(
+                Finding(
+                    vulnerability_type="Session Cookie Missing SameSite Attribute",
+                    severity=Severity.MEDIUM,
+                    file_path=file_path,
+                    line_number=1,
+                    business_impact="Missing SameSite can increase CSRF risk in browser-based sessions.",
+                    recommendation="Set SameSite=Lax or SameSite=Strict for session cookies where feasible.",
+                    reference="https://owasp.org/www-community/SameSite",
+                    owasp_category="A01:2021 - Broken Access Control",
+                    description=f"Cookie '{cookie_name}' does not include SameSite attribute.",
+                    rule_id="RUNTIME-COOKIE-SAMESITE-001",
+                    cwe="CWE-1275",
+                    evidence=cookie_entry[:240],
+                )
+            )
+    return findings

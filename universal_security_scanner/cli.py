@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 from universal_security_scanner.config import ScannerConfig
@@ -49,11 +50,22 @@ def run_scan(
     split_reports: bool = False,
     show_progress: bool = True,
     target_type: str = "auto",
+    auth_token: str | None = None,
+    auth_cookie: str | None = None,
+    auth_header_name: str | None = None,
+    auth_header_value: str | None = None,
 ) -> int:
     config = ScannerConfig.from_env()
     configure_logging(config.log_level)
 
     progress = _cli_progress if show_progress else None
+    if auth_token:
+        os.environ["USS_RUNTIME_AUTH_TOKEN"] = auth_token.strip()
+    if auth_cookie:
+        os.environ["USS_RUNTIME_AUTH_COOKIE"] = auth_cookie.strip()
+    if auth_header_name and auth_header_value:
+        os.environ["USS_RUNTIME_AUTH_HEADER_NAME"] = auth_header_name.strip()
+        os.environ["USS_RUNTIME_AUTH_HEADER_VALUE"] = auth_header_value.strip()
     normalized_target_type = target_type.strip().lower()
     if normalized_target_type == "auto":
         result = scan_target(path, config, progress_callback=progress)
@@ -250,6 +262,10 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Disable CLI progress updates",
     )
+    scan_parser.add_argument("--auth-token", help="Runtime authenticated crawl: bearer token value without prefix")
+    scan_parser.add_argument("--auth-cookie", help="Runtime authenticated crawl: cookie header value")
+    scan_parser.add_argument("--auth-header-name", help="Runtime authenticated crawl: custom header name")
+    scan_parser.add_argument("--auth-header-value", help="Runtime authenticated crawl: custom header value")
 
     serve_parser = subparsers.add_parser("serve", help="Run interactive web UI")
     serve_parser.add_argument("--host", default="127.0.0.1", help="Host interface")
@@ -288,6 +304,10 @@ def main(argv: list[str] | None = None) -> int:
             split_reports=args.split_reports,
             show_progress=not args.no_progress,
             target_type=args.target_type,
+            auth_token=args.auth_token,
+            auth_cookie=args.auth_cookie,
+            auth_header_name=args.auth_header_name,
+            auth_header_value=args.auth_header_value,
         )
 
     if args.command == "serve":

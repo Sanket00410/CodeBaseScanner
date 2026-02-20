@@ -31,3 +31,24 @@ def test_detects_eval_usage() -> None:
     findings = _scan_text("calc.py", content)
 
     assert any(item.vulnerability_type == "Unsafe eval usage" for item in findings)
+
+
+def test_detects_backend_ssrf_pattern() -> None:
+    content = "response = requests.get(request.args['target_url'])"
+    findings = _scan_text("api.py", content)
+
+    assert any(item.vulnerability_type == "Server-Side Request Forgery (SSRF)" for item in findings)
+
+
+def test_detects_weak_crypto_pattern() -> None:
+    content = "digest = hashlib.md5(password.encode()).hexdigest()"
+    findings = _scan_text("auth.py", content)
+
+    assert any(item.vulnerability_type == "Weak Cryptography Usage" for item in findings)
+
+
+def test_detects_sensitive_logging_pattern() -> None:
+    content = 'logger.info("token=%s", auth_token)'
+    findings = _scan_text("logging.py", content)
+
+    assert any(item.vulnerability_type == "Sensitive Data Logged" for item in findings)

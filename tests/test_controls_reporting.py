@@ -26,6 +26,26 @@ class LoginRequest(BaseModel):
     assert "Password Hardening" in names
 
 
+def test_controls_analyzer_detects_backend_security_baselines() -> None:
+    analyzer = ExistingSecurityMeasuresAnalyzer()
+    analyzer.observe_file(
+        file_path="gateway.js",
+        content="""
+const rateLimit = require("express-rate-limit");
+app.use(rateLimit({ windowMs: 60000, max: 100 }));
+app.use(cors({ origin: ["https://app.example.com"] }));
+res.cookie("session", token, { secure: true, httpOnly: true, sameSite: "lax" });
+""",
+    )
+
+    controls = analyzer.finalize(total_files=4)
+    names = {item.name for item in controls}
+
+    assert "Rate Limiting Controls" in names
+    assert "CORS Restriction Controls" in names
+    assert "Session Security Controls" in names
+
+
 def test_report_has_distinct_sections() -> None:
     finding = Finding(
         vulnerability_type="SQL Injection",
