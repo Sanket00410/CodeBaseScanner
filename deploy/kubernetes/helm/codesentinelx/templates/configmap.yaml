@@ -1,0 +1,11 @@
+﻿apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: codesentinelx-config
+data:
+  LOG_LEVEL: {{ .Values.env.LOG_LEVEL | quote }}
+  POSTGRES_DSN: {{ .Values.env.POSTGRES_DSN | quote }}
+  REDIS_URL: {{ .Values.env.REDIS_URL | quote }}
+  ELASTICSEARCH_URL: {{ .Values.env.ELASTICSEARCH_URL | quote }}
+  RABBITMQ_URL: {{ .Values.env.RABBITMQ_URL | quote }}
+  KAFKA_BOOTSTRAP_SERVERS: {{ .Values.env.KAFKA_BOOTSTRAP_SERVERS | quote }}

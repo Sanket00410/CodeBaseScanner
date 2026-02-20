@@ -1,0 +1,2 @@
+[console_scripts]
+uss = universal_security_scanner.cli:main

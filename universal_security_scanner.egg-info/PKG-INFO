@@ -1,0 +1,159 @@
+Metadata-Version: 2.4
+Name: universal-security-scanner
+Version: 1.0.0
+Summary: Universal interactive code security scanner with executive-grade reporting
+Author: Universal Security Scanner
+License: MIT
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: fastapi>=0.115.0
+Requires-Dist: uvicorn>=0.30.0
+Requires-Dist: jinja2>=3.1.0
+Requires-Dist: pydantic>=2.8.0
+Requires-Dist: packaging>=24.0
+Requires-Dist: reportlab>=4.2.0
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0.0; extra == "dev"
+
+﻿# CodeSentinel X (Universal Security Scanner)
+
+CodeSentinel X is an enterprise-grade, installable codebase security scanner focused on multi-language secure code analysis.
+
+Tagline: **Scan every line. Quantify every risk.**
+
+## What This Repository Includes
+
+### Core Scanner
+- Recursive code scanning for multi-language repositories.
+- Built-in OWASP-aligned detection rules.
+- Extended vulnerability coverage through optional external analyzers:
+  - Semgrep (broad SAST rules)
+  - Trivy (dependency, misconfiguration, secret scanning)
+  - Gitleaks (enterprise secret detection)
+  - CodeQL (when enabled)
+- Dependency vulnerability checks.
+- Risk score and executive summary generation.
+- Exports: JSON, HTML, PDF, SARIF.
+- Distinct report sections:
+  - Existing security measures (implemented controls)
+  - Vulnerability findings
+  - Auto-fix recommendations
+
+### Plugin SDK + Built-In Language Plugins
+- SDK interfaces for language-specific analyzers.
+- Built-in plugins:
+  - Python
+  - JavaScript/TypeScript
+  - Go
+
+### Enterprise Platform Skeleton
+- Microservice stubs for orchestrator, findings, reports, identity, integrations, and audit.
+- Docker Compose enterprise stack.
+- Helm chart for Kubernetes deployment.
+- CI templates for GitHub/GitLab policy-gated scans.
+- REST + GraphQL contracts.
+- React dashboard mock UI.
+
+## Repository Layout
+
+```text
+UniversalSecurityScanner/
+  universal_security_scanner/
+    scanner/
+    plugins/
+    web/
+  services/
+  deploy/
+  api-contracts/
+  ci/
+  frontend/dashboard-mock/
+  docs/
+  tests/
+```
+
+## Quick Start (Scanner)
+
+```powershell
+cd C:\Users\sanketa\Documents\UniversalSecurityScanner
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -e .
+```
+
+Run web app:
+
+```powershell
+python run.py
+```
+
+Run CLI scan:
+
+```powershell
+python -m universal_security_scanner.cli scan --path "C:\path\to\repo" --format sarif --output report.sarif
+```
+
+Auto-bootstrap integrated external tools:
+
+```powershell
+python -m universal_security_scanner.cli bootstrap-tools --path "C:\path\to\repo"
+```
+
+## Enterprise Coverage Mode (Recommended)
+
+Install external analyzers and keep them available in PATH:
+
+```powershell
+# Optional manual install (scanner can also auto-bootstrap)
+pip install semgrep
+```
+
+Control tool integrations with env vars:
+
+- `USS_USE_EXTERNAL_TOOLS=true|false` (default: true)
+- `USS_EXTERNAL_TOOLS=semgrep,trivy,gitleaks,codeql`
+- `USS_EXTERNAL_TOOL_TIMEOUT_SECONDS=300`
+- `USS_AUTO_BOOTSTRAP_TOOLS=true|false` (default: true)
+- `USS_TOOLS_DIR=.toolchain`
+
+If tools are missing, scans still run and report warnings instead of failing.
+
+## Dashboard Mock (React)
+
+```powershell
+cd frontend\dashboard-mock
+npm install
+npm run dev
+```
+
+## Enterprise Deployment
+
+### Docker Compose
+
+```powershell
+docker compose -f deploy\docker\docker-compose.enterprise.yml up --build
+```
+
+### Kubernetes (Helm)
+
+```powershell
+helm upgrade --install codesentinelx deploy/kubernetes/helm/codesentinelx -n security --create-namespace
+```
+
+## API Contracts
+- REST: `api-contracts/openapi.yaml`
+- GraphQL: `api-contracts/graphql/schema.graphql`
+
+## CI Templates
+- GitHub Actions: `ci/templates/github/code-security-scan.yml`
+- GitLab CI: `ci/templates/gitlab/.gitlab-ci.yml`
+
+## Documentation
+- Architecture: `docs/ARCHITECTURE.md`
+- Plugin SDK: `docs/PLUGIN_SDK.md`
+- API Integration: `docs/API_INTEGRATION.md`
+
+## Tests
+
+```powershell
+python -m pytest -p no:cacheprovider
+```

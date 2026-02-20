@@ -1,0 +1,227 @@
+﻿openapi: 3.1.0
+info:
+  title: CodeSentinel X API
+  version: 1.0.0
+  description: Enterprise code security scanner API (REST contract)
+servers:
+  - url: https://api.codesentinelx.example.com
+paths:
+  /v1/auth/login:
+    post:
+      summary: Login with SSO token exchange
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                provider:
+                  type: string
+                  enum: [saml, oauth2, oidc]
+                assertion:
+                  type: string
+              required: [provider, assertion]
+      responses:
+        "200":
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+
+  /v1/projects:
+    get:
+      summary: List projects
+      responses:
+        "200":
+          description: Projects
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Project'
+
+  /v1/scans:
+    post:
+      summary: Start a full or differential scan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateScanRequest'
+      responses:
+        "202":
+          description: Scan accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanJob'
+
+  /v1/scans/{scan_id}:
+    get:
+      summary: Get scan status and summary
+      parameters:
+        - in: path
+          name: scan_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Scan status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanSummary'
+
+  /v1/findings:
+    get:
+      summary: Query findings with filters
+      parameters:
+        - in: query
+          name: project_id
+          schema: { type: string }
+        - in: query
+          name: severity
+          schema: { type: string, enum: [Critical, High, Medium, Low, Info] }
+        - in: query
+          name: cwe
+          schema: { type: string }
+        - in: query
+          name: status
+          schema: { type: string, enum: [open, fixed, suppressed, accepted_risk] }
+      responses:
+        "200":
+          description: Findings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Finding'
+
+  /v1/findings/{finding_id}/suppress:
+    post:
+      summary: Suppress a finding with reason and expiry
+      parameters:
+        - in: path
+          name: finding_id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string }
+                expires_at: { type: string, format: date-time }
+              required: [reason]
+      responses:
+        "200":
+          description: Suppressed
+
+  /v1/reports/{scan_id}:
+    post:
+      summary: Generate report
+      parameters:
+        - in: path
+          name: scan_id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                format:
+                  type: string
+                  enum: [pdf, html, json, sarif]
+              required: [format]
+      responses:
+        "202":
+          description: Report generation queued
+
+components:
+  schemas:
+    AuthResponse:
+      type: object
+      properties:
+        access_token: { type: string }
+        token_type: { type: string, example: Bearer }
+        expires_in: { type: integer }
+
+    Project:
+      type: object
+      properties:
+        project_id: { type: string }
+        name: { type: string }
+        default_branch: { type: string }
+
+    CreateScanRequest:
+      type: object
+      properties:
+        project_id: { type: string }
+        repository_url: { type: string }
+        branch: { type: string }
+        commit_sha: { type: string }
+        mode: { type: string, enum: [full, differential] }
+      required: [project_id, mode]
+
+    ScanJob:
+      type: object
+      properties:
+        scan_id: { type: string }
+        status: { type: string, enum: [queued, running, completed, failed] }
+        queued_at: { type: string, format: date-time }
+
+    ScanSummary:
+      type: object
+      properties:
+        scan_id: { type: string }
+        status: { type: string }
+        risk_score: { type: number }
+        severity_distribution:
+          type: object
+          properties:
+            Critical: { type: integer }
+            High: { type: integer }
+            Medium: { type: integer }
+            Low: { type: integer }
+            Info: { type: integer }
+
+    Finding:
+      type: object
+      properties:
+        finding_id: { type: string }
+        title: { type: string }
+        severity: { type: string }
+        cvss_score: { type: number }
+        cwe_id: { type: string }
+        owasp: { type: string }
+        cve_ids:
+          type: array
+          items: { type: string }
+        file_path: { type: string }
+        line_number: { type: integer }
+        snippet: { type: string }
+        attack_scenario: { type: string }
+        exploitation_example: { type: string }
+        business_impact: { type: string }
+        remediation_steps: { type: string }
+        secure_code_example: { type: string }
+        references:
+          type: array
+          items: { type: string }

@@ -1,0 +1,292 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CodeSentinel X</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="shell-bg"></div>
+  <div class="app-shell">
+    <aside class="left-rail">
+      <div class="brand-block">
+        <p class="brand-eyebrow">CodeSentinel X</p>
+        <h1>Security Command</h1>
+        <p>Scan every line. Quantify every risk.</p>
+      </div>
+
+      <nav class="rail-nav" aria-label="Dashboard Navigation">
+        <button class="rail-link active" data-target="dashboardSection" type="button">Vulnerability Report</button>
+        <button class="rail-link" data-target="controlsSection" type="button">Existing Implementation</button>
+        <button class="rail-link" data-target="findingsSection" type="button">Findings & Fixes</button>
+      </nav>
+
+      <section class="rail-card">
+        <h2>Live Scan Status</h2>
+        <p id="scanMessage" class="scan-message">Ready.</p>
+        <p id="scanStatusMeta" class="scan-status-meta">Idle</p>
+        <div class="progress-wrap" aria-live="polite">
+          <div id="progressBar" class="progress-bar" style="width: 0%;"></div>
+        </div>
+        <p id="progressText" class="progress-text">0.0%</p>
+      </section>
+
+      <section class="rail-card export-card">
+        <h2>Exports</h2>
+        <p class="export-group-label">Existing Implementation</p>
+        <div class="export-row">
+          <button data-format="json" data-report-type="existing" class="export-btn" disabled>JSON</button>
+          <button data-format="html" data-report-type="existing" class="export-btn" disabled>HTML</button>
+          <button data-format="pdf" data-report-type="existing" class="export-btn" disabled>PDF</button>
+        </div>
+        <p class="export-group-label">Vulnerability &amp; Fixed-Code</p>
+        <div class="export-row">
+          <button data-format="json" data-report-type="vulnerability" class="export-btn" disabled>JSON</button>
+          <button data-format="html" data-report-type="vulnerability" class="export-btn" disabled>HTML</button>
+          <button data-format="pdf" data-report-type="vulnerability" class="export-btn" disabled>PDF</button>
+          <button data-format="sarif" data-report-type="vulnerability" class="export-btn" disabled>SARIF</button>
+        </div>
+      </section>
+    </aside>
+
+    <main class="workspace">
+      <header class="workspace-header panel">
+        <div>
+          <p class="header-label">Enterprise Secure Code Analytics</p>
+          <h2>{{ app_name }}</h2>
+        </div>
+        <form id="scanForm" class="scan-form">
+          <label for="targetPath">Target Folder</label>
+          <div class="scan-form-row">
+            <input id="targetPath" name="targetPath" type="text" placeholder="C:\\Projects\\CriticalApp" required>
+            <button id="scanButton" type="submit">Start Deep Scan</button>
+          </div>
+        </form>
+      </header>
+
+      <section id="reportSwitch" class="panel report-switch hidden">
+        <button class="report-tab active" data-view="vulnerability" type="button">Vulnerability &amp; Fixed-Code Report</button>
+        <button class="report-tab" data-view="existing" type="button">Existing Security Implementation Report</button>
+      </section>
+
+      <section id="dashboardSection" class="panel hidden">
+        <div class="kpi-grid">
+          <article class="kpi-card">
+            <p>Total Vulnerabilities</p>
+            <h3 id="totalFindings">0</h3>
+          </article>
+          <article class="kpi-card">
+            <p>Deduplicated Findings</p>
+            <h3 id="dedupFindings">0</h3>
+          </article>
+          <article class="kpi-card">
+            <p>Duplicates Removed</p>
+            <h3 id="dupRemoved">0</h3>
+          </article>
+          <article class="kpi-card">
+            <p>Risk Score</p>
+            <h3 id="riskScore">0</h3>
+          </article>
+          <article class="kpi-card">
+            <p>Active Risk (Critical+High)</p>
+            <h3 id="activeRiskCount">0</h3>
+          </article>
+          <article class="kpi-card">
+            <p>Files Impacted</p>
+            <h3 id="filesImpacted">0</h3>
+          </article>
+          <article class="kpi-card">
+            <p>Assessment Confidence</p>
+            <h3 id="assessmentConfidence">N/A</h3>
+          </article>
+        </div>
+
+        <div id="severityGrid" class="severity-grid"></div>
+
+        <div class="insight-grid">
+          <article class="insight-card">
+            <h3>Top OWASP Categories</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>OWASP Category</th>
+                  <th>Count</th>
+                </tr>
+              </thead>
+              <tbody id="owaspTableBody"></tbody>
+            </table>
+          </article>
+
+          <article class="insight-card">
+            <h3>Affected Modules</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Module</th>
+                  <th>Total</th>
+                  <th>Critical</th>
+                  <th>High</th>
+                </tr>
+              </thead>
+              <tbody id="moduleTableBody"></tbody>
+            </table>
+          </article>
+
+          <article class="insight-card">
+            <h3>Action Plan</h3>
+            <ol id="actionPlan"></ol>
+          </article>
+        </div>
+      </section>
+
+      <section id="findingsSection" class="panel hidden">
+        <div class="findings-toolbar">
+          <div class="filters" id="filters">
+            <button data-severity="All" class="filter-btn active">All</button>
+            <button data-severity="Critical" class="filter-btn">Critical</button>
+            <button data-severity="High" class="filter-btn">High</button>
+            <button data-severity="Medium" class="filter-btn">Medium</button>
+            <button data-severity="Low" class="filter-btn">Low</button>
+            <button data-severity="Info" class="filter-btn">Info</button>
+          </div>
+          <input id="findingSearch" type="search" placeholder="Search finding title, file, CWE, OWASP...">
+        </div>
+
+        <div class="triage-grid">
+          <div class="queue-panel">
+            <table>
+              <thead>
+                <tr>
+                  <th>Severity</th>
+                  <th>Title</th>
+                  <th>CVSS</th>
+                  <th>CWE</th>
+                  <th>Location</th>
+                </tr>
+              </thead>
+              <tbody id="findingsTableBody"></tbody>
+            </table>
+          </div>
+
+          <article class="detail-panel">
+            <h3 id="detailTitle">Select a finding</h3>
+            <p id="detailMeta" class="detail-meta">Severity, location, CWE, OWASP, CVSS</p>
+
+            <div class="detail-block">
+              <h4>Business Impact</h4>
+              <p id="detailImpact">-</p>
+            </div>
+
+            <div class="detail-block">
+              <h4>Attack Scenario</h4>
+              <p id="detailScenario">-</p>
+            </div>
+
+            <div class="detail-block">
+              <h4>Exploitation Example</h4>
+              <p id="detailExploit">-</p>
+            </div>
+
+            <div class="detail-block">
+              <h4>Proof of Concept</h4>
+              <p id="detailPoc">-</p>
+            </div>
+
+            <div class="detail-block">
+              <h4>Remediation</h4>
+              <p id="detailFix">-</p>
+            </div>
+
+            <div class="detail-block">
+              <h4>Secure Code Example</h4>
+              <pre id="detailSecureExample" class="snippet">-</pre>
+            </div>
+
+            <div class="code-split">
+              <div class="detail-block">
+                <h4>Original Code</h4>
+                <pre id="detailOriginal" class="snippet">-</pre>
+              </div>
+              <div class="detail-block">
+                <h4>Fixed Code</h4>
+                <pre id="detailFixed" class="snippet">-</pre>
+              </div>
+            </div>
+
+            <div class="detail-block">
+              <h4>Patch Preview</h4>
+              <pre id="detailPatch" class="snippet">-</pre>
+            </div>
+
+            <div class="detail-actions">
+              <button id="copyFixedCodeBtn" type="button" class="detail-action-btn">Copy Fixed Code</button>
+              <button id="copyPatchBtn" type="button" class="detail-action-btn">Copy Patch</button>
+            </div>
+
+            <div class="detail-block">
+              <h4>Reference</h4>
+              <p><a id="detailReference" href="#" target="_blank" rel="noopener noreferrer">-</a></p>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section id="controlsSection" class="panel hidden">
+        <div class="controls-header">
+          <h3>Existing Security Implementation Report</h3>
+          <p id="controlsSummary" class="controls-summary">No control evidence available yet.</p>
+        </div>
+
+        <div class="controls-grid">
+          <article class="insight-card">
+            <h3>Implemented Controls</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Control</th>
+                  <th>Category</th>
+                  <th>Coverage</th>
+                  <th>Standards</th>
+                </tr>
+              </thead>
+              <tbody id="controlsTableBody"></tbody>
+            </table>
+          </article>
+
+          <article class="insight-card">
+            <h3>Compliance Matrix</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Standard</th>
+                  <th>Control Count</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="complianceTableBody"></tbody>
+            </table>
+          </article>
+
+          <article class="insight-card">
+            <h3>Integrated Toolchain</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Tool</th>
+                  <th>Status</th>
+                  <th>Source</th>
+                  <th>Message</th>
+                </tr>
+              </thead>
+              <tbody id="toolchainTableBody"></tbody>
+            </table>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,78 @@
+{
+  "name": "codesentinelx",
+  "version": "1.0.0",
+  "description": "CodeSentinelX desktop secure code analytics platform",
+  "main": "dist-main/electron/main.js",
+  "author": "CodeSentinelX",
+  "license": "MIT",
+  "scripts": {
+    "predev": "node scripts/kill-port.cjs 5182",
+    "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:main:watch\" \"npm:dev:electron\"",
+    "dev:renderer": "vite --config frontend/vite.config.ts",
+    "dev:main:watch": "node scripts/clean-dir.cjs dist-main && tsc -p tsconfig.main.json --watch --preserveWatchOutput",
+    "dev:electron": "wait-on tcp:5182 file:dist-main/electron/main.js && cross-env ELECTRON_START_URL=http://localhost:5182 node electron/dev-launcher.cjs",
+    "prepare:toolchain-seed": "node scripts/prepare-toolchain-seed.cjs",
+    "build": "npm run prepare:toolchain-seed && npm run build:renderer && npm run build:main && electron-builder",
+    "build:renderer": "vite build --config frontend/vite.config.ts",
+    "build:main": "node scripts/clean-dir.cjs dist-main && tsc -p tsconfig.main.json",
+    "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p frontend/tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "electron-log": "^5.2.4",
+    "pdfkit": "^0.15.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.1",
+    "@types/pdfkit": "^0.17.2",
+    "@types/react": "^18.3.20",
+    "@types/react-dom": "^18.3.6",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "electron": "^33.3.1",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0",
+    "wait-on": "^8.0.3"
+  },
+  "build": {
+    "appId": "com.codesentinelx.desktop",
+    "productName": "CodeSentinelX",
+    "asar": true,
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/frontend/**/*",
+      "dist-main/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "build/toolchain-seed",
+        "to": "toolchain-seed",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "signAndEditExecutable": false,
+      "verifyUpdateCodeSignature": false,
+      "executableName": "CodeSentinelX",
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "CodeSentinelX-${version}-portable.${ext}"
+    }
+  }
+}

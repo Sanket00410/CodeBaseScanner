@@ -1,0 +1,1099 @@
+﻿from __future__ import annotations
+
+import html
+import json
+from pathlib import Path
+import textwrap
+
+
+SEVERITY_ORDER = {
+    "Critical": 0,
+    "High": 1,
+    "Medium": 2,
+    "Low": 3,
+    "Info": 4,
+}
+
+
+def _severity_rank(value: str) -> int:
+    return SEVERITY_ORDER.get(value, 99)
+
+
+def _vulnerability_findings(report: dict) -> list[dict]:
+    vuln_report = report.get("vulnerability_fixed_code_report", {})
+    findings = vuln_report.get("findings")
+    if isinstance(findings, list):
+        return findings
+    return report.get("technical_report", {}).get("findings", [])
+
+
+def _sorted_findings(report: dict) -> list[dict]:
+    findings = _vulnerability_findings(report)
+    return sorted(
+        findings,
+        key=lambda item: (
+            _severity_rank(str(item.get("severity", "Info"))),
+            -float(item.get("cvss_score", 0.0)),
+            str(item.get("file_path", "")),
+            int(item.get("line_number", 0)),
+        ),
+    )
+
+
+def _normalize_path(value: str) -> str:
+    return str(value or "").replace("\\", "/")
+
+
+def _folder_name(file_path: str) -> str:
+    normalized = _normalize_path(file_path)
+    if not normalized:
+        return "."
+    if normalized.startswith("http://") or normalized.startswith("https://"):
+        scheme, _, rest = normalized.partition("://")
+        host, _, path = rest.partition("/")
+        if not path:
+            return f"{scheme}://{host}"
+        folder = path.rsplit("/", 1)[0] if "/" in path else ""
+        return f"{scheme}://{host}/{folder}" if folder else f"{scheme}://{host}"
+    if normalized.startswith("ssh://"):
+        without = normalized.split("://", 1)[1]
+        host, _, path = without.partition("/")
+        if not path:
+            return f"ssh://{host}"
+        folder = path.rsplit("/", 1)[0] if "/" in path else ""
+        return f"ssh://{host}/{folder}" if folder else f"ssh://{host}"
+    if "/" not in normalized:
+        return "."
+    return normalized.rsplit("/", 1)[0] or "."
+
+
+def _affected_files(findings: list[dict], limit: int = 80) -> list[dict]:
+    counters: dict[str, dict[str, int | str]] = {}
+    for finding in findings:
+        file_path = _normalize_path(str(finding.get("file_path", "unknown")))
+        if file_path not in counters:
+            counters[file_path] = {
+                "file": file_path,
+                "folder": _folder_name(file_path),
+                "count": 0,
+                "critical": 0,
+                "high": 0,
+                "medium": 0,
+                "low": 0,
+                "info": 0,
+            }
+        row = counters[file_path]
+        row["count"] = int(row["count"]) + 1
+        severity = str(finding.get("severity", "Info"))
+        if severity == "Critical":
+            row["critical"] = int(row["critical"]) + 1
+        elif severity == "High":
+            row["high"] = int(row["high"]) + 1
+        elif severity == "Medium":
+            row["medium"] = int(row["medium"]) + 1
+        elif severity == "Low":
+            row["low"] = int(row["low"]) + 1
+        else:
+            row["info"] = int(row["info"]) + 1
+    rows = sorted(counters.values(), key=lambda item: int(item["count"]), reverse=True)
+    return rows[:limit]
+
+
+def _affected_folders(findings: list[dict], limit: int = 40) -> list[dict]:
+    counters: dict[str, dict[str, int | str]] = {}
+    for finding in findings:
+        folder = _folder_name(str(finding.get("file_path", "unknown")))
+        if folder not in counters:
+            counters[folder] = {
+                "folder": folder,
+                "count": 0,
+                "critical": 0,
+                "high": 0,
+                "medium": 0,
+                "low": 0,
+                "info": 0,
+            }
+        row = counters[folder]
+        row["count"] = int(row["count"]) + 1
+        severity = str(finding.get("severity", "Info"))
+        if severity == "Critical":
+            row["critical"] = int(row["critical"]) + 1
+        elif severity == "High":
+            row["high"] = int(row["high"]) + 1
+        elif severity == "Medium":
+            row["medium"] = int(row["medium"]) + 1
+        elif severity == "Low":
+            row["low"] = int(row["low"]) + 1
+        else:
+            row["info"] = int(row["info"]) + 1
+    rows = sorted(counters.values(), key=lambda item: int(item["count"]), reverse=True)
+    return rows[:limit]
+
+
+def _owasp_counts(findings: list[dict], limit: int = 20) -> list[dict]:
+    counts: dict[str, int] = {}
+    for finding in findings:
+        key = str(finding.get("owasp_mapping") or finding.get("owasp_category") or "N/A")
+        counts[key] = counts.get(key, 0) + 1
+    rows = [{"owasp_category": key, "count": count} for key, count in counts.items()]
+    rows.sort(key=lambda item: int(item["count"]), reverse=True)
+    return rows[:limit]
+
+
+def _alert_groups(findings: list[dict]) -> list[dict]:
+    grouped: dict[tuple[str, str, str], dict] = {}
+    for finding in findings:
+        title = str(finding.get("vulnerability_title") or finding.get("vulnerability_type") or "Issue")
+        cwe = str(finding.get("cwe_id") or finding.get("cwe") or "N/A")
+        owasp = str(finding.get("owasp_mapping") or finding.get("owasp_category") or "N/A")
+        key = (title, cwe, owasp)
+        if key not in grouped:
+            grouped[key] = {
+                "id": _slugify(f"{title}-{cwe}-{owasp}"),
+                "title": title,
+                "severity": str(finding.get("severity", "Info")),
+                "cwe": cwe,
+                "owasp": owasp,
+                "count": 0,
+                "findings": [],
+            }
+        entry = grouped[key]
+        entry["count"] += 1
+        entry["findings"].append(finding)
+        if _severity_rank(str(finding.get("severity", "Info"))) < _severity_rank(entry["severity"]):
+            entry["severity"] = str(finding.get("severity", "Info"))
+
+    rows = list(grouped.values())
+    rows.sort(key=lambda item: (_severity_rank(str(item["severity"])), -int(item["count"])))
+    return rows
+
+
+def _slugify(value: str) -> str:
+    parts: list[str] = []
+    for char in value.lower():
+        if char.isalnum():
+            parts.append(char)
+        elif parts and parts[-1] != "-":
+            parts.append("-")
+    slug = "".join(parts).strip("-")
+    return slug[:80] if slug else "alert"
+
+
+class ReportExporter:
+    def __init__(self, export_dir: Path) -> None:
+        self.export_dir = export_dir
+
+    def _ensure_export_dir(self) -> Path:
+        self.export_dir.mkdir(parents=True, exist_ok=True)
+        return self.export_dir
+
+    def _select_payload(self, report: dict, report_type: str) -> dict:
+        normalized = report_type.lower()
+        if normalized == "existing":
+            return {
+                "scanner": report.get("scanner", {}),
+                "executive_summary": report.get("executive_summary", {}),
+                "existing_implementation_report": report.get("existing_implementation_report", {}),
+            }
+        if normalized == "vulnerability":
+            return {
+                "scanner": report.get("scanner", {}),
+                "executive_summary": report.get("executive_summary", {}),
+                "vulnerability_fixed_code_report": report.get("vulnerability_fixed_code_report", {}),
+            }
+        if normalized == "fixes":
+            findings = _sorted_findings(report)
+            return {
+                "scanner": report.get("scanner", {}),
+                "executive_summary": report.get("executive_summary", {}),
+                "original_suggested_fix_report": {
+                    "title": "CodeSentinelX Original and Suggested Fix Report",
+                    "target_path": report.get("vulnerability_fixed_code_report", {}).get(
+                        "target_path", report.get("executive_summary", {}).get("target_path", "N/A")
+                    ),
+                    "generated_at": report.get("vulnerability_fixed_code_report", {}).get(
+                        "generated_at", report.get("executive_summary", {}).get("generated_at", "N/A")
+                    ),
+                    "total_findings": len(findings),
+                    "findings": findings,
+                },
+            }
+        return report
+
+    def export_json(self, report: dict, output_path: Path, report_type: str = "combined") -> Path:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = self._select_payload(report, report_type)
+        output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        return output_path
+
+    def export_html(self, report: dict, output_path: Path, report_type: str = "combined") -> Path:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(self._render_html(report, report_type), encoding="utf-8")
+        return output_path
+
+    def export_pdf(self, report: dict, output_path: Path, report_type: str = "combined") -> Path:
+        html_payload = self._render_html(report, report_type)
+        try:  # Prefer HTML-to-PDF so exported PDF mirrors dashboard layout.
+            from weasyprint import HTML
+
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            HTML(string=html_payload, base_url=str(output_path.parent)).write_pdf(str(output_path))
+            return output_path
+        except ModuleNotFoundError:
+            pass
+        except Exception:
+            # Fall back to reportlab text renderer when HTML renderer is unavailable.
+            pass
+
+        try:
+            from reportlab.lib.pagesizes import A4
+            from reportlab.pdfgen import canvas
+        except ModuleNotFoundError as exc:  # pragma: no cover - dependency-based branch
+            raise RuntimeError(
+                "PDF export requires 'reportlab'. Install dependencies with: pip install -e ."
+            ) from exc
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        pdf = canvas.Canvas(str(output_path), pagesize=A4)
+        _, height = A4
+        x_margin = 30
+        y = height - 32
+
+        def write_line(text: str, font: str = "Helvetica", size: int = 9, gap: int = 12) -> None:
+            nonlocal y
+            if y <= 36:
+                pdf.showPage()
+                y = height - 32
+            pdf.setFont(font, size)
+            pdf.drawString(x_margin, y, text[:130])
+            y -= gap
+
+        def write_block(text: str, font: str = "Helvetica", size: int = 8, gap: int = 10, width: int = 115) -> None:
+            lines = textwrap.wrap(str(text or ""), width=width) or [""]
+            for line in lines:
+                write_line(line, font=font, size=size, gap=gap)
+
+        summary = report.get("executive_summary", {})
+        report_kind = report_type.lower()
+
+        if report_kind == "existing":
+            existing = report.get("existing_implementation_report", {})
+            controls = existing.get("controls", [])
+            write_line("CodeSentinelX Existing Security Implementation Report", font="Helvetica-Bold", size=13, gap=16)
+            write_line(f"Target: {existing.get('target_path', summary.get('target_path', 'N/A'))}")
+            write_line(f"Generated: {existing.get('generated_at', summary.get('generated_at', 'N/A'))}", gap=14)
+            write_line("Coverage Summary", font="Helvetica-Bold", size=11)
+            for key, value in (existing.get("summary", {}) or {}).items():
+                write_line(f"- {key.replace('_', ' ').title()}: {value}")
+            write_line("Implemented Controls", font="Helvetica-Bold", size=11)
+            for control in controls[:80]:
+                write_line(
+                    f"- {control.get('name', 'Control')} [{control.get('coverage_level', 'N/A')}] "
+                    f"({control.get('category', 'Security')})"
+                )
+            pdf.save()
+            return output_path
+
+        if report_kind == "fixes":
+            vuln = report.get("vulnerability_fixed_code_report", {})
+            findings = _sorted_findings(report)
+            write_line("CodeSentinelX Original and Suggested Fix Report", font="Helvetica-Bold", size=13, gap=16)
+            write_line(f"Target: {vuln.get('target_path', summary.get('target_path', 'N/A'))}")
+            write_line(f"Generated: {vuln.get('generated_at', summary.get('generated_at', 'N/A'))}")
+            write_line(f"Total findings: {len(findings)}", gap=14)
+            for item in findings[:220]:
+                write_line(
+                    f"[{item.get('severity', 'Info')}] {item.get('vulnerability_title', item.get('vulnerability_type', 'Issue'))}",
+                    font="Helvetica-Bold",
+                    size=9,
+                )
+                write_line(
+                    f"Location: {_normalize_path(str(item.get('file_path', 'unknown')))}:{item.get('line_number', 1)}",
+                    size=8,
+                )
+                write_line(
+                    f"CWE: {item.get('cwe_id') or item.get('cwe') or 'N/A'} | OWASP: {item.get('owasp_mapping', 'N/A')}",
+                    size=8,
+                )
+                write_line("Recommendation:", size=8)
+                write_block(str(item.get("recommendation", "N/A")), size=8)
+                write_line("Original Code:", size=8)
+                write_block(str(item.get("original_code", "Snippet unavailable.")), font="Courier", size=8)
+                write_line("Suggested Fix:", size=8)
+                write_block(str(item.get("fixed_code", "No direct fix available.")), font="Courier", size=8)
+                write_line("", gap=4)
+            if len(findings) > 220:
+                write_line(f"Truncated after 220 entries. Additional findings: {len(findings) - 220}", size=8)
+            pdf.save()
+            return output_path
+
+        findings = _sorted_findings(report)
+        vuln = report.get("vulnerability_fixed_code_report", {})
+        vuln_summary = vuln.get("summary", {})
+        affected_files = _affected_files(findings, limit=30)
+        affected_modules = vuln_summary.get("affected_modules", summary.get("affected_modules", [])) or []
+        owasp_categories = vuln_summary.get("top_owasp_categories", summary.get("top_owasp_categories", [])) or []
+        action_plan = summary.get("recommended_action_plan", []) or []
+        alerts = _alert_groups(findings)
+        write_line("CodeSentinelX Vulnerability Report (ZAP-Style)", font="Helvetica-Bold", size=13, gap=16)
+        write_line(f"Target: {vuln.get('target_path', summary.get('target_path', 'N/A'))}")
+        write_line(f"Generated: {vuln.get('generated_at', summary.get('generated_at', 'N/A'))}")
+        write_line(f"Risk Score: {vuln_summary.get('risk_score', summary.get('risk_score', 0))}", gap=14)
+        write_line("Summary of Alerts", font="Helvetica-Bold", size=11)
+        for severity, count in (vuln_summary.get("severity_distribution", summary.get("severity_distribution", {})) or {}).items():
+            write_line(f"- {severity}: {count}")
+        write_line("Top Affected Files", font="Helvetica-Bold", size=11)
+        for item in affected_files:
+            write_line(
+                f"- {item.get('file')}: {item.get('count')} total "
+                f"({item.get('critical', 0)} critical, {item.get('high', 0)} high)"
+            )
+        write_line("Top OWASP Categories", font="Helvetica-Bold", size=11)
+        for item in owasp_categories[:15]:
+            write_line(f"- {item.get('owasp_category')}: {item.get('count')}")
+        write_line("Affected Modules", font="Helvetica-Bold", size=11)
+        for item in affected_modules[:20]:
+            write_line(
+                f"- {item.get('module')}: {item.get('count')} total "
+                f"({item.get('critical', 0)} critical, {item.get('high', 0)} high)"
+            )
+        write_line("Action Plan", font="Helvetica-Bold", size=11)
+        for step in action_plan[:10]:
+            write_line(f"- {step}")
+        write_line("Alert Details", font="Helvetica-Bold", size=11)
+        for alert in alerts[:35]:
+            write_line(f"[{alert.get('severity')}] {alert.get('title')} ({alert.get('count')})", font="Helvetica-Bold", size=9)
+            write_line(f"CWE: {alert.get('cwe')} | OWASP: {alert.get('owasp')}", size=8)
+            lead = alert.get("findings", [{}])[0]
+            write_line(f"Tool: {str(lead.get('tool', 'scanner'))}", size=8)
+            write_line(f"Description:", size=8)
+            write_block(str(lead.get("description", "N/A")), size=8)
+            write_line(f"Impact: {str(lead.get('business_impact', ''))}", size=8)
+            write_line("Recommendation:", size=8)
+            write_block(str(lead.get("recommendation", "N/A")), size=8)
+            write_line("Instances:", size=8)
+            for finding in alert.get("findings", [])[:8]:
+                location = f"{_normalize_path(str(finding.get('file_path', 'unknown')))}:{finding.get('line_number', 1)}"
+                write_line(
+                    f" - {location} | {finding.get('status', 'Open')} | {finding.get('tool', 'scanner')}",
+                    size=8,
+                )
+            write_line("", gap=4)
+        pdf.save()
+        return output_path
+
+    def export_sarif(self, report: dict, output_path: Path) -> Path:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        findings = _vulnerability_findings(report)
+
+        rules: dict[str, dict] = {}
+        results: list[dict] = []
+        severity_map = {
+            "Critical": "error",
+            "High": "error",
+            "Medium": "warning",
+            "Low": "note",
+            "Info": "note",
+        }
+
+        for finding in findings:
+            rule_id = str(finding.get("rule_id", "USS-RULE"))
+            if rule_id not in rules:
+                rules[rule_id] = {
+                    "id": rule_id,
+                    "shortDescription": {"text": finding.get("vulnerability_title", finding.get("vulnerability_type", "Issue"))},
+                    "fullDescription": {"text": finding.get("description", "")},
+                    "help": {"text": finding.get("recommendation", "")},
+                    "properties": {
+                        "tags": [
+                            finding.get("owasp_mapping", finding.get("owasp_category", "")),
+                            finding.get("cwe_id") or finding.get("cwe") or "",
+                        ],
+                    },
+                }
+
+            results.append(
+                {
+                    "ruleId": rule_id,
+                    "level": severity_map.get(str(finding.get("severity", "Medium")), "warning"),
+                    "message": {"text": finding.get("business_impact", finding.get("description", ""))},
+                    "locations": [
+                        {
+                            "physicalLocation": {
+                                "artifactLocation": {"uri": _normalize_path(str(finding.get("file_path", "unknown")))},
+                                "region": {"startLine": max(1, int(finding.get("line_number", 1)))},
+                            }
+                        }
+                    ],
+                }
+            )
+
+        sarif = {
+            "version": "2.1.0",
+            "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+            "runs": [
+                {
+                    "tool": {
+                        "driver": {
+                            "name": report.get("scanner", {}).get("name", "Universal Security Scanner"),
+                            "version": report.get("scanner", {}).get("version", "1.0.0"),
+                            "rules": list(rules.values()),
+                        }
+                    },
+                    "results": results,
+                }
+            ],
+        }
+        output_path.write_text(json.dumps(sarif, indent=2), encoding="utf-8")
+        return output_path
+
+    def export(self, report: dict, fmt: str, output_path: Path | None = None, report_type: str = "combined") -> Path:
+        export_root = self._ensure_export_dir()
+        normalized_fmt = fmt.lower()
+        normalized_report = report_type.lower()
+        if normalized_report not in {"combined", "existing", "vulnerability", "fixes"}:
+            raise ValueError(f"Unsupported report type: {report_type}")
+
+        if output_path is None:
+            scan_stamp = report["executive_summary"]["generated_at"].replace(":", "-")
+            suffix = "" if normalized_report == "combined" else f"_{normalized_report}"
+            output_path = export_root / f"security_report_{scan_stamp}{suffix}.{normalized_fmt}"
+
+        if normalized_fmt == "json":
+            return self.export_json(report, output_path, report_type=normalized_report)
+        if normalized_fmt == "html":
+            return self.export_html(report, output_path, report_type=normalized_report)
+        if normalized_fmt == "pdf":
+            return self.export_pdf(report, output_path, report_type=normalized_report)
+        if normalized_fmt == "sarif":
+            if normalized_report in {"existing", "fixes"}:
+                raise ValueError("SARIF export is only available for vulnerability report or combined report.")
+            return self.export_sarif(report, output_path)
+
+        raise ValueError(f"Unsupported export format: {fmt}")
+
+    def _render_html(self, report: dict, report_type: str = "combined") -> str:
+        normalized = report_type.lower()
+        if normalized == "existing":
+            return self._render_existing_html(report)
+        if normalized == "vulnerability":
+            return self._render_vulnerability_html(report)
+        if normalized == "fixes":
+            return self._render_fixes_html(report)
+        return self._render_combined_html(report)
+
+    def _render_existing_html(self, report: dict) -> str:
+        existing = report.get("existing_implementation_report", {})
+        summary = existing.get("summary", {})
+        controls = existing.get("controls", [])
+        matrix = existing.get("compliance_matrix", [])
+
+        summary_rows = "".join(
+            f"<tr><td>{html.escape(str(key).replace('_', ' ').title())}</td><td>{html.escape(str(value))}</td></tr>"
+            for key, value in summary.items()
+        )
+
+        control_rows = "".join(
+            (
+                "<tr>"
+                f"<td>{html.escape(str(control.get('name', 'Control')))}</td>"
+                f"<td>{html.escape(str(control.get('category', 'Security')))}</td>"
+                f"<td>{html.escape(str(control.get('coverage_level', 'N/A')))}</td>"
+                f"<td>{html.escape(', '.join(control.get('standard_mappings', [])[:5]))}</td>"
+                "</tr>"
+            )
+            for control in controls
+        )
+
+        matrix_rows = "".join(
+            (
+                "<tr>"
+                f"<td>{html.escape(str(item.get('standard', 'N/A')))}</td>"
+                f"<td>{item.get('control_count', 0)}</td>"
+                f"<td>{html.escape(str(item.get('status', 'partial')))}</td>"
+                "</tr>"
+            )
+            for item in matrix
+        )
+
+        return f"""
+<!doctype html>
+<html lang='en'>
+<head>
+  <meta charset='utf-8'>
+  <meta name='viewport' content='width=device-width,initial-scale=1'>
+  <title>CodeSentinelX Existing Security Report</title>
+  <style>
+    body {{ font-family: Arial, Helvetica, sans-serif; font-size: 13px; background:#f5f6f8; margin:0; padding:14px; color:#0f1720; }}
+    h1 {{ font-size: 30px; margin: 8px 0; }}
+    h2 {{ font-size: 21px; margin: 16px 0 8px; }}
+    table {{ width:100%; border-collapse: collapse; }}
+    th,td {{ border:1px solid #c6ccd3; padding:6px; text-align:left; vertical-align:top; }}
+    th {{ background:#5d6773; color:#fff; }}
+    td {{ background:#fff; }}
+    .meta {{ margin:4px 0; }}
+  </style>
+</head>
+<body>
+  <h1>CodeSentinelX Existing Security Implementation Report</h1>
+  <p class='meta'><strong>Target:</strong> {html.escape(str(existing.get('target_path', 'N/A')))}</p>
+  <p class='meta'><strong>Generated:</strong> {html.escape(str(existing.get('generated_at', 'N/A')))}</p>
+  <h2>Coverage Summary</h2>
+  <table>
+    <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+    <tbody>{summary_rows or "<tr><td colspan='2'>No summary data</td></tr>"}</tbody>
+  </table>
+  <h2>Implemented Controls</h2>
+  <table>
+    <thead><tr><th>Control</th><th>Category</th><th>Coverage</th><th>Standards</th></tr></thead>
+    <tbody>{control_rows or "<tr><td colspan='4'>No controls detected.</td></tr>"}</tbody>
+  </table>
+  <h2>Compliance Matrix</h2>
+  <table>
+    <thead><tr><th>Standard</th><th>Control Count</th><th>Status</th></tr></thead>
+    <tbody>{matrix_rows or "<tr><td colspan='3'>No compliance mapping data.</td></tr>"}</tbody>
+  </table>
+</body>
+</html>
+"""
+
+    def _render_vulnerability_html(self, report: dict) -> str:
+        vuln_report = report.get("vulnerability_fixed_code_report", {})
+        summary = vuln_report.get("summary", {})
+        exec_summary = report.get("executive_summary", {})
+        target_path = str(vuln_report.get("target_path", exec_summary.get("target_path", "N/A")))
+        generated_at = str(vuln_report.get("generated_at", exec_summary.get("generated_at", "N/A")))
+        risk_score = summary.get("risk_score", exec_summary.get("risk_score", 0))
+        risk_rating = str(summary.get("risk_rating", exec_summary.get("risk_rating", "N/A")))
+        findings = _sorted_findings(report)
+        alerts = _alert_groups(findings)
+        affected_files = _affected_files(findings)
+        affected_folders = _affected_folders(findings)
+        affected_modules = summary.get("affected_modules", exec_summary.get("affected_modules", []))
+        owasp_rows = _owasp_counts(findings)
+        action_plan = exec_summary.get("recommended_action_plan", [])
+
+        summary_rows = "".join(
+            (
+                f"<tr><td class='risk-{severity.lower()}'>{severity}</td>"
+                f"<td align='center'>{summary.get('severity_distribution', {}).get(severity, 0)}</td></tr>"
+            )
+            for severity in ["Critical", "High", "Medium", "Low", "Info"]
+        )
+
+        alert_rows = "".join(
+            (
+                "<tr>"
+                f"<td class='risk-{html.escape(str(alert.get('severity', 'Info')).lower())}'>{html.escape(str(alert.get('severity', 'Info')))}</td>"
+                f"<td><button type='button' class='alert-link' data-alert-id='{html.escape(str(alert.get('id')))}'>{html.escape(str(alert.get('title')))}</button></td>"
+                f"<td align='center'>{alert.get('count', 0)}</td>"
+                f"<td>{html.escape(str(alert.get('cwe', 'N/A')))}</td>"
+                f"<td>{html.escape(str(alert.get('owasp', 'N/A')))}</td>"
+                "</tr>"
+            )
+            for alert in alerts
+        )
+
+        owasp_table_rows = "".join(
+            (
+                "<tr>"
+                f"<td>{html.escape(str(item.get('owasp_category', 'N/A')))}</td>"
+                f"<td align='center'>{item.get('count', 0)}</td>"
+                "</tr>"
+            )
+            for item in owasp_rows
+        )
+
+        module_rows = "".join(
+            (
+                "<tr>"
+                f"<td>{html.escape(str(item.get('module', 'root')))}</td>"
+                f"<td align='center'>{item.get('count', 0)}</td>"
+                f"<td align='center'>{item.get('critical', 0)}</td>"
+                f"<td align='center'>{item.get('high', 0)}</td>"
+                "</tr>"
+            )
+            for item in affected_modules
+        )
+
+        file_rows = "".join(
+            (
+                "<tr>"
+                f"<td>{html.escape(str(item.get('file', 'unknown')))}</td>"
+                f"<td>{html.escape(str(item.get('folder', '.')))}</td>"
+                f"<td align='center'>{item.get('critical', 0)}</td>"
+                f"<td align='center'>{item.get('high', 0)}</td>"
+                f"<td align='center'>{item.get('medium', 0)}</td>"
+                f"<td align='center'>{item.get('low', 0)}</td>"
+                f"<td align='center'>{item.get('info', 0)}</td>"
+                f"<td align='center'>{item.get('count', 0)}</td>"
+                "</tr>"
+            )
+            for item in affected_files
+        )
+
+        folder_rows = "".join(
+            (
+                "<tr>"
+                f"<td>{html.escape(str(item.get('folder', '.')))}</td>"
+                f"<td align='center'>{item.get('critical', 0)}</td>"
+                f"<td align='center'>{item.get('high', 0)}</td>"
+                f"<td align='center'>{item.get('medium', 0)}</td>"
+                f"<td align='center'>{item.get('low', 0)}</td>"
+                f"<td align='center'>{item.get('info', 0)}</td>"
+                f"<td align='center'>{item.get('count', 0)}</td>"
+                "</tr>"
+            )
+            for item in affected_folders
+        )
+
+        detail_sections = "".join(
+            self._render_alert_detail(alert) for alert in alerts
+        )
+
+        action_rows = "".join(f"<li>{html.escape(str(item))}</li>" for item in action_plan)
+
+        return f"""
+<!doctype html>
+<html lang='en'>
+<head>
+  <meta charset='utf-8'>
+  <meta name='viewport' content='width=device-width,initial-scale=1'>
+  <title>CodeSentinelX Vulnerability Report (ZAP-Style)</title>
+  <style>
+    body {{ font-family: "Segoe UI", Arial, Helvetica, sans-serif; font-size: 13px; background:radial-gradient(circle at 20% -20%, #1c3a60, #071321 45%); margin:0; padding:12px; color:#dce9f7; }}
+    h1 {{ text-align:center; font-size:31px; margin:8px 0; }}
+    h2 {{ font-size:22px; margin:18px 0 8px; }}
+    h3 {{ font-size:17px; margin:14px 0 6px; }}
+    h4 {{ font-size:14px; margin:10px 0 6px; }}
+    table {{ width:100%; border-collapse:collapse; margin-bottom:12px; }}
+    th, td {{ border:1px solid #c1c8ce; padding:6px 7px; vertical-align:top; }}
+    th {{ background:#10253f; color:#c6d9ec; text-align:left; cursor:pointer; }}
+    td {{ background:#0b1a2d; border-color:#294a6c; }}
+    .meta {{ margin:3px 0; color:#95afc8; }}
+    .summary {{ max-width:460px; }}
+    .risk-critical {{ background:#b91c1c; color:#fff; font-weight:bold; }}
+    .risk-high {{ background:#ea580c; color:#fff; font-weight:bold; }}
+    .risk-medium {{ background:#eab308; color:#111; font-weight:bold; }}
+    .risk-low {{ background:#2563eb; color:#fff; font-weight:bold; }}
+    .risk-info {{ background:#16a34a; color:#fff; font-weight:bold; }}
+    .two-col {{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }}
+    .toolbar {{ display:flex; gap:8px; align-items:center; margin:6px 0 10px; flex-wrap:wrap; }}
+    .toolbar input {{ background:#071424; border:1px solid #294a6c; border-radius:8px; color:#dce9f7; padding:7px 10px; min-width:240px; }}
+    .alert-block {{ margin-top:16px; padding-top:8px; border-top:2px solid #355376; }}
+    .hidden-section {{ display:none; }}
+    .alert-link {{ background:none; border:none; color:#35c7ff; text-decoration:underline; cursor:pointer; font:inherit; padding:0; }}
+    .code {{ font-family:Consolas, monospace; white-space:pre-wrap; background:#071321; border:1px solid #294a6c; padding:8px; color:#dce9f7; }}
+    .chart-wrap {{ display:grid; grid-template-columns:320px 1fr; gap:12px; align-items:center; }}
+    .legend-item {{ display:flex; gap:8px; align-items:center; margin:4px 0; color:#95afc8; }}
+    .dot {{ width:10px; height:10px; border-radius:50%; }}
+    .bars {{ display:grid; gap:8px; }}
+    .bar-row {{ display:grid; grid-template-columns:220px 1fr auto; gap:8px; align-items:center; }}
+    .bar-track {{ height:12px; border:1px solid #294a6c; border-radius:999px; overflow:hidden; background:#071424; }}
+    .bar-fill {{ height:100%; background:linear-gradient(90deg,#1f88ff,#35c7ff); }}
+    .bar-label {{ color:#95afc8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+    @media (max-width: 980px) {{ .two-col {{ grid-template-columns:1fr; }} }}
+  </style>
+</head>
+<body>
+  <h1>CodeSentinelX Vulnerability Report (ZAP-Style)</h1>
+  <p class='meta'><strong>Target:</strong> {html.escape(target_path)}</p>
+  <p class='meta'><strong>Generated:</strong> {html.escape(generated_at)}</p>
+  <p class='meta'><strong>Risk Score:</strong> {risk_score} ({html.escape(risk_rating)})</p>
+
+  <h2>Summary of Alerts</h2>
+  <div class='two-col'>
+    <div>
+      <table id='severitySummary' class='summary'>
+        <thead><tr><th data-sort-index='0' data-sort-type='text'>Risk Level</th><th data-sort-index='1' data-sort-type='number' align='center'>Number of Alerts</th></tr></thead>
+        <tbody>{summary_rows}</tbody>
+      </table>
+    </div>
+    <div class='chart-wrap'>
+      <canvas id='severityChart' width='280' height='280'></canvas>
+      <div id='severityLegend'></div>
+    </div>
+  </div>
+
+  <div class='two-col'>
+    <div>
+      <h2>Alerts by Type</h2>
+      <table id='alertTable'>
+        <thead><tr><th data-sort-index='0' data-sort-type='text'>Risk</th><th data-sort-index='1' data-sort-type='text'>Alert</th><th data-sort-index='2' data-sort-type='number' align='center'>Instances</th><th data-sort-index='3' data-sort-type='text'>CWE</th><th data-sort-index='4' data-sort-type='text'>OWASP</th></tr></thead>
+        <tbody>{alert_rows or "<tr><td colspan='5'>No findings.</td></tr>"}</tbody>
+      </table>
+    </div>
+    <div>
+      <h2>OWASP Category Counts</h2>
+      <div class='toolbar'><input id='owaspSearch' type='search' placeholder='Search OWASP category'></div>
+      <table id='owaspTable'>
+        <thead><tr><th data-sort-index='0' data-sort-type='text'>OWASP Category</th><th data-sort-index='1' data-sort-type='number' align='center'>Count</th></tr></thead>
+        <tbody>{owasp_table_rows or "<tr><td colspan='2'>No OWASP data.</td></tr>"}</tbody>
+      </table>
+      <div id='owaspBars' class='bars'></div>
+    </div>
+  </div>
+
+  <h2>Affected Modules</h2>
+  <div class='toolbar'><input id='moduleSearch' type='search' placeholder='Search module'></div>
+  <table id='moduleTable'>
+    <thead><tr><th data-sort-index='0' data-sort-type='text'>Module</th><th data-sort-index='1' data-sort-type='number'>Total</th><th data-sort-index='2' data-sort-type='number'>Critical</th><th data-sort-index='3' data-sort-type='number'>High</th></tr></thead>
+    <tbody>{module_rows or "<tr><td colspan='4'>No affected modules.</td></tr>"}</tbody>
+  </table>
+
+  <h2>Affected Files and Folders</h2>
+  <div class='toolbar'><input id='fileSearch' type='search' placeholder='Search file or folder'></div>
+  <table id='fileTable'>
+    <thead><tr><th data-sort-index='0' data-sort-type='text'>File</th><th data-sort-index='1' data-sort-type='text'>Folder</th><th data-sort-index='2' data-sort-type='number'>Critical</th><th data-sort-index='3' data-sort-type='number'>High</th><th data-sort-index='4' data-sort-type='number'>Medium</th><th data-sort-index='5' data-sort-type='number'>Low</th><th data-sort-index='6' data-sort-type='number'>Info</th><th data-sort-index='7' data-sort-type='number'>Total</th></tr></thead>
+    <tbody>{file_rows or "<tr><td colspan='8'>No affected files.</td></tr>"}</tbody>
+  </table>
+
+  <h2>Affected Folders Summary</h2>
+  <table>
+    <thead><tr><th>Folder</th><th>Critical</th><th>High</th><th>Medium</th><th>Low</th><th>Info</th><th>Total</th></tr></thead>
+    <tbody>{folder_rows or "<tr><td colspan='7'>No affected folders.</td></tr>"}</tbody>
+  </table>
+
+  <h2>Action Plan</h2>
+  <ol>{action_rows or "<li>No action plan available.</li>"}</ol>
+
+  <h2>Detailed Findings</h2>
+  {detail_sections or "<p>No findings available.</p>"}
+  <script>
+    (function () {{
+      var severityColors = {{ Critical: "#ff5b77", High: "#ff9b4b", Medium: "#ffd65e", Low: "#67b8ff", Info: "#70d5ab" }};
+
+      function sortTable(table, index, type, asc) {{
+        var tbody = table.querySelector("tbody");
+        if (!tbody) return;
+        var rows = Array.from(tbody.querySelectorAll("tr"));
+        rows.sort(function (a, b) {{
+          var av = (a.children[index] && a.children[index].textContent ? a.children[index].textContent : "").trim();
+          var bv = (b.children[index] && b.children[index].textContent ? b.children[index].textContent : "").trim();
+          if (type === "number") {{
+            var an = Number(av || 0);
+            var bn = Number(bv || 0);
+            return asc ? an - bn : bn - an;
+          }}
+          av = av.toLowerCase();
+          bv = bv.toLowerCase();
+          if (av < bv) return asc ? -1 : 1;
+          if (av > bv) return asc ? 1 : -1;
+          return 0;
+        }});
+        rows.forEach(function (row) {{ tbody.appendChild(row); }});
+      }}
+
+      function initTable(tableId, searchId) {{
+        var table = document.getElementById(tableId);
+        if (!table) return;
+        var headers = table.querySelectorAll("th[data-sort-index]");
+        headers.forEach(function (header) {{
+          header.addEventListener("click", function () {{
+            var index = Number(header.getAttribute("data-sort-index") || 0);
+            var type = header.getAttribute("data-sort-type") || "text";
+            var asc = header.getAttribute("data-dir") !== "asc";
+            header.setAttribute("data-dir", asc ? "asc" : "desc");
+            sortTable(table, index, type, asc);
+          }});
+        }});
+        if (!searchId) return;
+        var input = document.getElementById(searchId);
+        if (!input) return;
+        input.addEventListener("input", function () {{
+          var query = (input.value || "").toLowerCase();
+          var tbody = table.querySelector("tbody");
+          if (!tbody) return;
+          Array.from(tbody.querySelectorAll("tr")).forEach(function (row) {{
+            var text = (row.textContent || "").toLowerCase();
+            row.style.display = !query || text.indexOf(query) >= 0 ? "" : "none";
+          }});
+        }});
+      }}
+
+      function drawSeverityChart() {{
+        var canvas = document.getElementById("severityChart");
+        if (!canvas || !canvas.getContext) return;
+        var summaryRows = Array.from(document.querySelectorAll("#severitySummary tbody tr"));
+        var labels = [];
+        var counts = [];
+        summaryRows.forEach(function (row) {{
+          var cells = row.children;
+          if (cells.length >= 2) {{
+            labels.push((cells[0].textContent || "").trim());
+            counts.push(Number((cells[1].textContent || "0").trim()));
+          }}
+        }});
+        var total = counts.reduce(function (sum, value) {{ return sum + value; }}, 0);
+        var ctx = canvas.getContext("2d");
+        if (!ctx || total <= 0) return;
+        var cx = canvas.width / 2;
+        var cy = canvas.height / 2;
+        var outer = Math.min(cx, cy) - 8;
+        var inner = outer * 0.58;
+        var start = -Math.PI / 2;
+        labels.forEach(function (label, idx) {{
+          var value = counts[idx];
+          if (value <= 0) return;
+          var arc = (value / total) * Math.PI * 2;
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.arc(cx, cy, outer, start, start + arc);
+          ctx.closePath();
+          ctx.fillStyle = severityColors[label] || "#70d5ab";
+          ctx.fill();
+          start += arc;
+        }});
+        ctx.beginPath();
+        ctx.arc(cx, cy, inner, 0, Math.PI * 2);
+        ctx.fillStyle = "#0b1a2d";
+        ctx.fill();
+        ctx.fillStyle = "#dce9f7";
+        ctx.font = "700 26px Segoe UI";
+        ctx.textAlign = "center";
+        ctx.fillText(String(total), cx, cy + 8);
+        ctx.textAlign = "left";
+        var legend = document.getElementById("severityLegend");
+        if (legend) {{
+          legend.innerHTML = labels.map(function (label, idx) {{
+            return "<div class='legend-item'><span class='dot' style='background:" + (severityColors[label] || "#70d5ab") + "'></span><span>" + label + ": " + counts[idx] + "</span></div>";
+          }}).join("");
+        }}
+      }}
+
+      function drawOwaspBars() {{
+        var rows = Array.from(document.querySelectorAll("#owaspTable tbody tr")).map(function (row) {{
+          var cells = row.children;
+          return {{ label: cells[0] ? (cells[0].textContent || "").trim() : "", count: Number(cells[1] ? (cells[1].textContent || "0").trim() : "0") }};
+        }}).filter(function (item) {{ return item.label; }});
+        var root = document.getElementById("owaspBars");
+        if (!root) return;
+        if (!rows.length) {{
+          root.innerHTML = "<p>No OWASP data available.</p>";
+          return;
+        }}
+        var max = rows.reduce(function (current, item) {{ return Math.max(current, item.count); }}, 1);
+        root.innerHTML = rows.slice(0, 10).map(function (item) {{
+          var width = Math.max(2, Math.round((item.count / max) * 100));
+          return "<div class='bar-row'><div class='bar-label' title='" + item.label + "'>" + item.label + "</div><div class='bar-track'><div class='bar-fill' style='width:" + width + "%'></div></div><div>" + item.count + "</div></div>";
+        }}).join("");
+      }}
+
+      document.querySelectorAll(".alert-link").forEach(function (button) {{
+        button.addEventListener("click", function () {{
+          var id = button.getAttribute("data-alert-id");
+          if (!id) return;
+          var section = document.getElementById(id);
+          if (section) section.classList.toggle("hidden-section");
+        }});
+      }});
+
+      initTable("severitySummary");
+      initTable("alertTable");
+      initTable("owaspTable", "owaspSearch");
+      initTable("moduleTable", "moduleSearch");
+      initTable("fileTable", "fileSearch");
+      drawSeverityChart();
+      drawOwaspBars();
+    }})();
+  </script>
+</body>
+</html>
+"""
+
+    def _render_alert_detail(self, alert: dict) -> str:
+        findings = alert.get("findings", [])
+        lead = findings[0] if findings else {}
+        empty_instances_row = "<tr><td colspan='8'>No instances</td></tr>"
+
+        instance_rows = "".join(
+            (
+                "<tr>"
+                f"<td>{html.escape(_normalize_path(str(item.get('file_path', 'unknown'))))}</td>"
+                f"<td>{html.escape(_folder_name(str(item.get('file_path', 'unknown'))))}</td>"
+                f"<td align='center'>{int(item.get('line_number', 1))}</td>"
+                f"<td>{html.escape(str(item.get('severity', 'Info')))}</td>"
+                f"<td>{html.escape(str(item.get('status', 'Open')))}</td>"
+                f"<td>{html.escape(str(item.get('tool', 'scanner')))}</td>"
+                f"<td>{html.escape(str(item.get('cwe_id') or item.get('cwe') or 'N/A'))}</td>"
+                f"<td>{html.escape(str(item.get('owasp_mapping') or item.get('owasp_category') or 'N/A'))}</td>"
+                "</tr>"
+            )
+            for item in findings
+        )
+
+        return (
+            f"<section id='{html.escape(str(alert.get('id', 'alert')))}' class='alert-block hidden-section'>"
+            f"<h3>[{html.escape(str(alert.get('severity', 'Info')))}] {html.escape(str(alert.get('title', 'Issue')))} ({alert.get('count', 0)})</h3>"
+            "<table>"
+            f"<tr><th width='20%'>CWE</th><td>{html.escape(str(alert.get('cwe', 'N/A')))}</td></tr>"
+            f"<tr><th>OWASP</th><td>{html.escape(str(alert.get('owasp', 'N/A')))}</td></tr>"
+            f"<tr><th>Description</th><td>{html.escape(str(lead.get('description', 'N/A')))}</td></tr>"
+            f"<tr><th>Business Impact</th><td>{html.escape(str(lead.get('business_impact', 'N/A')))}</td></tr>"
+            f"<tr><th>Recommendation</th><td>{html.escape(str(lead.get('recommendation', 'N/A')))}</td></tr>"
+            f"<tr><th>Source Tool</th><td>{html.escape(str(lead.get('tool', 'scanner')))}</td></tr>"
+            + "</table>"
+            "<h4>Instances</h4>"
+            "<table>"
+            "<thead><tr><th>File Path</th><th>Folder</th><th>Line</th><th>Severity</th><th>Status</th><th>Tool</th><th>CWE</th><th>OWASP</th></tr></thead>"
+            f"<tbody>{instance_rows or empty_instances_row}</tbody>"
+            "</table>"
+            "</section>"
+        )
+
+    def _render_fixes_html(self, report: dict) -> str:
+        vuln_report = report.get("vulnerability_fixed_code_report", {})
+        summary = vuln_report.get("summary", {})
+        findings = _sorted_findings(report)
+        target_path = str(vuln_report.get("target_path", report.get("executive_summary", {}).get("target_path", "N/A")))
+        generated_at = str(vuln_report.get("generated_at", report.get("executive_summary", {}).get("generated_at", "N/A")))
+
+        severity_rows = "".join(
+            (
+                "<tr>"
+                f"<td>{severity}</td>"
+                f"<td align='center'>{summary.get('severity_distribution', {}).get(severity, 0)}</td>"
+                "</tr>"
+            )
+            for severity in ["Critical", "High", "Medium", "Low", "Info"]
+        )
+
+        queue_rows = "".join(
+            (
+                "<tr>"
+                f"<td>{idx + 1}</td>"
+                f"<td>{html.escape(str(item.get('severity', 'Info')))}</td>"
+                f"<td>{html.escape(str(item.get('vulnerability_title') or item.get('vulnerability_type') or 'Issue'))}</td>"
+                f"<td>{html.escape(_normalize_path(str(item.get('file_path', 'unknown'))))}</td>"
+                f"<td align='center'>{int(item.get('line_number', 1))}</td>"
+                f"<td>{html.escape(str(item.get('cwe_id') or item.get('cwe') or 'N/A'))}</td>"
+                f"<td>{html.escape(str(item.get('owasp_mapping') or item.get('owasp_category') or 'N/A'))}</td>"
+                "</tr>"
+            )
+            for idx, item in enumerate(findings)
+        )
+
+        detail_sections = "".join(
+            (
+                "<section class='fix-card'>"
+                f"<h3>[{html.escape(str(item.get('severity', 'Info')))}] {html.escape(str(item.get('vulnerability_title') or item.get('vulnerability_type') or 'Issue'))}</h3>"
+                f"<p><strong>Location:</strong> {html.escape(_normalize_path(str(item.get('file_path', 'unknown'))))}:{int(item.get('line_number', 1))}</p>"
+                f"<p><strong>CWE:</strong> {html.escape(str(item.get('cwe_id') or item.get('cwe') or 'N/A'))} | "
+                f"<strong>OWASP:</strong> {html.escape(str(item.get('owasp_mapping') or item.get('owasp_category') or 'N/A'))}</p>"
+                f"<p><strong>Recommendation:</strong> {html.escape(str(item.get('recommendation', 'N/A')))}</p>"
+                "<div class='code-grid'>"
+                "<div><h4>Original Code</h4>"
+                f"<pre>{html.escape(str(item.get('original_code', 'Snippet unavailable.')))}</pre></div>"
+                "<div><h4>Suggested Fix</h4>"
+                f"<pre>{html.escape(str(item.get('fixed_code', 'No direct fix available.')))}</pre></div>"
+                "</div>"
+                f"<h4>Patch Preview</h4><pre>{html.escape(str(item.get('patch_preview', 'No patch preview available.')))}</pre>"
+                "</section>"
+            )
+            for item in findings[:220]
+        )
+
+        truncated_note = (
+            f"<p>{len(findings) - 220} additional finding(s) hidden for readability.</p>"
+            if len(findings) > 220
+            else ""
+        )
+
+        return f"""
+<!doctype html>
+<html lang='en'>
+<head>
+  <meta charset='utf-8'>
+  <meta name='viewport' content='width=device-width,initial-scale=1'>
+  <title>CodeSentinelX Original and Suggested Fix Report</title>
+  <style>
+    body {{ font-family: "Segoe UI", Arial, Helvetica, sans-serif; font-size: 13px; background:radial-gradient(circle at 20% -20%, #1c3a60, #071321 45%); margin:0; padding:12px; color:#dce9f7; }}
+    h1 {{ font-size:31px; margin:8px 0; }}
+    h2 {{ font-size:22px; margin:18px 0 8px; }}
+    h3 {{ font-size:17px; margin:14px 0 6px; }}
+    h4 {{ font-size:14px; margin:10px 0 6px; }}
+    table {{ width:100%; border-collapse:collapse; margin-bottom:12px; }}
+    th, td {{ border:1px solid #294a6c; padding:6px 7px; vertical-align:top; }}
+    th {{ background:#10253f; color:#c6d9ec; text-align:left; }}
+    td {{ background:#0b1a2d; }}
+    .meta {{ margin:3px 0; color:#95afc8; }}
+    .panel {{ margin-bottom:14px; }}
+    .summary {{ max-width:460px; }}
+    .fix-card {{ margin-top:12px; padding:10px; border:1px solid #355376; border-radius:10px; background:#0b1a2d; }}
+    .code-grid {{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }}
+    pre {{ margin:0; white-space:pre-wrap; word-break:break-word; font-family:Consolas, monospace; background:#071321; border:1px solid #294a6c; padding:8px; color:#dce9f7; }}
+    @media (max-width: 980px) {{ .code-grid {{ grid-template-columns:1fr; }} }}
+  </style>
+</head>
+<body>
+  <section class='panel'>
+    <h1>CodeSentinelX Original and Suggested Fix Report</h1>
+    <p class='meta'><strong>Target:</strong> {html.escape(target_path)}</p>
+    <p class='meta'><strong>Generated:</strong> {html.escape(generated_at)}</p>
+    <p class='meta'><strong>Total Findings:</strong> {summary.get('total_findings', len(findings))}</p>
+  </section>
+  <section class='panel'>
+    <h2>Severity Summary</h2>
+    <table class='summary'>
+      <thead><tr><th>Severity</th><th>Count</th></tr></thead>
+      <tbody>{severity_rows}</tbody>
+    </table>
+  </section>
+  <section class='panel'>
+    <h2>Fix Queue</h2>
+    <table>
+      <thead><tr><th>#</th><th>Severity</th><th>Issue</th><th>File</th><th>Line</th><th>CWE</th><th>OWASP</th></tr></thead>
+      <tbody>{queue_rows or "<tr><td colspan='7'>No findings available.</td></tr>"}</tbody>
+    </table>
+  </section>
+  <section class='panel'>
+    <h2>Original and Suggested Fix Details</h2>
+    {detail_sections or "<p>No fix details available.</p>"}
+    {truncated_note}
+  </section>
+</body>
+</html>
+"""
+
+    def _render_combined_html(self, report: dict) -> str:
+        exec_summary = report.get("executive_summary", {})
+        existing = report.get("existing_implementation_report", {})
+        vuln = report.get("vulnerability_fixed_code_report", {})
+        return f"""
+<!doctype html>
+<html lang='en'>
+<head>
+  <meta charset='utf-8'>
+  <meta name='viewport' content='width=device-width,initial-scale=1'>
+  <title>CodeSentinelX Combined Report</title>
+  <style>
+    body {{ margin:0; font-family: Arial, Helvetica, sans-serif; background:#f5f6f8; color:#111; }}
+    main {{ max-width:960px; margin:0 auto; padding:20px; }}
+    .panel {{ background:#fff; border:1px solid #cad1d8; border-radius:10px; padding:14px; margin-bottom:12px; }}
+  </style>
+</head>
+<body>
+  <main>
+    <section class='panel'>
+      <h1>CodeSentinelX Combined Security Report</h1>
+      <p>Target: {html.escape(str(exec_summary.get('target_path', 'N/A')))}</p>
+      <p>Generated: {html.escape(str(exec_summary.get('generated_at', 'N/A')))}</p>
+      <p>Risk Score: {exec_summary.get('risk_score', 0)} ({html.escape(str(exec_summary.get('risk_rating', 'N/A')) )})</p>
+    </section>
+    <section class='panel'>
+      <h2>Separate Reports Recommended</h2>
+      <p>Use dedicated exports for complete evidence and audit workflows:</p>
+      <ul>
+        <li>Existing Security Report for implemented safeguards</li>
+        <li>Vulnerability Report for ZAP-style alert details and line-level instances</li>
+        <li>Original and Suggested Fix Report for developer-ready remediation snippets</li>
+      </ul>
+      <p>Implemented controls: {existing.get('summary', {}).get('implemented_controls', 0)}</p>
+      <p>Deduplicated findings: {vuln.get('summary', {}).get('total_findings', 0)}</p>
+    </section>
+  </main>
+</body>
+</html>
+"""
+

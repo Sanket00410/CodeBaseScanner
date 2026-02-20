@@ -1,0 +1,503 @@
+{
+  "scanner": {
+    "name": "Universal Security Scanner",
+    "version": "1.0.0"
+  },
+  "executive_summary": {
+    "target_path": "C:\\Users\\sanketa\\Documents\\UniversalSecurityScanner\\SecureScope\\backend",
+    "generated_at": "2026-02-18T12:42:20.012035+00:00",
+    "files_scanned": 4,
+    "total_vulnerabilities": 4,
+    "deduplicated_vulnerabilities": 2,
+    "duplicate_findings_removed": 2,
+    "total_files_impacted": 1,
+    "active_risk_findings": 2,
+    "assessment_confidence": "High",
+    "severity_distribution": {
+      "Critical": 0,
+      "High": 2,
+      "Medium": 0,
+      "Low": 0,
+      "Info": 0
+    },
+    "risk_score": 43.6,
+    "risk_rating": "Medium",
+    "top_vulnerability_types": [
+      {
+        "type": "Cross-Site Scripting (XSS)",
+        "count": 2
+      }
+    ],
+    "top_owasp_categories": [
+      {
+        "owasp_category": "A03:2021 - Injection",
+        "count": 2
+      }
+    ],
+    "affected_modules": [
+      {
+        "module": "exportService.ts",
+        "count": 2,
+        "critical": 0,
+        "high": 2
+      }
+    ],
+    "recommended_action_plan": [
+      "Prioritize High findings in current sprint and enforce code-owner verification before release.",
+      "Enforce secure coding guardrails in CI (SAST, secrets, dependency checks).",
+      "Establish monthly dependency update cadence and quarterly security review.",
+      "Add security-focused test cases for input validation, authz, and output encoding."
+    ],
+    "implemented_controls": 1
+  },
+  "existing_implementation_report": {
+    "report_type": "existing_implementation",
+    "title": "Existing Security Implementation Report",
+    "target_path": "C:\\Users\\sanketa\\Documents\\UniversalSecurityScanner\\SecureScope\\backend",
+    "generated_at": "2026-02-18T12:42:20.012035+00:00",
+    "summary": {
+      "implemented_controls": 1,
+      "category_distribution": {
+        "Network Security": 1
+      },
+      "coverage_levels": {
+        "High": 1
+      },
+      "standards_coverage": {
+        "OWASP ASVS V9": 1,
+        "ISO 27001 A.13": 1,
+        "NIST SC-8": 1
+      }
+    },
+    "controls": [
+      {
+        "control_id": "CTRL-TLS-TRANSPORT",
+        "name": "TLS / Secure Transport",
+        "category": "Network Security",
+        "description": "TLS or HTTPS-only transport safeguards are present.",
+        "status": "Implemented",
+        "coverage_level": "High",
+        "standard_mappings": [
+          "OWASP ASVS V9",
+          "ISO 27001 A.13",
+          "NIST SC-8"
+        ],
+        "evidence": [
+          {
+            "file_path": "exportService.ts",
+            "line_number": 166,
+            "snippet": "$schema: \"https://json.schemastore.org/sarif-2.1.0.json\","
+          }
+        ]
+      }
+    ],
+    "compliance_matrix": [
+      {
+        "standard": "ISO 27001 A.13",
+        "control_count": 1,
+        "status": "partial"
+      },
+      {
+        "standard": "NIST SC-8",
+        "control_count": 1,
+        "status": "partial"
+      },
+      {
+        "standard": "OWASP ASVS V9",
+        "control_count": 1,
+        "status": "partial"
+      }
+    ]
+  },
+  "vulnerability_fixed_code_report": {
+    "report_type": "vulnerability_fixed_code",
+    "title": "Vulnerability and Fixed-Code Report",
+    "target_path": "C:\\Users\\sanketa\\Documents\\UniversalSecurityScanner\\SecureScope\\backend",
+    "generated_at": "2026-02-18T12:42:20.012035+00:00",
+    "summary": {
+      "total_findings": 2,
+      "raw_findings_total": 4,
+      "duplicate_findings_removed": 2,
+      "severity_distribution": {
+        "Critical": 0,
+        "High": 2,
+        "Medium": 0,
+        "Low": 0,
+        "Info": 0
+      },
+      "risk_score": 43.6,
+      "risk_rating": "Medium",
+      "active_risk_findings": 2,
+      "files_impacted": 1,
+      "top_vulnerability_types": [
+        {
+          "type": "Cross-Site Scripting (XSS)",
+          "count": 2
+        }
+      ],
+      "top_owasp_categories": [
+        {
+          "owasp_category": "A03:2021 - Injection",
+          "count": 2
+        }
+      ],
+      "affected_modules": [
+        {
+          "module": "exportService.ts",
+          "count": 2,
+          "critical": 0,
+          "high": 2
+        }
+      ]
+    },
+    "findings": [
+      {
+        "vulnerability_type": "Cross-Site Scripting (XSS)",
+        "severity": "High",
+        "file_path": "exportService.ts",
+        "line_number": 355,
+        "business_impact": "Session hijacking, data theft, and unauthorized user actions can occur.",
+        "recommendation": "Use output encoding, CSP, and framework-safe rendering APIs.",
+        "reference": "https://owasp.org/www-community/attacks/xss/",
+        "owasp_category": "A03:2021 - Injection",
+        "description": "Unsafely rendering user-controlled HTML/JS can execute attacker scripts in user browsers.",
+        "rule_id": "OWASP-A03-XSS-001",
+        "cwe": "CWE-79",
+        "evidence": "rows.innerHTML = \"<tr><td colspan='3'>No findings.</td></tr>\";",
+        "cvss_score": 8.2,
+        "vulnerability_title": "Cross-Site Scripting (XSS)",
+        "cwe_id": "CWE-79",
+        "owasp_mapping": "A03:2021 - Injection",
+        "attack_scenario": "Attacker injects executable script into rendered page content.",
+        "exploitation_example": "Steal session tokens via script exfiltration in victim browser.",
+        "proof_of_concept": "Submit `<script>alert(document.domain)</script>` to vulnerable rendering sink.",
+        "secure_code_example": "Escape output and avoid unsafe DOM assignment APIs.",
+        "affected_module": "exportService.ts",
+        "vulnerable_code_snippet": "rows.innerHTML = \"<tr><td colspan='3'>No findings.</td></tr>\";",
+        "original_code": "rows.innerHTML = \"<tr><td colspan='3'>No findings.</td></tr>\";",
+        "fixed_code": "const safeContent = sanitize(userInput);\ntargetElement.textContent = safeContent;",
+        "patch_preview": "--- exportService.ts\n+++ exportService.ts\n- rows.innerHTML = \"<tr><td colspan='3'>No findings.</td></tr>\";\n+ const safeContent = sanitize(userInput);\ntargetElement.textContent = safeContent;",
+        "autofix_confidence": "High",
+        "finding_uid": "OWASP-A03-XSS-001::exportService.ts::355",
+        "evidence_sources": [
+          "JS-A03-XSS-001",
+          "OWASP-A03-XSS-001"
+        ]
+      },
+      {
+        "vulnerability_type": "Cross-Site Scripting (XSS)",
+        "severity": "High",
+        "file_path": "exportService.ts",
+        "line_number": 359,
+        "business_impact": "Session hijacking, data theft, and unauthorized user actions can occur.",
+        "recommendation": "Use output encoding, CSP, and framework-safe rendering APIs.",
+        "reference": "https://owasp.org/www-community/attacks/xss/",
+        "owasp_category": "A03:2021 - Injection",
+        "description": "Unsafely rendering user-controlled HTML/JS can execute attacker scripts in user browsers.",
+        "rule_id": "OWASP-A03-XSS-001",
+        "cwe": "CWE-79",
+        "evidence": "rows.innerHTML = findings.map((item, index) => {",
+        "cvss_score": 8.2,
+        "vulnerability_title": "Cross-Site Scripting (XSS)",
+        "cwe_id": "CWE-79",
+        "owasp_mapping": "A03:2021 - Injection",
+        "attack_scenario": "Attacker injects executable script into rendered page content.",
+        "exploitation_example": "Steal session tokens via script exfiltration in victim browser.",
+        "proof_of_concept": "Submit `<script>alert(document.domain)</script>` to vulnerable rendering sink.",
+        "secure_code_example": "Escape output and avoid unsafe DOM assignment APIs.",
+        "affected_module": "exportService.ts",
+        "vulnerable_code_snippet": "rows.innerHTML = findings.map((item, index) => {",
+        "original_code": "rows.innerHTML = findings.map((item, index) => {",
+        "fixed_code": "const safeContent = sanitize(userInput);\ntargetElement.textContent = safeContent;",
+        "patch_preview": "--- exportService.ts\n+++ exportService.ts\n- rows.innerHTML = findings.map((item, index) => {\n+ const safeContent = sanitize(userInput);\ntargetElement.textContent = safeContent;",
+        "autofix_confidence": "High",
+        "finding_uid": "OWASP-A03-XSS-001::exportService.ts::359",
+        "evidence_sources": [
+          "JS-A03-XSS-001",
+          "OWASP-A03-XSS-001"
+        ]
+      }
+    ],
+    "auto_fix_recommendations": [
+      {
+        "priority": "High",
+        "cvss_score": 8.2,
+        "vulnerability_title": "Cross-Site Scripting (XSS)",
+        "file_path": "exportService.ts",
+        "line_number": 355,
+        "recommended_fix": "Use output encoding, CSP, and framework-safe rendering APIs.",
+        "secure_code_example": "Escape output and avoid unsafe DOM assignment APIs.",
+        "original_code": "rows.innerHTML = \"<tr><td colspan='3'>No findings.</td></tr>\";",
+        "fixed_code": "const safeContent = sanitize(userInput);\ntargetElement.textContent = safeContent;",
+        "patch_preview": "--- exportService.ts\n+++ exportService.ts\n- rows.innerHTML = \"<tr><td colspan='3'>No findings.</td></tr>\";\n+ const safeContent = sanitize(userInput);\ntargetElement.textContent = safeContent;",
+        "autofix_confidence": "High",
+        "automation_hint": "Open a remediation PR with unit tests for the vulnerable path."
+      },
+      {
+        "priority": "High",
+        "cvss_score": 8.2,
+        "vulnerability_title": "Cross-Site Scripting (XSS)",
+        "file_path": "exportService.ts",
+        "line_number": 359,
+        "recommended_fix": "Use output encoding, CSP, and framework-safe rendering APIs.",
+        "secure_code_example": "Escape output and avoid unsafe DOM assignment APIs.",
+        "original_code": "rows.innerHTML = findings.map((item, index) => {",
+        "fixed_code": "const safeContent = sanitize(userInput);\ntargetElement.textContent = safeContent;",
+        "patch_preview": "--- exportService.ts\n+++ exportService.ts\n- rows.innerHTML = findings.map((item, index) => {\n+ const safeContent = sanitize(userInput);\ntargetElement.textContent = safeContent;",
+        "autofix_confidence": "High",
+        "automation_hint": "Open a remediation PR with unit tests for the vulnerable path."
+      }
+    ],
+    "toolchain_status": {}
+  },
+  "existing_security_measures": {
+    "summary": {
+      "implemented_controls": 1,
+      "category_distribution": {
+        "Network Security": 1
+      },
+      "standards_coverage": {
+        "OWASP ASVS V9": 1,
+        "ISO 27001 A.13": 1,
+        "NIST SC-8": 1
+      },
+      "coverage_levels": {
+        "High": 1
+      }
+    },
+    "controls": [
+      {
+        "control_id": "CTRL-TLS-TRANSPORT",
+        "name": "TLS / Secure Transport",
+        "category": "Network Security",
+        "description": "TLS or HTTPS-only transport safeguards are present.",
+        "status": "Implemented",
+        "coverage_level": "High",
+        "standard_mappings": [
+          "OWASP ASVS V9",
+          "ISO 27001 A.13",
+          "NIST SC-8"
+        ],
+        "evidence": [
+          {
+            "file_path": "exportService.ts",
+            "line_number": 166,
+            "snippet": "$schema: \"https://json.schemastore.org/sarif-2.1.0.json\","
+          }
+        ]
+      }
+    ],
+    "compliance_matrix": [
+      {
+        "standard": "ISO 27001 A.13",
+        "control_count": 1,
+        "status": "partial"
+      },
+      {
+        "standard": "NIST SC-8",
+        "control_count": 1,
+        "status": "partial"
+      },
+      {
+        "standard": "OWASP ASVS V9",
+        "control_count": 1,
+        "status": "partial"
+      }
+    ]
+  },
+  "vulnerability_findings": {
+    "summary": {
+      "total": 2,
+      "raw_total": 4,
+      "duplicate_reduction": 2,
+      "severity_distribution": {
+        "Critical": 0,
+        "High": 2,
+        "Medium": 0,
+        "Low": 0,
+        "Info": 0
+      },
+      "top_vulnerability_types": [
+        {
+          "type": "Cross-Site Scripting (XSS)",
+          "count": 2
+        }
+      ]
+    },
+    "findings": [
+      {
+        "vulnerability_type": "Cross-Site Scripting (XSS)",
+        "severity": "High",
+        "file_path": "exportService.ts",
+        "line_number": 355,
+        "business_impact": "Session hijacking, data theft, and unauthorized user actions can occur.",
+        "recommendation": "Use output encoding, CSP, and framework-safe rendering APIs.",
+        "reference": "https://owasp.org/www-community/attacks/xss/",
+        "owasp_category": "A03:2021 - Injection",
+        "description": "Unsafely rendering user-controlled HTML/JS can execute attacker scripts in user browsers.",
+        "rule_id": "OWASP-A03-XSS-001",
+        "cwe": "CWE-79",
+        "evidence": "rows.innerHTML = \"<tr><td colspan='3'>No findings.</td></tr>\";",
+        "cvss_score": 8.2,
+        "vulnerability_title": "Cross-Site Scripting (XSS)",
+        "cwe_id": "CWE-79",
+        "owasp_mapping": "A03:2021 - Injection",
+        "attack_scenario": "Attacker injects executable script into rendered page content.",
+        "exploitation_example": "Steal session tokens via script exfiltration in victim browser.",
+        "proof_of_concept": "Submit `<script>alert(document.domain)</script>` to vulnerable rendering sink.",
+        "secure_code_example": "Escape output and avoid unsafe DOM assignment APIs.",
+        "affected_module": "exportService.ts",
+        "vulnerable_code_snippet": "rows.innerHTML = \"<tr><td colspan='3'>No findings.</td></tr>\";",
+        "original_code": "rows.innerHTML = \"<tr><td colspan='3'>No findings.</td></tr>\";",
+        "fixed_code": "const safeContent = sanitize(userInput);\ntargetElement.textContent = safeContent;",
+        "patch_preview": "--- exportService.ts\n+++ exportService.ts\n- rows.innerHTML = \"<tr><td colspan='3'>No findings.</td></tr>\";\n+ const safeContent = sanitize(userInput);\ntargetElement.textContent = safeContent;",
+        "autofix_confidence": "High",
+        "finding_uid": "OWASP-A03-XSS-001::exportService.ts::355",
+        "evidence_sources": [
+          "JS-A03-XSS-001",
+          "OWASP-A03-XSS-001"
+        ]
+      },
+      {
+        "vulnerability_type": "Cross-Site Scripting (XSS)",
+        "severity": "High",
+        "file_path": "exportService.ts",
+        "line_number": 359,
+        "business_impact": "Session hijacking, data theft, and unauthorized user actions can occur.",
+        "recommendation": "Use output encoding, CSP, and framework-safe rendering APIs.",
+        "reference": "https://owasp.org/www-community/attacks/xss/",
+        "owasp_category": "A03:2021 - Injection",
+        "description": "Unsafely rendering user-controlled HTML/JS can execute attacker scripts in user browsers.",
+        "rule_id": "OWASP-A03-XSS-001",
+        "cwe": "CWE-79",
+        "evidence": "rows.innerHTML = findings.map((item, index) => {",
+        "cvss_score": 8.2,
+        "vulnerability_title": "Cross-Site Scripting (XSS)",
+        "cwe_id": "CWE-79",
+        "owasp_mapping": "A03:2021 - Injection",
+        "attack_scenario": "Attacker injects executable script into rendered page content.",
+        "exploitation_example": "Steal session tokens via script exfiltration in victim browser.",
+        "proof_of_concept": "Submit `<script>alert(document.domain)</script>` to vulnerable rendering sink.",
+        "secure_code_example": "Escape output and avoid unsafe DOM assignment APIs.",
+        "affected_module": "exportService.ts",
+        "vulnerable_code_snippet": "rows.innerHTML = findings.map((item, index) => {",
+        "original_code": "rows.innerHTML = findings.map((item, index) => {",
+        "fixed_code": "const safeContent = sanitize(userInput);\ntargetElement.textContent = safeContent;",
+        "patch_preview": "--- exportService.ts\n+++ exportService.ts\n- rows.innerHTML = findings.map((item, index) => {\n+ const safeContent = sanitize(userInput);\ntargetElement.textContent = safeContent;",
+        "autofix_confidence": "High",
+        "finding_uid": "OWASP-A03-XSS-001::exportService.ts::359",
+        "evidence_sources": [
+          "JS-A03-XSS-001",
+          "OWASP-A03-XSS-001"
+        ]
+      }
+    ],
+    "toolchain_status": {}
+  },
+  "auto_fix_recommendations": [
+    {
+      "priority": "High",
+      "cvss_score": 8.2,
+      "vulnerability_title": "Cross-Site Scripting (XSS)",
+      "file_path": "exportService.ts",
+      "line_number": 355,
+      "recommended_fix": "Use output encoding, CSP, and framework-safe rendering APIs.",
+      "secure_code_example": "Escape output and avoid unsafe DOM assignment APIs.",
+      "original_code": "rows.innerHTML = \"<tr><td colspan='3'>No findings.</td></tr>\";",
+      "fixed_code": "const safeContent = sanitize(userInput);\ntargetElement.textContent = safeContent;",
+      "patch_preview": "--- exportService.ts\n+++ exportService.ts\n- rows.innerHTML = \"<tr><td colspan='3'>No findings.</td></tr>\";\n+ const safeContent = sanitize(userInput);\ntargetElement.textContent = safeContent;",
+      "autofix_confidence": "High",
+      "automation_hint": "Open a remediation PR with unit tests for the vulnerable path."
+    },
+    {
+      "priority": "High",
+      "cvss_score": 8.2,
+      "vulnerability_title": "Cross-Site Scripting (XSS)",
+      "file_path": "exportService.ts",
+      "line_number": 359,
+      "recommended_fix": "Use output encoding, CSP, and framework-safe rendering APIs.",
+      "secure_code_example": "Escape output and avoid unsafe DOM assignment APIs.",
+      "original_code": "rows.innerHTML = findings.map((item, index) => {",
+      "fixed_code": "const safeContent = sanitize(userInput);\ntargetElement.textContent = safeContent;",
+      "patch_preview": "--- exportService.ts\n+++ exportService.ts\n- rows.innerHTML = findings.map((item, index) => {\n+ const safeContent = sanitize(userInput);\ntargetElement.textContent = safeContent;",
+      "autofix_confidence": "High",
+      "automation_hint": "Open a remediation PR with unit tests for the vulnerable path."
+    }
+  ],
+  "technical_report": {
+    "scan_window": {
+      "started_at": "2026-02-18T12:42:19.969801+00:00",
+      "completed_at": "2026-02-18T12:42:20.012035+00:00",
+      "duration_seconds": 0.04
+    },
+    "findings": [
+      {
+        "vulnerability_type": "Cross-Site Scripting (XSS)",
+        "severity": "High",
+        "file_path": "exportService.ts",
+        "line_number": 355,
+        "business_impact": "Session hijacking, data theft, and unauthorized user actions can occur.",
+        "recommendation": "Use output encoding, CSP, and framework-safe rendering APIs.",
+        "reference": "https://owasp.org/www-community/attacks/xss/",
+        "owasp_category": "A03:2021 - Injection",
+        "description": "Unsafely rendering user-controlled HTML/JS can execute attacker scripts in user browsers.",
+        "rule_id": "OWASP-A03-XSS-001",
+        "cwe": "CWE-79",
+        "evidence": "rows.innerHTML = \"<tr><td colspan='3'>No findings.</td></tr>\";",
+        "cvss_score": 8.2,
+        "vulnerability_title": "Cross-Site Scripting (XSS)",
+        "cwe_id": "CWE-79",
+        "owasp_mapping": "A03:2021 - Injection",
+        "attack_scenario": "Attacker injects executable script into rendered page content.",
+        "exploitation_example": "Steal session tokens via script exfiltration in victim browser.",
+        "proof_of_concept": "Submit `<script>alert(document.domain)</script>` to vulnerable rendering sink.",
+        "secure_code_example": "Escape output and avoid unsafe DOM assignment APIs.",
+        "affected_module": "exportService.ts",
+        "vulnerable_code_snippet": "rows.innerHTML = \"<tr><td colspan='3'>No findings.</td></tr>\";",
+        "original_code": "rows.innerHTML = \"<tr><td colspan='3'>No findings.</td></tr>\";",
+        "fixed_code": "const safeContent = sanitize(userInput);\ntargetElement.textContent = safeContent;",
+        "patch_preview": "--- exportService.ts\n+++ exportService.ts\n- rows.innerHTML = \"<tr><td colspan='3'>No findings.</td></tr>\";\n+ const safeContent = sanitize(userInput);\ntargetElement.textContent = safeContent;",
+        "autofix_confidence": "High",
+        "finding_uid": "OWASP-A03-XSS-001::exportService.ts::355",
+        "evidence_sources": [
+          "JS-A03-XSS-001",
+          "OWASP-A03-XSS-001"
+        ]
+      },
+      {
+        "vulnerability_type": "Cross-Site Scripting (XSS)",
+        "severity": "High",
+        "file_path": "exportService.ts",
+        "line_number": 359,
+        "business_impact": "Session hijacking, data theft, and unauthorized user actions can occur.",
+        "recommendation": "Use output encoding, CSP, and framework-safe rendering APIs.",
+        "reference": "https://owasp.org/www-community/attacks/xss/",
+        "owasp_category": "A03:2021 - Injection",
+        "description": "Unsafely rendering user-controlled HTML/JS can execute attacker scripts in user browsers.",
+        "rule_id": "OWASP-A03-XSS-001",
+        "cwe": "CWE-79",
+        "evidence": "rows.innerHTML = findings.map((item, index) => {",
+        "cvss_score": 8.2,
+        "vulnerability_title": "Cross-Site Scripting (XSS)",
+        "cwe_id": "CWE-79",
+        "owasp_mapping": "A03:2021 - Injection",
+        "attack_scenario": "Attacker injects executable script into rendered page content.",
+        "exploitation_example": "Steal session tokens via script exfiltration in victim browser.",
+        "proof_of_concept": "Submit `<script>alert(document.domain)</script>` to vulnerable rendering sink.",
+        "secure_code_example": "Escape output and avoid unsafe DOM assignment APIs.",
+        "affected_module": "exportService.ts",
+        "vulnerable_code_snippet": "rows.innerHTML = findings.map((item, index) => {",
+        "original_code": "rows.innerHTML = findings.map((item, index) => {",
+        "fixed_code": "const safeContent = sanitize(userInput);\ntargetElement.textContent = safeContent;",
+        "patch_preview": "--- exportService.ts\n+++ exportService.ts\n- rows.innerHTML = findings.map((item, index) => {\n+ const safeContent = sanitize(userInput);\ntargetElement.textContent = safeContent;",
+        "autofix_confidence": "High",
+        "finding_uid": "OWASP-A03-XSS-001::exportService.ts::359",
+        "evidence_sources": [
+          "JS-A03-XSS-001",
+          "OWASP-A03-XSS-001"
+        ]
+      }
+    ],
+    "errors": []
+  }
+}

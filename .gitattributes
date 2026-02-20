@@ -1,0 +1,2 @@
+.toolchain/**/*.exe filter=lfs diff=lfs merge=lfs -text
+.toolchain/**/*.zip filter=lfs diff=lfs merge=lfs -text

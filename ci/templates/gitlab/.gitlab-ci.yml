@@ -1,0 +1,32 @@
+﻿stages:
+  - security
+
+codesentinelx_scan:
+  stage: security
+  image: python:3.11
+  before_script:
+    - pip install --upgrade pip
+    - pip install -e .
+  script:
+    - uss scan --path . --format json --output scan-report.json --no-progress
+    - uss scan --path . --format sarif --output scan-report.sarif --no-progress || true
+    - |
+      python - <<'PY'
+      import json, sys
+      with open('scan-report.json', 'r', encoding='utf-8') as f:
+          data = json.load(f)
+      critical = sum(1 for i in data['technical_report']['findings'] if i['severity'] == 'Critical')
+      if critical > 0:
+          print(f'Blocking pipeline: {critical} critical findings')
+          sys.exit(1)
+      print('Policy gate passed')
+      PY
+  artifacts:
+    when: always
+    paths:
+      - scan-report.json
+      - scan-report.sarif
+    expire_in: 7 days
+  only:
+    - merge_requests
+    - main

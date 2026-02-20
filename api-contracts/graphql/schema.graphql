@@ -1,0 +1,117 @@
+﻿schema {
+  query: Query
+  mutation: Mutation
+}
+
+type Query {
+  projects: [Project!]!
+  scan(scanId: ID!): Scan!
+  findings(filter: FindingFilterInput): [Finding!]!
+  riskTrends(projectId: ID!, days: Int = 30): [RiskTrendPoint!]!
+}
+
+type Mutation {
+  startScan(input: StartScanInput!): Scan!
+  suppressFinding(input: SuppressFindingInput!): Finding!
+  addFindingComment(input: AddCommentInput!): FindingComment!
+}
+
+type Project {
+  id: ID!
+  name: String!
+  defaultBranch: String!
+}
+
+type Scan {
+  id: ID!
+  projectId: ID!
+  status: ScanStatus!
+  mode: ScanMode!
+  riskScore: Float!
+  startedAt: String!
+  completedAt: String
+}
+
+enum ScanStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum ScanMode {
+  FULL
+  DIFFERENTIAL
+}
+
+type Finding {
+  id: ID!
+  projectId: ID!
+  title: String!
+  severity: Severity!
+  cvssScore: Float!
+  cweId: String!
+  owaspCategory: String!
+  cveIds: [String!]!
+  filePath: String!
+  lineNumber: Int!
+  vulnerableSnippet: String!
+  attackScenario: String!
+  exploitationExample: String!
+  proofOfConcept: String!
+  businessImpact: String!
+  remediationSteps: String!
+  secureCodeExample: String!
+  references: [String!]!
+  comments: [FindingComment!]!
+  suppressed: Boolean!
+}
+
+enum Severity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+  INFO
+}
+
+type FindingComment {
+  id: ID!
+  findingId: ID!
+  author: String!
+  body: String!
+  createdAt: String!
+}
+
+type RiskTrendPoint {
+  date: String!
+  critical: Int!
+  high: Int!
+  medium: Int!
+  low: Int!
+}
+
+input FindingFilterInput {
+  projectId: ID
+  severity: Severity
+  cweId: String
+  suppressed: Boolean
+}
+
+input StartScanInput {
+  projectId: ID!
+  branch: String!
+  commitSha: String
+  mode: ScanMode!
+}
+
+input SuppressFindingInput {
+  findingId: ID!
+  reason: String!
+  expiresAt: String
+}
+
+input AddCommentInput {
+  findingId: ID!
+  body: String!
+}
