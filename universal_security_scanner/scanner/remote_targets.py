@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from collections import deque
 import ipaddress
 import os
 from pathlib import Path, PurePosixPath
@@ -13,7 +14,7 @@ import stat
 import tempfile
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, quote, urljoin, urlparse
 from urllib.request import Request, urlopen
 
 from universal_security_scanner.config import ScannerConfig
@@ -27,6 +28,7 @@ from universal_security_scanner.scanner.external import (
     tool_metadata,
 )
 from universal_security_scanner.scanner.engine import ProgressCallback, ScanEngine
+from universal_security_scanner.scanner.scan_control import honor_pause_control
 
 
 HTTP_PROBES = [
@@ -42,6 +44,26 @@ HTTP_PROBES = [
     "/admin",
     "/debug",
 ]
+
+_STATIC_PATH_SUFFIXES = (
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".svg",
+    ".ico",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".eot",
+    ".map",
+    ".pdf",
+    ".zip",
+    ".tar",
+    ".gz",
+    ".rar",
+)
 
 
 @dataclass(slots=True)
@@ -111,12 +133,14 @@ def scan_runtime_http_target(
         config = ScannerConfig.from_env()
 
     started = datetime.now(timezone.utc)
-    normalized_base = _normalize_http_target(target)
+    normalized_base, initial_path = _normalize_http_target(target)
     findings: list[Finding] = []
     errors: list[str] = []
     controls: list[SecurityControl] = []
-    responses: dict[str, dict[str, Any]] = {}
+    responses_by_url: dict[str, dict[str, Any]] = {}
     toolchain_status: dict[str, dict[str, Any]] = {}
+    discovered_candidates: set[str] = set()
+    auth_context = _runtime_auth_context()
 
     runtime_active_tools = [tool for tool in external_tool_names(config, target_mode="runtime") if tool != "runtime_http_probe"]
     runtime_catalog_tools = [
@@ -125,26 +149,101 @@ def scan_runtime_http_target(
     runtime_runner_supported = set(supported_runner_tools("runtime"))
     runtime_selected_runner_tools = [tool for tool in runtime_active_tools if tool in runtime_runner_supported]
 
+    max_runtime_urls = _read_positive_int("USS_RUNTIME_MAX_URLS", 140)
+    max_crawl_depth = _read_positive_int("USS_RUNTIME_CRAWL_DEPTH", 2)
+    max_crawl_pages = _read_positive_int("USS_RUNTIME_CRAWL_MAX_PAGES", 90)
+
+    seed_paths = set(HTTP_PROBES)
+    if initial_path and initial_path != "/":
+        seed_paths.add(initial_path)
+        parent = str(PurePosixPath(initial_path).parent)
+        if parent and parent != "." and parent != "/":
+            seed_paths.add(parent if parent.startswith("/") else f"/{parent}")
+
+    candidate_urls = _build_seed_urls(normalized_base, sorted(seed_paths))
+    queued = deque((url, 0) for url in sorted(candidate_urls))
+    visited: set[str] = set()
+
     toolchain_prepare_steps = 1 if runtime_active_tools or runtime_catalog_tools else 0
-    total_steps = len(HTTP_PROBES) + 2 + toolchain_prepare_steps + len(runtime_selected_runner_tools)
+    total_steps = max(
+        1,
+        min(max_runtime_urls, len(candidate_urls) + max_crawl_pages) + 2 + toolchain_prepare_steps + len(runtime_selected_runner_tools),
+    )
     completed_steps = 0
 
     if progress_callback:
-        progress_callback(0.0, "runtime_probe", normalized_base, "Starting runtime HTTP probe scan")
+        progress_callback(0.0, "runtime_discovery", normalized_base, "Starting runtime web/API discovery")
 
-    for endpoint in HTTP_PROBES:
+    if auth_context["enabled"]:
+        controls.append(
+            SecurityControl(
+                control_id="CTRL-RUNTIME-AUTHENTICATED-CRAWL",
+                name="Authenticated Runtime Crawl Enabled",
+                category="Identity and Access",
+                description="Runtime scanner used provided auth material for endpoint/API discovery.",
+                status="Implemented",
+                coverage_level="High",
+                standard_mappings=["OWASP WSTG-ATHN", "OWASP API Top 10", "NIST AC-6"],
+                evidence=[
+                    {
+                        "file_path": f"{normalized_base}/",
+                        "line_number": 1,
+                        "snippet": auth_context["summary"],
+                    }
+                ],
+            )
+        )
+
+    while queued and len(visited) < max_runtime_urls and len(visited) < max_crawl_pages:
+        honor_pause_control(
+            progress_callback=progress_callback,
+            progress=round((completed_steps / total_steps) * 100.0, 2),
+            stage="runtime_discovery",
+            current_file=normalized_base,
+        )
+        current_url, depth = queued.popleft()
+        if current_url in visited:
+            continue
+        visited.add(current_url)
         completed_steps += 1
         progress = round((completed_steps / total_steps) * 100.0, 2)
         if progress_callback:
-            progress_callback(progress, "runtime_probe", endpoint, f"Probing {endpoint}")
+            progress_callback(progress, "runtime_discovery", current_url, f"Discovering endpoint {len(visited)}")
 
         try:
-            response = _http_probe(normalized_base, endpoint)
-            responses[endpoint] = response
+            response = _http_probe_url(current_url)
+            responses_by_url[current_url] = response
         except Exception as exc:  # pragma: no cover - defensive
-            errors.append(f"[runtime_probe] {endpoint}: {exc}")
+            errors.append(f"[runtime_probe] {current_url}: {exc}")
+            continue
 
-    root = responses.get("/")
+        discovered = _extract_discovered_urls(
+            base_url=normalized_base,
+            current_url=current_url,
+            response=response,
+        )
+        for url in discovered:
+            if len(candidate_urls) >= max_runtime_urls:
+                break
+            if url in candidate_urls:
+                continue
+            if not _same_origin(normalized_base, url):
+                continue
+            candidate_urls.add(url)
+            discovered_candidates.add(url)
+            if depth + 1 <= max_crawl_depth:
+                queued.append((url, depth + 1))
+
+    if progress_callback and discovered_candidates:
+        progress_callback(
+            round((completed_steps / total_steps) * 100.0, 2),
+            "runtime_discovery",
+            normalized_base,
+            f"Discovered {len(discovered_candidates)} additional runtime/API endpoints",
+        )
+
+    path_responses = _responses_by_path(responses_by_url, normalized_base)
+    root = path_responses.get("/")
     if not root:
         findings.append(
             Finding(
@@ -163,18 +262,20 @@ def scan_runtime_http_target(
             )
         )
     else:
-        _evaluate_http_responses(normalized_base, responses, findings, controls)
+        _evaluate_http_responses(normalized_base, path_responses, findings, controls)
+
+    _evaluate_discovered_runtime_endpoints(normalized_base, responses_by_url, findings, controls)
 
     completed_steps += 1
     if progress_callback:
-        progress_callback(round((completed_steps / total_steps) * 100.0, 2), "runtime_analysis", normalized_base, "Analyzing probe results")
+        progress_callback(round((completed_steps / total_steps) * 100.0, 2), "runtime_analysis", normalized_base, "Analyzing runtime/API probe results")
 
     runtime_probe_meta = tool_metadata("runtime_http_probe")
     toolchain_status["runtime_http_probe"] = {
         "name": "runtime_http_probe",
         "available": True,
         "source": "builtin",
-        "message": f"HTTP runtime probe completed with {len(errors)} warning(s)",
+        "message": f"Runtime probe checked {len(responses_by_url)} endpoints with {len(errors)} warning(s)",
         "command": "builtin",
         "selected": True,
         "runner_available": True,
@@ -238,12 +339,21 @@ def scan_runtime_http_target(
                     f"Running runtime analyzer: {tool_name}",
                 )
 
+            honor_pause_control(
+                progress_callback=progress_callback,
+                progress=round((completed_steps / total_steps) * 100.0, 2),
+                stage="runtime_external",
+                current_file=normalized_base,
+            )
+
             if not bool(status.get("available", False)):
                 continue
 
+            runtime_targets = _runtime_targets_for_tooling(normalized_base, responses_by_url)
             tool_findings, tool_errors = run_external_runtime_tool(
                 tool_name,
                 target_url=normalized_base,
+                target_urls=runtime_targets,
                 config=config,
                 command=str(status.get("command") or tool_name),
             )
@@ -259,7 +369,7 @@ def scan_runtime_http_target(
         target_path=normalized_base,
         started_at=started,
         completed_at=completed,
-        files_scanned=len(HTTP_PROBES),
+        files_scanned=len(responses_by_url),
         findings=findings,
         errors=errors,
         existing_security_measures=controls,
@@ -314,6 +424,12 @@ def scan_remote_ssh_target(
 
         total = len(remote_files)
         for index, (remote_file, relative_path) in enumerate(remote_files, start=1):
+            honor_pause_control(
+                progress_callback=progress_callback,
+                progress=round((index / max(1, total)) * 35.0, 2),
+                stage="remote_sync",
+                current_file=relative_path,
+            )
             local_file = temp_root / relative_path
             local_file.parent.mkdir(parents=True, exist_ok=True)
             sftp.get(remote_file, str(local_file))
@@ -758,7 +874,7 @@ def _prefix_remote_file(spec: RemoteSSHSpec, relative_path: str | None) -> str:
     return f"ssh://{spec.username}@{spec.host}:{spec.port}{remote_root}/{quoted_parts}"
 
 
-def _normalize_http_target(target: str) -> str:
+def _normalize_http_target(target: str) -> tuple[str, str]:
     candidate = target.strip()
     if re.match(r"^https?://", candidate, flags=re.IGNORECASE):
         parsed = urlparse(candidate)
@@ -767,18 +883,23 @@ def _normalize_http_target(target: str) -> str:
         if not netloc:
             raise ValueError(f"Invalid HTTP target: {target}")
         base = f"{parsed.scheme.lower()}://{netloc}"
-        if path and path != "/":
-            return f"{base}{path.rstrip('/')}"
-        return base
+        normalized_path = "/" if not path else (path if path.startswith("/") else f"/{path}")
+        return base.rstrip("/"), normalized_path.rstrip("/") or "/"
 
     if _is_ipv4_with_optional_port(candidate) or re.match(
         r"^[a-z0-9.-]+\.[a-z]{2,}(:\d+)?(/.*)?$",
         candidate,
         flags=re.IGNORECASE,
     ):
-        return f"http://{candidate.rstrip('/')}"
+        parsed = urlparse(f"http://{candidate.rstrip('/')}")
+        base = f"http://{parsed.netloc or parsed.path}"
+        normalized_path = parsed.path or "/"
+        return base.rstrip("/"), normalized_path.rstrip("/") or "/"
     if re.match(r"^localhost(:\d+)?(/.*)?$", candidate, flags=re.IGNORECASE):
-        return f"http://{candidate.rstrip('/')}"
+        parsed = urlparse(f"http://{candidate.rstrip('/')}")
+        base = f"http://{parsed.netloc or parsed.path}"
+        normalized_path = parsed.path or "/"
+        return base.rstrip("/"), normalized_path.rstrip("/") or "/"
 
     raise ValueError(f"Unsupported HTTP target: {target}")
 
@@ -798,7 +919,11 @@ def _is_ipv4_with_optional_port(value: str) -> bool:
 
 def _http_probe(base_url: str, endpoint: str) -> dict[str, Any]:
     url = f"{base_url.rstrip('/')}{endpoint}"
-    request = Request(url, method="GET", headers={"User-Agent": "CodeSentinelX-RemoteProbe/1.0"})
+    return _http_probe_url(url)
+
+
+def _http_probe_url(url: str) -> dict[str, Any]:
+    request = Request(url, method="GET", headers=_runtime_request_headers())
     timeout_seconds = float(os.getenv("USS_REMOTE_HTTP_TIMEOUT_SECONDS", "6"))
 
     try:
@@ -826,3 +951,292 @@ def _http_probe(base_url: str, endpoint: str) -> dict[str, Any]:
         }
     except (URLError, socket.timeout) as exc:
         raise RuntimeError(f"HTTP probe failed for {url}: {exc}") from exc
+
+
+def _runtime_request_headers() -> dict[str, str]:
+    headers: dict[str, str] = {
+        "User-Agent": "CodeSentinelX-RemoteProbe/1.0",
+    }
+    context = _runtime_auth_context()
+    for name, value in context["headers"].items():
+        headers[name] = value
+    return headers
+
+
+def _runtime_auth_context() -> dict[str, Any]:
+    token = os.getenv("USS_RUNTIME_AUTH_TOKEN", "").strip()
+    cookie = os.getenv("USS_RUNTIME_AUTH_COOKIE", "").strip()
+    header_name = os.getenv("USS_RUNTIME_AUTH_HEADER_NAME", "").strip()
+    header_value = os.getenv("USS_RUNTIME_AUTH_HEADER_VALUE", "").strip()
+
+    headers: dict[str, str] = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    if cookie:
+        headers["Cookie"] = cookie
+    if header_name and header_value and re.match(r"^[A-Za-z0-9-]{1,120}$", header_name):
+        headers[header_name] = header_value
+
+    summary_parts = [
+        f"token={'yes' if bool(token) else 'no'}",
+        f"cookie={'yes' if bool(cookie) else 'no'}",
+        f"custom_header={header_name if header_name else 'none'}",
+    ]
+
+    return {
+        "enabled": bool(headers),
+        "headers": headers,
+        "summary": ", ".join(summary_parts),
+    }
+
+
+def _read_positive_int(name: str, default: int) -> int:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except Exception:
+        return default
+    return value if value > 0 else default
+
+
+def _build_seed_urls(base_url: str, endpoints: list[str]) -> set[str]:
+    seeds: set[str] = {base_url.rstrip("/")}
+    for endpoint in endpoints:
+        candidate = endpoint.strip()
+        if not candidate:
+            continue
+        if candidate.startswith("http://") or candidate.startswith("https://"):
+            seeds.add(candidate.rstrip("/"))
+            continue
+        if not candidate.startswith("/"):
+            candidate = f"/{candidate}"
+        seeds.add(f"{base_url.rstrip('/')}{candidate}")
+    return seeds
+
+
+def _responses_by_path(responses_by_url: dict[str, dict[str, Any]], base_url: str) -> dict[str, dict[str, Any]]:
+    mapped: dict[str, dict[str, Any]] = {}
+    base_prefix = base_url.rstrip("/")
+    for url, payload in responses_by_url.items():
+        try:
+            parsed = urlparse(url)
+        except Exception:
+            continue
+        path = parsed.path or "/"
+        mapped[path] = payload
+        if url == base_prefix:
+            mapped["/"] = payload
+    return mapped
+
+
+def _extract_discovered_urls(
+    *,
+    base_url: str,
+    current_url: str,
+    response: dict[str, Any],
+) -> set[str]:
+    discovered: set[str] = set()
+    body = str(response.get("body") or "")
+    content_type = str((response.get("headers") or {}).get("content-type") or "").lower()
+
+    for candidate in _extract_urls_from_text(body):
+        normalized = _normalize_candidate_url(base_url, current_url, candidate)
+        if normalized:
+            discovered.add(normalized)
+
+    if "json" in content_type:
+        for candidate in _extract_openapi_urls(base_url, body):
+            discovered.add(candidate)
+
+    if "xml" in content_type and ("sitemap" in current_url or "<urlset" in body.lower()):
+        for candidate in _extract_sitemap_urls(base_url, body):
+            discovered.add(candidate)
+
+    return discovered
+
+
+def _extract_urls_from_text(body: str) -> set[str]:
+    found: set[str] = set()
+    for match in re.finditer(r"""(?:href|src|action)\s*=\s*["']([^"']+)["']""", body, flags=re.IGNORECASE):
+        found.add(match.group(1))
+    for match in re.finditer(r"""["'](/[^"'?#\s]{1,220}(?:\?[^"'\s]{0,160})?)["']""", body):
+        found.add(match.group(1))
+    for match in re.finditer(r"""https?://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]{4,220}""", body):
+        found.add(match.group(0))
+    return found
+
+
+def _extract_openapi_urls(base_url: str, body: str) -> set[str]:
+    urls: set[str] = set()
+    try:
+        import json
+
+        payload = json.loads(body)
+    except Exception:
+        return urls
+
+    if not isinstance(payload, dict):
+        return urls
+
+    paths = payload.get("paths")
+    if isinstance(paths, dict):
+        for key in paths.keys():
+            if isinstance(key, str) and key.startswith("/"):
+                urls.add(f"{base_url.rstrip('/')}{key}")
+    return urls
+
+
+def _extract_sitemap_urls(base_url: str, body: str) -> set[str]:
+    urls: set[str] = set()
+    for match in re.finditer(r"<loc>\s*([^<\s]+)\s*</loc>", body, flags=re.IGNORECASE):
+        candidate = match.group(1).strip()
+        normalized = _normalize_candidate_url(base_url, base_url, candidate)
+        if normalized:
+            urls.add(normalized)
+    return urls
+
+
+def _normalize_candidate_url(base_url: str, current_url: str, candidate: str) -> str | None:
+    raw = (candidate or "").strip()
+    if not raw:
+        return None
+    if raw.startswith("#"):
+        return None
+    if raw.lower().startswith(("mailto:", "javascript:", "tel:")):
+        return None
+
+    absolute = urljoin(current_url, raw)
+    if not _same_origin(base_url, absolute):
+        return None
+
+    parsed = urlparse(absolute)
+    path = parsed.path or "/"
+    lower_path = path.lower()
+    if any(lower_path.endswith(ext) for ext in _STATIC_PATH_SUFFIXES):
+        return None
+    if len(path) > 240:
+        return None
+
+    normalized = f"{parsed.scheme}://{parsed.netloc}{path}"
+    if parsed.query:
+        normalized = f"{normalized}?{parsed.query}"
+    return normalized.rstrip("/")
+
+
+def _same_origin(base_url: str, candidate_url: str) -> bool:
+    try:
+        base = urlparse(base_url)
+        candidate = urlparse(candidate_url)
+    except Exception:
+        return False
+    return (
+        base.scheme.lower() == candidate.scheme.lower()
+        and (base.hostname or "").lower() == (candidate.hostname or "").lower()
+        and (base.port or _default_port(base.scheme)) == (candidate.port or _default_port(candidate.scheme))
+    )
+
+
+def _default_port(scheme: str) -> int:
+    return 443 if str(scheme).lower() == "https" else 80
+
+
+def _runtime_targets_for_tooling(base_url: str, responses_by_url: dict[str, dict[str, Any]]) -> list[str]:
+    targets = [base_url.rstrip("/")]
+    for url, response in responses_by_url.items():
+        status = int(response.get("status") or 0)
+        if status < 200 or status >= 500:
+            continue
+        path = (urlparse(url).path or "/").lower()
+        if path.startswith("/api") or "graphql" in path or "swagger" in path or "openapi" in path:
+            targets.append(url.rstrip("/"))
+    deduped = list(dict.fromkeys(targets))
+    max_targets = _read_positive_int("USS_RUNTIME_TOOL_TARGET_LIMIT", 80)
+    return deduped[:max_targets]
+
+
+def _evaluate_discovered_runtime_endpoints(
+    base_url: str,
+    responses_by_url: dict[str, dict[str, Any]],
+    findings: list[Finding],
+    controls: list[SecurityControl],
+) -> None:
+    discovered_count = 0
+    api_count = 0
+    for url, response in responses_by_url.items():
+        status = int(response.get("status") or 0)
+        if status <= 0:
+            continue
+        discovered_count += 1
+
+        headers = response.get("headers", {}) or {}
+        content_type = str(headers.get("content-type") or "").lower()
+        body = str(response.get("body") or "")
+        path = urlparse(url).path or "/"
+        lower_path = path.lower()
+
+        is_api = lower_path.startswith("/api") or "graphql" in lower_path or "openapi" in lower_path or "swagger" in lower_path
+        if is_api:
+            api_count += 1
+
+        if is_api and 200 <= status < 300:
+            auth_header = str(headers.get("www-authenticate") or "")
+            if not auth_header:
+                findings.append(
+                    Finding(
+                        vulnerability_type="Potential Unauthenticated API Endpoint",
+                        severity=Severity.MEDIUM,
+                        file_path=url,
+                        line_number=1,
+                        business_impact="Reachable API endpoints without visible auth challenge can increase unauthorized data access risk.",
+                        recommendation="Require strong authentication/authorization for sensitive API routes and validate access controls.",
+                        reference="https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+                        owasp_category="A01:2021 - Broken Access Control",
+                        description=f"API-like endpoint responded with HTTP {status} and no WWW-Authenticate header.",
+                        rule_id="RUNTIME-API-AUTH-001",
+                        cwe="CWE-306",
+                        evidence=f"{url} -> HTTP {status}",
+                    )
+                )
+
+        if is_api and "json" in content_type and re.search(
+            r'"(?:password|passwd|secret|token|api[_-]?key|authorization)"\s*:',
+            body,
+            flags=re.IGNORECASE,
+        ):
+            findings.append(
+                Finding(
+                    vulnerability_type="Sensitive Data Pattern in API Response",
+                    severity=Severity.HIGH,
+                    file_path=url,
+                    line_number=1,
+                    business_impact="Sensitive fields in API response payloads can expose credentials or session artifacts.",
+                    recommendation="Remove sensitive fields from responses, mask secrets, and enforce least-privilege data serialization.",
+                    reference="https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+                    owasp_category="A02:2021 - Cryptographic Failures",
+                    description="Detected sensitive key pattern in API JSON response body.",
+                    rule_id="RUNTIME-API-DATA-001",
+                    cwe="CWE-200",
+                    evidence=body[:240],
+                )
+            )
+
+    controls.append(
+        SecurityControl(
+            control_id="CTRL-RUNTIME-ENDPOINT-INVENTORY",
+            name="Runtime Endpoint Inventory",
+            category="Runtime Attack Surface",
+            description="CodeSentinelX performed endpoint and API discovery across runtime target.",
+            status="Implemented",
+            coverage_level="Medium" if discovered_count > 0 else "Low",
+            standard_mappings=["OWASP ASVS V13", "OWASP WSTG-INFO", "NIST CA-7"],
+            evidence=[
+                {
+                    "file_path": f"{base_url}/",
+                    "line_number": 1,
+                    "snippet": f"Discovered endpoints={discovered_count}, api_endpoints={api_count}",
+                }
+            ],
+        )
+    )

@@ -18,6 +18,7 @@ from universal_security_scanner.scanner.external import (
     tool_metadata,
 )
 from universal_security_scanner.scanner.file_discovery import discover_files
+from universal_security_scanner.scanner.scan_control import honor_pause_control
 from universal_security_scanner.scanner.rules.registry import build_file_rules, build_project_rules
 
 LOGGER = logging.getLogger(__name__)
@@ -76,6 +77,12 @@ class ScanEngine:
             relative_path = path.relative_to(target)
             completed_steps += 1
             progress = round((completed_steps / total_steps) * 100.0, 2)
+            honor_pause_control(
+                progress_callback=progress_callback,
+                progress=progress,
+                stage="scanning_files",
+                current_file=str(relative_path),
+            )
 
             if progress_callback:
                 progress_callback(
@@ -96,6 +103,12 @@ class ScanEngine:
             control_analyzer.observe_file(relative_path, content)
 
             for rule in self.file_rules:
+                honor_pause_control(
+                    progress_callback=progress_callback,
+                    progress=progress,
+                    stage="scanning_rules",
+                    current_file=str(relative_path),
+                )
                 if findings_limit_reached():
                     errors.append("Maximum findings limit reached; remaining checks skipped.")
                     break
@@ -112,6 +125,12 @@ class ScanEngine:
                     append_finding(finding)
 
             for plugin in self.plugins:
+                honor_pause_control(
+                    progress_callback=progress_callback,
+                    progress=progress,
+                    stage="scanning_plugins",
+                    current_file=str(relative_path),
+                )
                 if findings_limit_reached():
                     errors.append("Maximum findings limit reached; plugin checks skipped.")
                     break
@@ -135,6 +154,12 @@ class ScanEngine:
         for project_rule in self.project_rules:
             completed_steps += 1
             progress = round((completed_steps / total_steps) * 100.0, 2)
+            honor_pause_control(
+                progress_callback=progress_callback,
+                progress=progress,
+                stage="scanning_dependencies",
+                current_file=str(target),
+            )
             if progress_callback:
                 progress_callback(
                     progress,
@@ -177,6 +202,12 @@ class ScanEngine:
         if active_external_tools or catalog_tools:
             completed_steps += 1
             progress = round((completed_steps / total_steps) * 100.0, 2)
+            honor_pause_control(
+                progress_callback=progress_callback,
+                progress=progress,
+                stage="preparing_toolchain",
+                current_file=str(target),
+            )
             if progress_callback:
                 progress_callback(
                     progress,
@@ -228,6 +259,12 @@ class ScanEngine:
             status = toolchain_status.get(tool_name, {})
             completed_steps += 1
             progress = round((completed_steps / total_steps) * 100.0, 2)
+            honor_pause_control(
+                progress_callback=progress_callback,
+                progress=progress,
+                stage="scanning_external",
+                current_file=str(target),
+            )
             if progress_callback:
                 progress_callback(
                     progress,

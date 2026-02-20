@@ -1,5 +1,37 @@
-﻿.venv/
-__pycache__/
+﻿# Python virtual environment
+.venv/
+
+# pytest cache
 .pytest_cache/
-exports/
-*.pyc
+
+# Node.js dependencies
+node_modules/
+
+# Build output folders
+build/
+dist/
+dist-main/
+release/
+
+# Temporary folders and files
+tmp-*
+tmp_exports/
+tmp-toolruns/
+tmp-check.json
+
+# Logs
+*.log
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Toolchain folder (binaries, dependencies)
+.toolchain/
+
+# Electron build outputs
+electron/
+
+# Other generated/export folders
+exports-smoke/

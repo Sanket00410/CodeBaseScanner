@@ -4,7 +4,9 @@ import {
   AuditLogEntry,
   ProfileComplianceReport,
   ResetLocalStateCacheResult,
+  RuntimeAuthProfile,
   ScanHistoryItem,
+  ScanProgress,
   ScanView,
   Severity,
   ToolActionResult,
@@ -325,8 +327,14 @@ function resolveProfileCompliance(scan: ScanView | null): ProfileComplianceRepor
 export default function App(): React.JSX.Element {
   const [tab, setTab] = useState<AppTab>("dashboard");
   const [projectPath, setProjectPath] = useState("");
+  const [runtimeAuthToken, setRuntimeAuthToken] = useState("");
+  const [runtimeAuthCookie, setRuntimeAuthCookie] = useState("");
+  const [runtimeAuthHeaderName, setRuntimeAuthHeaderName] = useState("");
+  const [runtimeAuthHeaderValue, setRuntimeAuthHeaderValue] = useState("");
   const [role, setRole] = useState<UserRole>("Security Analyst");
   const [isScanning, setIsScanning] = useState(false);
+  const [activeScanId, setActiveScanId] = useState("");
+  const [scanStatus, setScanStatus] = useState<ScanProgress["status"]>("completed");
   const [statusText, setStatusText] = useState("Ready");
   const [progress, setProgress] = useState(0);
   const [scan, setScan] = useState<ScanView | null>(null);
@@ -496,6 +504,14 @@ export default function App(): React.JSX.Element {
 
   useEffect(() => {
     const dispose = window.codeSentinelX.onScanProgress((payload) => {
+      setActiveScanId(payload.scanId);
+      setScanStatus(payload.status);
+      if (payload.status === "running" || payload.status === "paused") {
+        setIsScanning(true);
+      } else if (payload.status === "completed" || payload.status === "failed" || payload.status === "stopped") {
+        setIsScanning(false);
+      }
+
       const filePart = payload.currentFile ? ` | ${payload.currentFile}` : "";
       setStatusText(`${payload.stage}${filePart} | ${payload.message}`);
       setProgress(payload.progress);
@@ -627,27 +643,98 @@ export default function App(): React.JSX.Element {
       return;
     }
     setIsScanning(true);
+    setScanStatus("running");
+    setActiveScanId("");
     setProgress(0);
     setReportPreviewHtml("");
     setPreviewReportType("");
     setScanLogs([]);
     setStatusText(targetMode === "runtime-ip" ? "Submitting runtime/remote scan..." : "Submitting codebase scan...");
+    const runtimeAuth: RuntimeAuthProfile | undefined =
+      targetMode !== "runtime-ip"
+        ? undefined
+        : {
+            token: runtimeAuthToken.trim() || undefined,
+            cookie: runtimeAuthCookie.trim() || undefined,
+            headerName: runtimeAuthHeaderName.trim() || undefined,
+            headerValue: runtimeAuthHeaderValue.trim() || undefined,
+          };
     try {
       const result = await window.codeSentinelX.startScan({
         projectPath,
         requestedBy: "local-user",
         role,
+        runtimeAuth,
       });
       setScan(result);
+      setActiveScanId(result.scanId);
       setTab("dashboard");
       setStatusText("Scan completed");
+      setScanStatus("completed");
       setProgress(100);
       setSelectedFindingId("");
       await Promise.all([loadHistory(), loadAudits(result.scanId)]);
     } catch (error) {
-      setStatusText(`Scan failed: ${String(error)}`);
+      const message = String(error);
+      if (message.toLowerCase().includes("scan stopped by user")) {
+        setStatusText("Scan stopped by user.");
+        setScanStatus("stopped");
+      } else {
+        setStatusText(`Scan failed: ${message}`);
+        setScanStatus("failed");
+      }
     } finally {
       setIsScanning(false);
+    }
+  };
+
+  const pauseScan = async (): Promise<void> => {
+    if (!roleCaps.canRunScan) {
+      setStatusText(`Role ${role} does not have permission to control scans.`);
+      return;
+    }
+    if (!activeScanId) {
+      setStatusText("No active scan found to pause.");
+      return;
+    }
+    const result = await window.codeSentinelX.pauseScan(activeScanId);
+    setStatusText(result.message);
+    if (result.success) {
+      setScanStatus("paused");
+      setIsScanning(true);
+    }
+  };
+
+  const resumeScan = async (): Promise<void> => {
+    if (!roleCaps.canRunScan) {
+      setStatusText(`Role ${role} does not have permission to control scans.`);
+      return;
+    }
+    if (!activeScanId) {
+      setStatusText("No active scan found to resume.");
+      return;
+    }
+    const result = await window.codeSentinelX.resumeScan(activeScanId);
+    setStatusText(result.message);
+    if (result.success) {
+      setScanStatus("running");
+      setIsScanning(true);
+    }
+  };
+
+  const stopScan = async (): Promise<void> => {
+    if (!roleCaps.canRunScan) {
+      setStatusText(`Role ${role} does not have permission to control scans.`);
+      return;
+    }
+    if (!activeScanId) {
+      setStatusText("No active scan found to stop.");
+      return;
+    }
+    const result = await window.codeSentinelX.stopScan(activeScanId);
+    setStatusText(result.message);
+    if (result.success) {
+      setScanStatus("stopped");
     }
   };
 
@@ -2138,6 +2225,32 @@ export default function App(): React.JSX.Element {
             >
               {isScanning ? "Scanning..." : "Run Scan"}
             </button>
+            <div className="scan-controls">
+              <button
+                type="button"
+                onClick={pauseScan}
+                disabled={!isScanning || scanStatus !== "running" || !activeScanId || !roleCaps.canRunScan}
+                title={!roleCaps.canRunScan ? `Role ${role} cannot control scans.` : "Pause active scan"}
+              >
+                || Pause
+              </button>
+              <button
+                type="button"
+                onClick={resumeScan}
+                disabled={!isScanning || scanStatus !== "paused" || !activeScanId || !roleCaps.canRunScan}
+                title={!roleCaps.canRunScan ? `Role ${role} cannot control scans.` : "Resume paused scan"}
+              >
+                {" > Resume"}
+              </button>
+              <button
+                type="button"
+                onClick={stopScan}
+                disabled={!isScanning || !activeScanId || !roleCaps.canRunScan}
+                title={!roleCaps.canRunScan ? `Role ${role} cannot control scans.` : "Stop active scan"}
+              >
+                [] Stop
+              </button>
+            </div>
             <select
               value={role}
               onChange={(event) => setRole(event.target.value as UserRole)}
@@ -2154,6 +2267,43 @@ export default function App(): React.JSX.Element {
           <p className="target-mode">
             Mode: {targetMode === "runtime-ip" ? "Runtime/Remote Target Scan" : "Codebase Security Scan"}
           </p>
+          {targetMode === "runtime-ip" && (
+            <div className="runtime-auth-panel">
+              <div className="runtime-auth-head">
+                <strong>Authenticated Crawl</strong>
+                <span className="muted-text">Optional: token, cookie, or custom header for logged-in API coverage.</span>
+              </div>
+              <div className="runtime-auth-grid">
+                <input
+                  type="password"
+                  value={runtimeAuthToken}
+                  onChange={(event) => setRuntimeAuthToken(event.target.value)}
+                  placeholder="Bearer Token (without 'Bearer ')"
+                  autoComplete="off"
+                />
+                <input
+                  type="password"
+                  value={runtimeAuthCookie}
+                  onChange={(event) => setRuntimeAuthCookie(event.target.value)}
+                  placeholder="Cookie header value (e.g. session=...)"
+                  autoComplete="off"
+                />
+                <input
+                  value={runtimeAuthHeaderName}
+                  onChange={(event) => setRuntimeAuthHeaderName(event.target.value)}
+                  placeholder="Custom Header Name (e.g. X-API-Key)"
+                  autoComplete="off"
+                />
+                <input
+                  type="password"
+                  value={runtimeAuthHeaderValue}
+                  onChange={(event) => setRuntimeAuthHeaderValue(event.target.value)}
+                  placeholder="Custom Header Value"
+                  autoComplete="off"
+                />
+              </div>
+            </div>
+          )}
           <p className="role-hint">
             Role Drill-Down ({role}): {roleDrilldownSummary(role)}
           </p>

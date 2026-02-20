@@ -18,17 +18,57 @@ def run_nuclei_runtime_scan(
     target_url: str,
     timeout_seconds: int,
     binary: str = "nuclei",
+    target_urls: list[str] | None = None,
 ) -> tuple[list[Finding], list[str]]:
-    if _is_docker_binary(binary):
-        command = [binary, "run", "--rm", "projectdiscovery/nuclei:latest", "-u", target_url, "-jsonl", "-silent", "-no-color"]
-    else:
-        command = [binary, "-u", target_url, "-jsonl", "-silent", "-no-color"]
+    normalized_targets = [str(item).strip() for item in (target_urls or []) if str(item).strip()]
+    if not normalized_targets:
+        normalized_targets = [target_url]
+    normalized_targets = list(dict.fromkeys(normalized_targets))
+
+    max_targets_raw = os.getenv("USS_RUNTIME_NUCLEI_MAX_TARGETS", "80").strip()
     try:
-        return_code, stdout, stderr = run_command(command, timeout_seconds=timeout_seconds)
-    except FileNotFoundError:
-        return [], ["Nuclei not found in PATH."]
-    except Exception as exc:
-        return [], [f"Nuclei execution failed: {exc}"]
+        max_targets = max(1, int(max_targets_raw))
+    except Exception:
+        max_targets = 80
+    normalized_targets = normalized_targets[:max_targets]
+
+    adaptive_timeout = timeout_seconds
+    min_timeout_raw = os.getenv("USS_RUNTIME_NUCLEI_TIMEOUT_SECONDS", "600").strip()
+    try:
+        min_timeout = max(120, int(min_timeout_raw))
+    except Exception:
+        min_timeout = 600
+    adaptive_timeout = max(adaptive_timeout, min(min_timeout + (len(normalized_targets) * 5), 1800))
+
+    with tempfile.TemporaryDirectory(prefix="nuclei_targets_") as temp_dir_raw:
+        temp_dir = Path(temp_dir_raw)
+        targets_file = temp_dir / "targets.txt"
+        targets_file.write_text("\n".join(normalized_targets), encoding="utf-8")
+
+        if _is_docker_binary(binary):
+            command = [
+                binary,
+                "run",
+                "--rm",
+                "-v",
+                _docker_volume_arg(temp_dir, "/scan"),
+                "projectdiscovery/nuclei:latest",
+                "-l",
+                "/scan/targets.txt",
+                "-jsonl",
+                "-silent",
+                "-no-color",
+            ]
+        else:
+            command = [binary, "-l", str(targets_file), "-jsonl", "-silent", "-no-color"]
+        for header in _runtime_http_headers_from_env():
+            command.extend(["-H", header])
+        try:
+            return_code, stdout, stderr = run_command(command, timeout_seconds=adaptive_timeout)
+        except FileNotFoundError:
+            return [], ["Nuclei not found in PATH."]
+        except Exception as exc:
+            return [], [f"Nuclei execution failed: {exc}"]
 
     if return_code not in {0, 1}:
         short_error = " | ".join(stderr.strip().splitlines()[:2])
@@ -69,7 +109,7 @@ def run_nuclei_runtime_scan(
                 description=name,
                 rule_id=f"NUCLEI-{template_id}",
                 cwe=cwe or "CWE-16",
-                evidence=description[:240],
+                evidence=f"{description[:180]} | targets={len(normalized_targets)}",
             )
         )
     return findings, []
@@ -342,9 +382,15 @@ def _normalize_runtime_target(target_url: str) -> str:
 
 def _run_builtin_runtime_compat_scan(tool_name: str, target_url: str, default_reference: str) -> tuple[list[Finding], list[str]]:
     normalized = _normalize_runtime_target(target_url)
+    request_headers = {"User-Agent": "CodeSentinelX-runtime-compat/1.0"}
+    for header in _runtime_http_headers_from_env():
+        if ":" not in header:
+            continue
+        name, value = header.split(":", 1)
+        request_headers[name.strip()] = value.strip()
     request = urllib.request.Request(
         normalized,
-        headers={"User-Agent": "CodeSentinelX-runtime-compat/1.0"},
+        headers=request_headers,
         method="GET",
     )
     try:
@@ -400,3 +446,19 @@ def _run_builtin_runtime_compat_scan(tool_name: str, target_url: str, default_re
         )
 
     return findings, []
+
+
+def _runtime_http_headers_from_env() -> list[str]:
+    headers: list[str] = []
+    token = os.getenv("USS_RUNTIME_AUTH_TOKEN", "").strip()
+    cookie = os.getenv("USS_RUNTIME_AUTH_COOKIE", "").strip()
+    custom_name = os.getenv("USS_RUNTIME_AUTH_HEADER_NAME", "").strip()
+    custom_value = os.getenv("USS_RUNTIME_AUTH_HEADER_VALUE", "").strip()
+
+    if token:
+        headers.append(f"Authorization: Bearer {token}")
+    if cookie:
+        headers.append(f"Cookie: {cookie}")
+    if custom_name and custom_value and re.match(r"^[A-Za-z0-9-]{1,120}$", custom_name):
+        headers.append(f"{custom_name}: {custom_value}")
+    return headers

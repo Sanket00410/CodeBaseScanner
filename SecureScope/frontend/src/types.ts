@@ -3,6 +3,13 @@ export type Severity = "Critical" | "High" | "Medium" | "Low" | "Info";
 export type ToolScanProfile = "codebase" | "website" | "ip";
 export type ToolBootstrapMode = "core" | "full";
 
+export interface RuntimeAuthProfile {
+  token?: string;
+  cookie?: string;
+  headerName?: string;
+  headerValue?: string;
+}
+
 export interface ExistingControl {
   control_id: string;
   name: string;
@@ -212,7 +219,14 @@ export interface ScanProgress {
   progress: number;
   message: string;
   currentFile?: string;
-  status: "running" | "completed" | "failed";
+  status: "running" | "paused" | "completed" | "failed" | "stopped";
+}
+
+export interface ScanControlActionResult {
+  scanId: string;
+  success: boolean;
+  state: "running" | "paused" | "stopped";
+  message: string;
 }
 
 export interface ToolCatalogItem {

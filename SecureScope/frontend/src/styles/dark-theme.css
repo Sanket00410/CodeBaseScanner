@@ -211,7 +211,7 @@ select {
 
 .header .header-row {
   display: grid;
-  grid-template-columns: auto 1fr auto auto auto;
+  grid-template-columns: auto 1fr auto auto auto auto;
   gap: 8px;
   align-items: center;
 }
@@ -227,6 +227,16 @@ select {
   grid-template-columns: 1fr auto;
   gap: 12px;
   align-items: center;
+}
+
+.scan-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.scan-controls button {
+  min-width: 72px;
 }
 
 .progress-wrap {
@@ -255,6 +265,29 @@ select {
   margin: 7px 0 0;
   color: var(--muted);
   font-size: 13px;
+}
+
+.runtime-auth-panel {
+  margin-top: 8px;
+  border: 1px solid rgba(73, 110, 142, 0.55);
+  border-radius: 10px;
+  background: rgba(6, 19, 32, 0.62);
+  padding: 8px;
+}
+
+.runtime-auth-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 7px;
+  font-size: 12px;
+}
+
+.runtime-auth-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .role-hint {
@@ -993,7 +1026,8 @@ li {
   .tool-summary-grid,
   .provision-grid,
   .compliance-version-row,
-  .compliance-profile-header {
+  .compliance-profile-header,
+  .runtime-auth-grid {
     grid-template-columns: 1fr;
   }
 }

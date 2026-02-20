@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import ipaddress
+import os
+import re
 import tempfile
 from pathlib import Path
 from urllib.parse import urlparse
@@ -156,6 +158,11 @@ def run_ffuf_runtime_scan(
         "-maxtime",
         "40",
     ]
+    for header in _runtime_http_headers_from_env(include_cookie=False):
+        command.extend(["-H", header])
+    cookie = _runtime_auth_cookie_from_env()
+    if cookie:
+        command.extend(["-b", cookie])
     try:
         return_code, _stdout, stderr = run_command(command, timeout_seconds=min(timeout_seconds, 240))
     except FileNotFoundError:
@@ -338,6 +345,13 @@ def run_sqlmap_runtime_scan(
         "--timeout=8",
         "--retries=0",
     ]
+    cookie = _runtime_auth_cookie_from_env()
+    if cookie:
+        command.append(f"--cookie={cookie}")
+    header_lines = _runtime_http_headers_from_env(include_cookie=False)
+    if header_lines:
+        header_blob = "\n".join(header_lines)
+        command.append(f"--headers={header_blob}")
     try:
         return_code, stdout, stderr = run_command(command, timeout_seconds=min(timeout_seconds, 300))
     except FileNotFoundError:
@@ -440,3 +454,23 @@ def run_wapiti_runtime_scan(
                         )
                     )
     return findings, []
+
+
+def _runtime_auth_cookie_from_env() -> str:
+    return os.getenv("USS_RUNTIME_AUTH_COOKIE", "").strip()
+
+
+def _runtime_http_headers_from_env(*, include_cookie: bool = True) -> list[str]:
+    headers: list[str] = []
+    token = os.getenv("USS_RUNTIME_AUTH_TOKEN", "").strip()
+    cookie = os.getenv("USS_RUNTIME_AUTH_COOKIE", "").strip()
+    custom_name = os.getenv("USS_RUNTIME_AUTH_HEADER_NAME", "").strip()
+    custom_value = os.getenv("USS_RUNTIME_AUTH_HEADER_VALUE", "").strip()
+
+    if token:
+        headers.append(f"Authorization: Bearer {token}")
+    if include_cookie and cookie:
+        headers.append(f"Cookie: {cookie}")
+    if custom_name and custom_value and re.match(r"^[A-Za-z0-9-]{1,120}$", custom_name):
+        headers.append(f"{custom_name}: {custom_value}")
+    return headers

@@ -1,10 +1,18 @@
 export type Severity = "Critical" | "High" | "Medium" | "Low" | "Info";
 export type UserRole = "Admin" | "Security Analyst" | "Developer" | "Auditor";
 
+export interface RuntimeAuthProfile {
+  token?: string;
+  cookie?: string;
+  headerName?: string;
+  headerValue?: string;
+}
+
 export interface ScanRequest {
   projectPath: string;
   requestedBy?: string;
   role?: UserRole;
+  runtimeAuth?: RuntimeAuthProfile;
 }
 
 export interface ScanProgressPayload {
@@ -13,7 +21,14 @@ export interface ScanProgressPayload {
   progress: number;
   message: string;
   currentFile?: string;
-  status: "running" | "completed" | "failed";
+  status: "running" | "paused" | "completed" | "failed" | "stopped";
+}
+
+export interface ScanControlActionResult {
+  scanId: string;
+  success: boolean;
+  state: "running" | "paused" | "stopped";
+  message: string;
 }
 
 export interface ExportRequest {

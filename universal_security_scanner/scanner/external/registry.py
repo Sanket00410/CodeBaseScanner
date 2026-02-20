@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 
 from universal_security_scanner.config import ScannerConfig
@@ -118,6 +119,7 @@ def run_external_runtime_tool(
     tool_name: str,
     *,
     target_url: str,
+    target_urls: list[str] | None = None,
     config: ScannerConfig,
     command: str | None = None,
 ) -> tuple[list[Finding], list[str]]:
@@ -129,11 +131,18 @@ def run_external_runtime_tool(
             )
         ]
 
-    findings, errors = runner(
-        target_url=target_url,
-        timeout_seconds=config.external_tool_timeout_seconds,
-        binary=command or tool_name,
-    )
+    kwargs = {
+        "target_url": target_url,
+        "timeout_seconds": config.external_tool_timeout_seconds,
+        "binary": command or tool_name,
+    }
+    try:
+        if target_urls and "target_urls" in inspect.signature(runner).parameters:
+            kwargs["target_urls"] = target_urls
+    except Exception:
+        pass
+
+    findings, errors = runner(**kwargs)
     return findings, errors
 
 

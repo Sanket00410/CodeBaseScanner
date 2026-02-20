@@ -5,6 +5,9 @@ import { ExportRequest, ScanRequest, UserRole } from "../backend/types";
 const api = {
   pickProjectFolder: async (): Promise<string | null> => ipcRenderer.invoke("dialog:pickFolder"),
   startScan: async (request: ScanRequest) => ipcRenderer.invoke("scan:start", request),
+  pauseScan: async (scanId: string) => ipcRenderer.invoke("scan:pause", scanId),
+  resumeScan: async (scanId: string) => ipcRenderer.invoke("scan:resume", scanId),
+  stopScan: async (scanId: string) => ipcRenderer.invoke("scan:stop", scanId),
   getScanHistory: async () => ipcRenderer.invoke("scan:history"),
   getScanById: async (scanId: string) => ipcRenderer.invoke("scan:getById", scanId),
   markReviewed: async (payload: { scanId: string; findingId: string; actor: string; role: UserRole }) =>
@@ -29,7 +32,7 @@ const api = {
       progress: number;
       message: string;
       currentFile?: string;
-      status: "running" | "completed" | "failed";
+      status: "running" | "paused" | "completed" | "failed" | "stopped";
     }) => void,
   ) => {
     const listener = (
@@ -40,7 +43,7 @@ const api = {
         progress: number;
         message: string;
         currentFile?: string;
-        status: "running" | "completed" | "failed";
+        status: "running" | "paused" | "completed" | "failed" | "stopped";
       },
     ) => callback(payload);
 

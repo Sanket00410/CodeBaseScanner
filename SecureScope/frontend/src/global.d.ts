@@ -8,6 +8,8 @@ import {
   ToolCatalogItem,
   ToolBootstrapMode,
   ResetLocalStateCacheResult,
+  RuntimeAuthProfile,
+  ScanControlActionResult,
   ToolScanProfile,
   UserRole,
 } from "./types";
@@ -16,7 +18,10 @@ declare global {
   interface Window {
     codeSentinelX: {
       pickProjectFolder: () => Promise<string | null>;
-      startScan: (request: { projectPath: string; requestedBy?: string; role?: UserRole }) => Promise<ScanView>;
+      startScan: (request: { projectPath: string; requestedBy?: string; role?: UserRole; runtimeAuth?: RuntimeAuthProfile }) => Promise<ScanView>;
+      pauseScan: (scanId: string) => Promise<ScanControlActionResult>;
+      resumeScan: (scanId: string) => Promise<ScanControlActionResult>;
+      stopScan: (scanId: string) => Promise<ScanControlActionResult>;
       getScanHistory: () => Promise<ScanHistoryItem[]>;
       getScanById: (scanId: string) => Promise<ScanView | null>;
       markReviewed: (payload: { scanId: string; findingId: string; actor: string; role: UserRole }) => Promise<ScanView | null>;

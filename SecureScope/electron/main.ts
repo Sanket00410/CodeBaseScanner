@@ -210,6 +210,14 @@ ipcMain.handle("scan:start", async (_event, request: ScanRequest) => {
     projectPath: request.projectPath,
     requestedBy: request.requestedBy || "local-user",
     role: request.role || "Security Analyst",
+    runtimeAuth: request.runtimeAuth
+      ? {
+          token: String(request.runtimeAuth.token || "").trim(),
+          cookie: String(request.runtimeAuth.cookie || "").trim(),
+          headerName: String(request.runtimeAuth.headerName || "").trim(),
+          headerValue: String(request.runtimeAuth.headerValue || "").trim(),
+        }
+      : undefined,
   };
 
   await store.addAudit({
@@ -257,6 +265,17 @@ ipcMain.handle("scan:start", async (_event, request: ScanRequest) => {
     return view;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    if (isStoppedScanMessage(message)) {
+      await store.addAudit({
+        scanId,
+        action: "scan.stopped",
+        actor: normalizedRequest.requestedBy || "local-user",
+        role: normalizedRequest.role || "Security Analyst",
+        details: "Scan stopped by user.",
+      });
+      throw new Error("Scan stopped by user.");
+    }
+
     emitProgress({
       scanId,
       stage: "failed",
@@ -273,6 +292,57 @@ ipcMain.handle("scan:start", async (_event, request: ScanRequest) => {
     });
     throw error;
   }
+});
+
+ipcMain.handle("scan:pause", async (_event, scanId: string) => {
+  if (!scannerBridge) {
+    throw new Error("Scanner bridge is not initialized.");
+  }
+  const result = await scannerBridge.pauseScan(scanId);
+  if (result.success) {
+    await store?.addAudit({
+      scanId,
+      action: "scan.paused",
+      actor: "local-user",
+      role: "Security Analyst",
+      details: "Scan paused by user.",
+    });
+  }
+  return result;
+});
+
+ipcMain.handle("scan:resume", async (_event, scanId: string) => {
+  if (!scannerBridge) {
+    throw new Error("Scanner bridge is not initialized.");
+  }
+  const result = await scannerBridge.resumeScan(scanId);
+  if (result.success) {
+    await store?.addAudit({
+      scanId,
+      action: "scan.resumed",
+      actor: "local-user",
+      role: "Security Analyst",
+      details: "Scan resumed by user.",
+    });
+  }
+  return result;
+});
+
+ipcMain.handle("scan:stop", async (_event, scanId: string) => {
+  if (!scannerBridge) {
+    throw new Error("Scanner bridge is not initialized.");
+  }
+  const result = await scannerBridge.stopScan(scanId);
+  if (result.success) {
+    await store?.addAudit({
+      scanId,
+      action: "scan.stop_requested",
+      actor: "local-user",
+      role: "Security Analyst",
+      details: "Scan stop requested by user.",
+    });
+  }
+  return result;
 });
 
 ipcMain.handle("scan:history", () => {
@@ -575,6 +645,11 @@ function inferTargetKind(target: string): string {
     return "Runtime IP/URL scan";
   }
   return "Codebase scan";
+}
+
+function isStoppedScanMessage(message: string): boolean {
+  const normalized = message.trim().toLowerCase();
+  return normalized.includes("scan stopped by user");
 }
 
 async function seedToolchainCache(
