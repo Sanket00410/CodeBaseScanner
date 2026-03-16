@@ -1,18 +1,21 @@
 export type Severity = "Critical" | "High" | "Medium" | "Low" | "Info";
 export type UserRole = "Admin" | "Security Analyst" | "Developer" | "Auditor";
+export type ScanPreset = "fast" | "standard" | "deep";
 
-export interface RuntimeAuthProfile {
-  token?: string;
-  cookie?: string;
-  headerName?: string;
-  headerValue?: string;
+export interface ScmDiffContext {
+  diffBaseRef?: string;
+  diffHeadRef?: string;
+  changedFilesFile?: string;
+  changedFilesJson?: string;
+  changedLinesJson?: string;
 }
 
 export interface ScanRequest {
   projectPath: string;
   requestedBy?: string;
   role?: UserRole;
-  runtimeAuth?: RuntimeAuthProfile;
+  scanPreset?: ScanPreset;
+  scmContext?: ScmDiffContext;
 }
 
 export interface ScanProgressPayload {
@@ -33,8 +36,9 @@ export interface ScanControlActionResult {
 
 export interface ExportRequest {
   scanId: string;
-  reportType: "existing" | "vulnerability" | "fixes" | "combined";
-  format: "json" | "html" | "pdf" | "sarif" | "csv" | "patch";
+  reportType: "existing" | "vulnerability" | "fixes" | "finding_details" | "combined";
+  format: "json" | "xml" | "html" | "pdf" | "sarif" | "csv" | "patch";
+  reportStyle?: "classic" | "modern";
 }
 
 export interface ExistingControl {
@@ -54,7 +58,7 @@ export interface ComplianceMatrixItem {
   status: string;
 }
 
-export type ComplianceScanProfile = "codebase" | "website" | "localhost" | "ip";
+export type ComplianceScanProfile = "codebase";
 
 export interface ProfileComplianceRow {
   id: string;
@@ -118,6 +122,7 @@ export interface ExistingImplementationReport {
   controls: ExistingControl[];
   compliance_matrix: ComplianceMatrixItem[];
   profile_compliance?: ProfileComplianceReport;
+  enterprise_assurance?: EnterpriseAssuranceSummary;
 }
 
 export interface VulnerabilityFinding {
@@ -135,8 +140,108 @@ export interface VulnerabilityFinding {
   recommendation: string;
   original_code: string;
   fixed_code: string;
+  ai_suggested_fix?: string;
+  ai_remediation_summary?: string;
+  ai_validation_steps?: string;
+  ai_fix_source?: string;
+  ai_fix_confidence_label?: string;
+  ai_fix_confidence_score?: number;
+  ai_fix_grounded?: boolean;
+  ai_grounding_notes?: string;
   patch_preview: string;
+  remediation_confidence?: string;
+  code_evidence_excerpt?: string;
+  source_line_snippet?: string;
+  code_owner?: string;
+  rule_confidence?: number;
+  rule_confidence_label?: string;
+  git_diff_file_changed?: boolean;
+  git_diff_line_changed?: boolean;
+  dependency_reachability?: {
+    status: string;
+    score: number;
+    priority_factor?: number;
+    package_candidates?: string[];
+    import_evidence?: string[];
+    manifest_present?: boolean;
+    lockfile_present?: boolean;
+    reasoning?: string;
+  };
+  attack_scenario?: string;
+  exploitation_example?: string;
+  proof_of_concept?: string;
+  proof_of_concept_template?: string;
+  cve_ids?: string[];
+  advisory_ids?: string[];
+  dependency_name?: string;
+  dependency_version?: string;
+  dependency_id?: string;
+  known_exploited?: boolean;
+  exploit_maturity?: string;
+  exploitability_context?: string;
+  release_gate_action?: string;
+  active_poc?: {
+    mode?: string;
+    family?: string;
+    command?: string;
+    status?: string;
+    executed?: boolean;
+    exit_code?: number | null;
+    output?: string;
+    line_tested?: number;
+    verification_basis?: string;
+    confidence?: number | null;
+  };
+  fix_verification?: {
+    performed?: boolean;
+    result?: string;
+    reason?: string;
+    pre_fix_status?: string;
+    post_fix_status?: string;
+    post_fix_execution?: {
+      command?: string;
+      status?: string;
+      exit_code?: number | null;
+      output?: string;
+    };
+  };
+  evidence_replay_pack?: {
+    enabled?: boolean;
+    mode?: string;
+    inferred_tool?: string;
+    recorded?: boolean;
+    env_fingerprint?: {
+      os?: string;
+      os_release?: string;
+      platform?: string;
+      architecture?: string;
+      python_version?: string;
+    };
+    replay_id?: string;
+    timestamp?: string;
+    tool?: string;
+    command?: string;
+    cwd?: string;
+    exit_code?: number | null;
+    duration_ms?: number;
+    output_hashes?: {
+      stdout_sha256?: string;
+      stderr_sha256?: string;
+    };
+    output_sizes?: {
+      stdout_bytes?: number;
+      stderr_bytes?: number;
+    };
+    record_sha256?: string;
+    replay_script?: {
+      windows_ps1?: string;
+      posix_sh?: string;
+    };
+    reason?: string;
+  };
   rule_id: string;
+  fix_artifact_kind?: "exact_patch" | "guidance";
+  fix_artifact_label?: string;
   evidence_sources?: string[];
   affected_module?: string;
   tool?: string;
@@ -153,6 +258,7 @@ export interface ToolchainStatusEntry {
   message: string;
   selected?: boolean;
   runner_available?: boolean;
+  execution?: ToolExecutionStatus;
   display_name?: string;
   description?: string;
   category?: string;
@@ -161,6 +267,157 @@ export interface ToolchainStatusEntry {
   homepage?: string;
   integrated?: boolean;
   recommended_command?: string;
+}
+
+export interface ToolExecutionStatus {
+  attempted: boolean;
+  status: string;
+  duration_ms: number;
+  findings_count: number;
+  errors: string[];
+  evidence?: ToolExecutionEvidence[];
+}
+
+export interface ToolExecutionEvidence {
+  timestamp?: string;
+  command?: string;
+  cwd?: string;
+  exit_code?: number;
+  duration_ms?: number;
+  stdout_sha256?: string;
+  stderr_sha256?: string;
+  stdout_bytes?: number;
+  stderr_bytes?: number;
+  stdout_preview?: string;
+  stderr_preview?: string;
+}
+
+export interface ToolchainExecutionSummary {
+  total_tools: number;
+  selected_tools: number;
+  available_tools: number;
+  integrated_tools: number;
+  runner_available_tools: number;
+  attempted_tools: number;
+  successful_tools: number;
+  failed_tools: number;
+  unavailable_tools: number;
+  no_runner_tools: number;
+  skipped_tools: number;
+  success_rate_percent: number;
+  status_distribution: Record<string, number>;
+  failures: Array<{ tool: string; status: string; message: string; errors: string[] }>;
+  slowest_tools: Array<{ tool: string; duration_ms: number; findings_count: number; status: string }>;
+  total_attempted_duration_ms?: number;
+  average_attempted_duration_ms?: number;
+  timing_breakdown?: Array<{
+    tool: string;
+    selected: boolean;
+    available: boolean;
+    runner_available: boolean;
+    attempted: boolean;
+    status: string;
+    duration_ms: number;
+    findings_count: number;
+    errors_count: number;
+    avg_ms_per_finding?: number | null;
+  }>;
+}
+
+export interface EnterpriseAssuranceSummary {
+  status: "ready" | "warning" | "blocked";
+  is_enterprise_ready: boolean;
+  scan_profile: ComplianceScanProfile;
+  required_tools: string[];
+  required_tools_total: number;
+  required_tools_ready: number;
+  required_tools_coverage_percent: number;
+  recommended_tools?: string[];
+  recommended_tools_total?: number;
+  recommended_tools_ready?: number;
+  recommended_tools_coverage_percent?: number;
+  toolchain_success_rate_percent: number;
+  toolchain_attempted_tools: number;
+  toolchain_failed_tools: number;
+  toolchain_unavailable_tools: number;
+  toolchain_no_runner_tools: number;
+  readiness_score: number;
+  blockers: string[];
+  advisories?: string[];
+  recommendation: string;
+}
+
+export interface FalsePositiveCandidate {
+  finding_uid?: string;
+  vulnerability_title?: string;
+  severity?: Severity;
+  file_path?: string;
+  line_number?: number;
+  reason_summary?: string;
+  reason_detail?: string;
+  confidence?: number;
+  verification_steps?: string[];
+}
+
+export interface FalsePositiveReport {
+  policy_note?: string;
+  candidate_count?: number;
+  candidates?: FalsePositiveCandidate[];
+}
+
+export interface RoleAwareReport {
+  metadata?: Record<string, unknown>;
+  visualization_hints?: Record<string, unknown>;
+  cto_board_view?: Record<string, unknown>;
+  ciso_security_view?: Record<string, unknown>;
+  developer_devops_view?: Record<string, unknown>;
+  risk_story_mode?: Record<string, unknown>;
+  advanced_features?: Record<string, unknown>;
+  enterprise_assurance?: EnterpriseAssuranceSummary;
+  false_positive_report?: FalsePositiveReport;
+}
+
+export interface DeterministicReplaySummary {
+  enabled: boolean;
+  mode: string;
+  findings_total: number;
+  findings_with_replay: number;
+  findings_without_replay: number;
+  replay_coverage_percent: number;
+  tool_evidence_records: number;
+  tools_with_evidence: string[];
+  tool_mismatch_counts: Record<string, number>;
+  env_fingerprint: Record<string, unknown>;
+  record_hashes: string[];
+}
+
+export interface ReportIntegrityChain {
+  chain_version: string;
+  tamper_evident: boolean;
+  generated_at: string;
+  metadata_sha256: string;
+  findings_sha256: string;
+  tool_evidence_sha256: string;
+  report_sha256: string;
+  previous_report_sha256?: string | null;
+  chain_note?: string;
+}
+
+export interface DataQualitySummary {
+  raw_findings: number;
+  deduplicated_findings: number;
+  duplicate_findings_removed: number;
+  dedup_ratio_percent: number;
+  suppressed_findings: number;
+  suppression_rate_percent: number;
+  tool_success_rate_percent: number;
+  tool_attempted_count: number;
+  coverage_confidence: string;
+  coverage_confidence_score: number;
+  unknown_rule_count: number;
+  unknown_cwe_count: number;
+  unknown_owasp_count: number;
+  unknown_taxonomy_count: number;
 }
 
 export interface VulnerabilityFixedCodeReport {
@@ -172,6 +429,7 @@ export interface VulnerabilityFixedCodeReport {
     total_findings: number;
     raw_findings_total: number;
     duplicate_findings_removed: number;
+    suppressed_by_policy?: number;
     severity_distribution: Record<string, number>;
     risk_score: number;
     risk_rating: string;
@@ -180,13 +438,62 @@ export interface VulnerabilityFixedCodeReport {
     top_vulnerability_types: Array<{ type: string; count: number }>;
     top_owasp_categories: Array<{ owasp_category: string; count: number }>;
     affected_modules: Array<{ module: string; count: number; critical: number; high: number }>;
+    release_gate_distribution?: Record<string, number>;
+    risk_intelligence?: {
+      findings_with_cve: number;
+      findings_cvss_ge_7: number;
+      known_exploited_findings: number;
+    };
+    git_diff_tracking?: {
+      enabled: boolean;
+      changed_files: number;
+      changed_lines: number;
+      findings_on_changed_files: number;
+      findings_on_changed_lines: number;
+    };
+    auth_abuse_session_security?: {
+      total_findings: number;
+      severity_distribution: Record<string, number>;
+      top_vulnerability_types: Array<{ type: string; count: number }>;
+      affected_modules: Array<{ module: string; count: number; critical: number; high: number }>;
+      affected_files: Array<{ file: string; folder: string; count: number; critical: number; high: number }>;
+      issue_file_mapping?: Array<{ issue_type: string; file: string; folder: string; count: number; critical: number; high: number }>;
+    };
     open_findings?: number;
     reviewed_findings?: number;
     scan_profile?: ComplianceScanProfile;
+    toolchain_execution?: ToolchainExecutionSummary;
+    active_poc?: {
+      executed: number;
+      passed?: number;
+      verified?: number;
+      failed: number;
+      inconclusive?: number;
+      skipped: number;
+    };
+    fix_verification?: {
+      performed: number;
+      verified_fixed: number;
+      verification_failed: number;
+      inconclusive: number;
+      not_applicable: number;
+      skipped: number;
+    };
+    enterprise_assurance?: EnterpriseAssuranceSummary;
+    false_positive_candidates?: number;
+    deterministic_replay?: DeterministicReplaySummary;
+    report_integrity_chain?: ReportIntegrityChain;
+    data_quality?: DataQualitySummary;
+    policy_workflow?: Record<string, unknown>;
+    suppression_lifecycle?: Record<string, unknown>;
   };
   findings: VulnerabilityFinding[];
   auto_fix_recommendations: Array<Record<string, unknown>>;
   toolchain_status: Record<string, ToolchainStatusEntry>;
+  false_positive_report?: FalsePositiveReport;
+  role_aware_report?: RoleAwareReport;
+  deterministic_replay?: DeterministicReplaySummary;
+  report_integrity_chain?: ReportIntegrityChain;
 }
 
 export interface ExecutiveSummary {
@@ -209,12 +516,21 @@ export interface ExecutiveSummary {
   implemented_controls?: number;
   scan_profile?: ComplianceScanProfile;
   scan_profile_label?: string;
+  scan_preset?: ScanPreset;
+  scan_preset_label?: string;
+  toolchain_execution?: ToolchainExecutionSummary;
+  enterprise_assurance?: EnterpriseAssuranceSummary;
+  data_quality?: DataQualitySummary;
   framework_versions?: {
     owasp_top_10: string;
     owasp_api_top_10: string;
     asvs: string;
     wstg: string;
   };
+  deterministic_replay?: DeterministicReplaySummary;
+  report_integrity_chain?: ReportIntegrityChain;
+  policy_workflow?: Record<string, unknown>;
+  suppression_lifecycle?: Record<string, unknown>;
 }
 
 export interface UniversalScanReport {
@@ -226,6 +542,8 @@ export interface UniversalScanReport {
   existing_implementation_report: ExistingImplementationReport;
   vulnerability_fixed_code_report: VulnerabilityFixedCodeReport;
   profile_compliance?: ProfileComplianceReport;
+  false_positive_report?: FalsePositiveReport;
+  role_aware_report?: RoleAwareReport;
   [key: string]: unknown;
 }
 
@@ -252,7 +570,22 @@ export interface ScanHistoryItem {
   startedAt: string;
   completedAt: string;
   risk: string;
+  riskScore?: number;
   totalFindings: number;
+  reviewedFindings?: number;
+  suppressedCount?: number;
+  topModule?: string;
+}
+
+export interface PortfolioSummary {
+  scansTotal: number;
+  repositoriesTotal: number;
+  trendDirection: "improving" | "declining" | "stable" | "unavailable";
+  trendDelta: number;
+  hotModules: Array<{ module: string; count: number }>;
+  recurringCwe: Array<{ cwe: string; count: number }>;
+  fixVelocityPercent: number;
+  suppressionDriftScore: number;
 }
 
 export interface AuditEntry {
@@ -273,4 +606,34 @@ export interface ScanView {
   startedAt: string;
   completedAt: string;
   report: UniversalScanReport;
+}
+
+export interface ToolManagerAuthConfig {
+  enabled: boolean;
+  allowedEmailMasked: string;
+  authMode: "totp_only" | "smtp_otp_mfa";
+  otpRequired: boolean;
+  otpTtlSeconds: number;
+  sessionTtlSeconds: number;
+  mfaRequired: boolean;
+  mfaIssuer: string;
+  smtpConfigured: boolean;
+  sessionValid: boolean;
+  sessionEmail?: string;
+  sessionExpiresAt?: string;
+  message: string;
+}
+
+export interface ToolManagerOtpResult {
+  success: boolean;
+  message: string;
+  expiresInSeconds?: number;
+}
+
+export interface ToolManagerVerifyResult {
+  success: boolean;
+  message: string;
+  authToken?: string;
+  expiresAt?: string;
+  email?: string;
 }

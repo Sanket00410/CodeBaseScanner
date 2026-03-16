@@ -25,6 +25,71 @@ LOGGER = logging.getLogger(__name__)
 
 ProgressCallback = Callable[[float, str, str | None, str | None], None]
 
+ALWAYS_RELEVANT_TOOLS = {"semgrep", "codeql", "gitleaks", "trivy"}
+TOOL_FILE_HINTS: dict[str, dict[str, set[str]]] = {
+    "bandit": {"extensions": {".py"}, "files": {"requirements.txt", "pyproject.toml", "poetry.lock", "pipfile"}},
+    "brakeman": {"extensions": {".rb", ".erb"}, "files": {"gemfile", "gemfile.lock"}},
+    "checkov": {"extensions": {".tf", ".yaml", ".yml", ".json"}, "files": {"dockerfile", "docker-compose.yml"}},
+    "clair": {"extensions": {".yaml", ".yml", ".json"}, "files": {"dockerfile", "containerfile"}},
+    "cppcheck": {"extensions": {".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx"}, "files": set()},
+    "eslint-security": {"extensions": {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"}, "files": {"package.json"}},
+    "findsecbugs": {"extensions": {".java", ".class", ".jar", ".war", ".ear"}, "files": {"pom.xml", "build.gradle", "build.gradle.kts"}},
+    "flawfinder": {"extensions": {".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx"}, "files": set()},
+    "gosec": {"extensions": {".go"}, "files": {"go.mod", "go.sum"}},
+    "govulncheck": {"extensions": {".go"}, "files": {"go.mod", "go.sum"}},
+    "hadolint": {"extensions": set(), "files": {"dockerfile", "containerfile"}},
+    "infer": {"extensions": {".c", ".cc", ".cpp", ".cxx", ".m", ".mm", ".java"}, "files": {"compile_commands.json"}},
+    "npm-audit": {"extensions": {".js", ".jsx", ".ts", ".tsx"}, "files": {"package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml"}},
+    "owasp-dependency-check": {
+        "extensions": {".java", ".jar", ".war", ".ear", ".py", ".js", ".ts", ".go"},
+        "files": {"package.json", "requirements.txt", "pom.xml", "build.gradle", "go.mod", "cargo.lock"},
+    },
+    "pip-audit": {"extensions": {".py"}, "files": {"requirements.txt", "pyproject.toml", "poetry.lock", "pipfile.lock"}},
+    "safety": {"extensions": {".py"}, "files": {"requirements.txt", "pyproject.toml", "poetry.lock", "pipfile.lock"}},
+    "snyk": {
+        "extensions": {".py", ".js", ".ts", ".java", ".go", ".rb", ".cs"},
+        "files": {"package.json", "requirements.txt", "pom.xml", "go.mod", "gemfile", "composer.json"},
+    },
+    "sonarqube": {"extensions": {".py", ".js", ".ts", ".java", ".go", ".rb", ".cs", ".c", ".cpp"}, "files": set()},
+    "spotbugs": {"extensions": {".java", ".class", ".jar", ".war", ".ear"}, "files": {"pom.xml", "build.gradle", "build.gradle.kts"}},
+    "tfsec": {"extensions": {".tf"}, "files": {"main.tf", "versions.tf"}},
+    "grype": {
+        "extensions": {".json", ".yaml", ".yml", ".lock"},
+        "files": {"package-lock.json", "yarn.lock", "poetry.lock", "pipfile.lock", "go.sum", "cargo.lock"},
+    },
+    "osv-scanner": {
+        "extensions": {".json", ".lock", ".mod"},
+        "files": {"package-lock.json", "yarn.lock", "poetry.lock", "pipfile.lock", "go.mod", "cargo.lock"},
+    },
+}
+
+
+def _collect_target_signals(files: list[Path]) -> tuple[set[str], set[str]]:
+    extensions: set[str] = set()
+    filenames: set[str] = set()
+    for item in files:
+        extensions.add(item.suffix.lower())
+        filenames.add(item.name.lower())
+    return extensions, filenames
+
+
+def _is_tool_relevant(tool_name: str, extensions: set[str], filenames: set[str]) -> bool:
+    normalized = tool_name.strip().lower()
+    if normalized in ALWAYS_RELEVANT_TOOLS:
+        return True
+    hints = TOOL_FILE_HINTS.get(normalized)
+    if not hints:
+        return True
+    extension_hints = hints.get("extensions", set())
+    file_hints = hints.get("files", set())
+    if extension_hints and extensions.intersection(extension_hints):
+        return True
+    if file_hints and filenames.intersection(file_hints):
+        return True
+    if not extension_hints and not file_hints:
+        return True
+    return False
+
 
 class ScanEngine:
     def __init__(self, config: ScannerConfig) -> None:
@@ -40,6 +105,7 @@ class ScanEngine:
 
         started_at = datetime.now(timezone.utc)
         files = discover_files(target, self.config)
+        file_extensions, file_names = _collect_target_signals(files)
         findings: list[Finding] = []
         errors: list[str] = []
         seen: set[tuple[str, str, int, str | None]] = set()
@@ -274,6 +340,12 @@ class ScanEngine:
                 )
 
             if not bool(status.get("available", False)):
+                continue
+
+            if not _is_tool_relevant(tool_name, file_extensions, file_names):
+                status["message"] = (
+                    "Skipped for speed optimization: no relevant files/manifests were detected for this target."
+                )
                 continue
 
             if findings_limit_reached():

@@ -2,11 +2,13 @@ import * as electron from "electron";
 import log from "electron-log/main";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 import { ExportService } from "../backend/exportService";
 import { findingIdentity } from "../backend/reportAdapter";
 import { PythonScannerBridge } from "../backend/pythonBridge";
+import { ToolAccessAuthService } from "../backend/toolAccessAuth";
 import { ToolManager } from "../backend/toolManager";
 import { ExportRequest, ScanProgressPayload, ScanRecord, ScanRequest, UserRole } from "../backend/types";
 import { ScanStore } from "../database/store";
@@ -26,72 +28,10 @@ let store: ScanStore | null = null;
 let scannerBridge: PythonScannerBridge | null = null;
 let exportService: ExportService | null = null;
 let toolManager: ToolManager | null = null;
+let toolAccessAuth: ToolAccessAuthService | null = null;
 let scannerRootPath = "";
 let storeFilePath = "";
-let toolchainCachePath = "";
 let toolRunDirPath = "";
-const DEFAULT_CODEBASE_TOOLS = [
-  "bandit",
-  "brakeman",
-  "checkov",
-  "clair",
-  "codeql",
-  "cppcheck",
-  "eslint-security",
-  "findsecbugs",
-  "flawfinder",
-  "gitleaks",
-  "gosec",
-  "govulncheck",
-  "grype",
-  "hadolint",
-  "infer",
-  "npm-audit",
-  "osv-scanner",
-  "owasp-dependency-check",
-  "pip-audit",
-  "safety",
-  "semgrep",
-  "snyk",
-  "sonarqube",
-  "spotbugs",
-  "tfsec",
-  "trivy",
-].join(",");
-const DEFAULT_RUNTIME_TOOLS = [
-  "runtime_http_probe",
-  "amass",
-  "ffuf",
-  "kube-bench",
-  "kube-hunter",
-  "nikto",
-  "nmap",
-  "nuclei",
-  "sqlmap",
-  "wapiti",
-  "zap-baseline",
-].join(",");
-
-function mergeToolCsv(existingCsv: string | undefined, requiredCsv: string): string {
-  const merged: string[] = [];
-  const seen = new Set<string>();
-  const append = (raw: string): void => {
-    const value = raw.trim().toLowerCase();
-    if (!value || seen.has(value)) {
-      return;
-    }
-    seen.add(value);
-    merged.push(value);
-  };
-
-  for (const item of (existingCsv || "").split(",")) {
-    append(item);
-  }
-  for (const item of requiredCsv.split(",")) {
-    append(item);
-  }
-  return merged.join(",");
-}
 
 function createWindow(): void {
   const preloadPath = path.join(__dirname, "preload.js");
@@ -132,47 +72,61 @@ function emitProgress(payload: ScanProgressPayload): void {
 
 app.whenReady().then(async () => {
   try {
+    const logicalCores = Math.max(2, Math.min(8, os.cpus().length || 4));
+    const toolWorkers = Math.max(2, Math.min(6, logicalCores));
+    if (!process.env.CODESENTINELX_DISABLE_APP_TOOLCHAIN) {
+      process.env.CODESENTINELX_DISABLE_APP_TOOLCHAIN = "1";
+    }
     if (!process.env.USS_USE_EXTERNAL_TOOLS) {
-      process.env.USS_USE_EXTERNAL_TOOLS = "1";
+      process.env.USS_USE_EXTERNAL_TOOLS = "0";
     }
     if (!process.env.USS_AUTO_BOOTSTRAP_TOOLS) {
-      process.env.USS_AUTO_BOOTSTRAP_TOOLS = "1";
+      process.env.USS_AUTO_BOOTSTRAP_TOOLS = "0";
     }
     if (!process.env.USS_ALLOW_HOST_INSTALLERS) {
       process.env.USS_ALLOW_HOST_INSTALLERS = "0";
     }
     if (!process.env.USS_PREFER_LOCAL_TOOLS) {
-      process.env.USS_PREFER_LOCAL_TOOLS = "1";
+      process.env.USS_PREFER_LOCAL_TOOLS = "0";
+    }
+    if (!process.env.USS_ENABLE_BUILTIN_RUNTIME_COMPAT) {
+      process.env.USS_ENABLE_BUILTIN_RUNTIME_COMPAT = "0";
+    }
+    if (!process.env.USS_STRICT_AUTHENTIC_RESULTS_ONLY) {
+      process.env.USS_STRICT_AUTHENTIC_RESULTS_ONLY = "1";
+    }
+    if (!process.env.USS_ALLOW_EMBEDDED_COMPAT_WRAPPERS) {
+      process.env.USS_ALLOW_EMBEDDED_COMPAT_WRAPPERS = "0";
+    }
+    if (!process.env.USS_FILE_SCAN_WORKERS) {
+      process.env.USS_FILE_SCAN_WORKERS = String(logicalCores);
+    }
+    if (!process.env.USS_EXTERNAL_TOOL_WORKERS) {
+      process.env.USS_EXTERNAL_TOOL_WORKERS = String(toolWorkers);
     }
     // Desktop runtime is configured for uncapped finding collection.
     process.env.USS_MAX_FINDINGS = "0";
-    process.env.USS_CODEBASE_TOOLS = mergeToolCsv(process.env.USS_CODEBASE_TOOLS, DEFAULT_CODEBASE_TOOLS);
-    process.env.USS_RUNTIME_TOOLS = mergeToolCsv(process.env.USS_RUNTIME_TOOLS, DEFAULT_RUNTIME_TOOLS);
+    for (const key of Object.keys(process.env)) {
+      if (/^USS_(?:.*_)?TOOLS$/.test(key) || key === "USS_TOOLS_DIR") {
+        delete process.env[key];
+      }
+    }
     scannerRootPath = resolveScannerRoot(app.getAppPath());
     storeFilePath = path.join(app.getPath("userData"), "codesentinelx-store.json");
     const exportDir = path.join(app.getPath("documents"), "CodeSentinelX", "exports");
     toolRunDirPath = path.join(app.getPath("documents"), "CodeSentinelX", "tool-runs");
-    const legacyUserDataToolchainPath = path.join(app.getPath("userData"), ".toolchain");
-    toolchainCachePath = resolveToolchainPath(scannerRootPath);
-
-    process.env.USS_TOOLS_DIR = toolchainCachePath;
-    const seedStatus = await seedToolchainCache(scannerRootPath, toolchainCachePath, [legacyUserDataToolchainPath]);
-    log.info(seedStatus);
 
     store = await ScanStore.create(storeFilePath);
     scannerBridge = new PythonScannerBridge(scannerRootPath);
     exportService = new ExportService(exportDir);
     toolManager = new ToolManager(scannerRootPath, toolRunDirPath);
-    void toolManager
-      .bootstrapProfile("all", "core")
-      .then((result) => {
-        log.info(
-          `Core toolchain warmup: ready=${result.ready}/${result.total}, missing=${result.missing}, success=${result.success}`,
-        );
-      })
-      .catch((error: unknown) => {
-        log.warn("Core toolchain warmup failed", error);
-      });
+    toolAccessAuth = new ToolAccessAuthService();
+    process.env.USS_AI_REMEDIATION_PROVIDER = "local";
+    delete process.env.USS_AI_OLLAMA_URL;
+    delete process.env.USS_AI_REMEDIATION_MODEL;
+    delete process.env.USS_AI_REMEDIATION_MAX_FINDINGS;
+    delete process.env.USS_AI_REMEDIATION_TIMEOUT_SECONDS;
+    log.info("Desktop runtime is locked to local codebase analysis only. App-managed binaries and network scanners are disabled.");
     createWindow();
 
     app.on("activate", () => {
@@ -192,6 +146,24 @@ app.on("window-all-closed", () => {
   }
 });
 
+function requireToolManagerAccess(authToken: string | undefined | null): void {
+  if (!toolAccessAuth) {
+    throw new Error("Tool Manager access service is not initialized.");
+  }
+  toolAccessAuth.assertAuthorized(authToken || "");
+}
+
+function resolveAuthToken(payload: unknown): string {
+  if (!payload || typeof payload !== "object") {
+    return "";
+  }
+  const raw = (payload as { authToken?: unknown }).authToken;
+  if (typeof raw !== "string") {
+    return "";
+  }
+  return raw.trim();
+}
+
 ipcMain.handle("dialog:pickFolder", async () => {
   const result = await dialog.showOpenDialog({
     title: "Select project folder to scan",
@@ -210,14 +182,8 @@ ipcMain.handle("scan:start", async (_event, request: ScanRequest) => {
     projectPath: request.projectPath,
     requestedBy: request.requestedBy || "local-user",
     role: request.role || "Security Analyst",
-    runtimeAuth: request.runtimeAuth
-      ? {
-          token: String(request.runtimeAuth.token || "").trim(),
-          cookie: String(request.runtimeAuth.cookie || "").trim(),
-          headerName: String(request.runtimeAuth.headerName || "").trim(),
-          headerValue: String(request.runtimeAuth.headerValue || "").trim(),
-        }
-      : undefined,
+    scanPreset: request.scanPreset || "standard",
+    scmContext: request.scmContext || undefined,
   };
 
   await store.addAudit({
@@ -237,7 +203,6 @@ ipcMain.handle("scan:start", async (_event, request: ScanRequest) => {
   });
 
   try {
-    const targetKind = inferTargetKind(normalizedRequest.projectPath);
     const result = await scannerBridge.runScan(scanId, normalizedRequest, emitProgress);
     const record: ScanRecord = {
       scanId,
@@ -255,7 +220,7 @@ ipcMain.handle("scan:start", async (_event, request: ScanRequest) => {
       action: "scan.completed",
       actor: record.requestedBy,
       role: record.role,
-      details: `${targetKind} completed with ${record.report.vulnerability_fixed_code_report.summary.total_findings} findings`,
+      details: `Codebase scan completed with ${record.report.vulnerability_fixed_code_report.summary.total_findings} findings`,
     });
 
     const view = store.getScanView(scanId);
@@ -349,6 +314,19 @@ ipcMain.handle("scan:history", () => {
   return store?.listHistory() || [];
 });
 
+ipcMain.handle("scan:portfolioSummary", () => {
+  return store?.getPortfolioSummary() || {
+    scansTotal: 0,
+    repositoriesTotal: 0,
+    trendDirection: "unavailable",
+    trendDelta: 0,
+    hotModules: [],
+    recurringCwe: [],
+    fixVelocityPercent: 0,
+    suppressionDriftScore: 0,
+  };
+});
+
 ipcMain.handle("scan:getById", (_event, scanId: string) => {
   return store?.getScanView(scanId) || null;
 });
@@ -392,8 +370,8 @@ ipcMain.handle("scan:export", async (_event, request: ExportRequest) => {
   }
   let outputPath = "";
   if (request.format === "pdf") {
-    const html = exportService.renderReportHtml(scan, request.reportType);
-    const destination = exportService.resolveOutputPath(scan, request.reportType, request.format);
+    const html = exportService.renderReportHtml(scan, request.reportType, request.reportStyle);
+    const destination = exportService.resolveOutputPath(scan, request.reportType, request.format, request.reportStyle);
     try {
       await renderHtmlAsPdf(html, destination);
       outputPath = destination;
@@ -414,7 +392,9 @@ ipcMain.handle("scan:export", async (_event, request: ExportRequest) => {
   return outputPath;
 });
 
-ipcMain.handle("scan:renderHtml", (_event, payload: { scanId: string; reportType: ExportRequest["reportType"] }) => {
+ipcMain.handle(
+  "scan:renderHtml",
+  (_event, payload: { scanId: string; reportType: ExportRequest["reportType"]; reportStyle?: ExportRequest["reportStyle"] }) => {
   if (!store || !exportService) {
     throw new Error("Report renderer is unavailable.");
   }
@@ -422,8 +402,9 @@ ipcMain.handle("scan:renderHtml", (_event, payload: { scanId: string; reportType
   if (!scan) {
     throw new Error(`Scan ${payload.scanId} not found.`);
   }
-  return exportService.renderReportHtml(scan, payload.reportType);
-});
+    return exportService.renderReportHtml(scan, payload.reportType, payload.reportStyle);
+  },
+);
 
 ipcMain.handle("shell:openPath", async (_event, targetPath: string) => {
   if (!targetPath) {
@@ -436,71 +417,78 @@ ipcMain.handle("audit:list", (_event, scanId?: string) => {
   return store?.listAudits(scanId) || [];
 });
 
-ipcMain.handle("tools:list", async () => {
+ipcMain.handle("tools:authConfig", async (_event, payload?: { authToken?: string }) => {
+  if (!toolAccessAuth) {
+    return {
+      enabled: false,
+      allowedEmailMasked: "",
+      authMode: "totp_only",
+      otpRequired: false,
+      otpTtlSeconds: 300,
+      sessionTtlSeconds: 3600,
+      mfaRequired: false,
+      mfaIssuer: "CodeSentinelX",
+      smtpConfigured: false,
+      sessionValid: false,
+      message: "Tool Manager access service is not initialized.",
+    };
+  }
+  return toolAccessAuth.getConfig(resolveAuthToken(payload));
+});
+
+ipcMain.handle("tools:requestOtp", async (_event, payload: { email: string }) => {
+  if (!toolAccessAuth) {
+    throw new Error("Tool Manager access service is not initialized.");
+  }
+  const result = await toolAccessAuth.requestOtp(String(payload?.email || ""));
+  await store?.addAudit({
+    action: "tool.auth.otp_requested",
+    actor: "local-user",
+    role: "Admin",
+    details: result.success ? `OTP issued for ${result.message}` : `OTP request denied (${result.message})`,
+  });
+  return result;
+});
+
+ipcMain.handle("tools:verifyAccess", async (_event, payload: { email: string; otp: string; mfaCode?: string }) => {
+  if (!toolAccessAuth) {
+    throw new Error("Tool Manager access service is not initialized.");
+  }
+  const result = toolAccessAuth.verifyAccess(String(payload?.email || ""), String(payload?.otp || ""), String(payload?.mfaCode || ""));
+  await store?.addAudit({
+    action: "tool.auth.verified",
+    actor: "local-user",
+    role: "Admin",
+    details: result.success ? `Tool Manager access granted (${result.email || "owner"})` : `Tool Manager access denied (${result.message})`,
+  });
+  return result;
+});
+
+ipcMain.handle("tools:logout", async (_event, payload: { authToken?: string }) => {
+  if (!toolAccessAuth) {
+    throw new Error("Tool Manager access service is not initialized.");
+  }
+  const result = toolAccessAuth.revokeSession(resolveAuthToken(payload));
+  await store?.addAudit({
+    action: "tool.auth.logout",
+    actor: "local-user",
+    role: "Admin",
+    details: result.message,
+  });
+  return result;
+});
+
+ipcMain.handle("tools:list", async (_event, payload?: { authToken?: string }) => {
   if (!toolManager) {
     throw new Error("Tool manager is not initialized.");
   }
+  requireToolManagerAccess(resolveAuthToken(payload));
   return toolManager.listTools();
 });
 
-ipcMain.handle("tools:check", async (_event, payload: { tool: string }) => {
-  if (!toolManager) {
-    throw new Error("Tool manager is not initialized.");
-  }
-  const result = await toolManager.checkTool(payload.tool);
-  await store?.addAudit({
-    action: "tool.check",
-    actor: "local-user",
-    role: "Security Analyst",
-    details: `${payload.tool} check => ${result.available ? "available" : "missing"} (${result.message})`,
-  });
-  return result;
-});
-
-ipcMain.handle("tools:install", async (_event, payload: { tool: string }) => {
-  if (!toolManager) {
-    throw new Error("Tool manager is not initialized.");
-  }
-  const result = await toolManager.installTool(payload.tool);
-  await store?.addAudit({
-    action: "tool.install",
-    actor: "local-user",
-    role: "Security Analyst",
-    details: `${payload.tool} install => ${result.success ? "success" : "failed"} (${result.message})`,
-  });
-  return result;
-});
-
-ipcMain.handle("tools:bootstrap", async (_event, payload: { profile: "codebase" | "website" | "ip" | "all"; mode: "core" | "full" }) => {
-  if (!toolManager) {
-    throw new Error("Tool manager is not initialized.");
-  }
-  const result = await toolManager.bootstrapProfile(payload.profile, payload.mode);
-  await store?.addAudit({
-    action: "tool.bootstrap",
-    actor: "local-user",
-    role: "Security Analyst",
-    details: `${payload.profile}/${payload.mode} => ${result.ready}/${result.total} ready (${result.message})`,
-  });
-  return result;
-});
-
-ipcMain.handle("tools:run", async (_event, payload: { tool: string; target: string }) => {
-  if (!toolManager) {
-    throw new Error("Tool manager is not initialized.");
-  }
-  const result = await toolManager.runTool(payload.tool, payload.target);
-  await store?.addAudit({
-    action: "tool.run",
-    actor: "local-user",
-    role: "Security Analyst",
-    details: `${payload.tool} run on ${payload.target} => ${result.success ? "success" : "failed"} (${result.message})`,
-  });
-  return result;
-});
-
-ipcMain.handle("app:resetLocalStateCache", async () => {
-  if (!scannerRootPath || !storeFilePath || !toolchainCachePath || !toolRunDirPath) {
+ipcMain.handle("app:resetLocalStateCache", async (_event, payload?: { authToken?: string }) => {
+  requireToolManagerAccess(resolveAuthToken(payload));
+  if (!scannerRootPath || !storeFilePath || !toolRunDirPath) {
     throw new Error("CodeSentinelX paths are not initialized.");
   }
 
@@ -513,12 +501,6 @@ ipcMain.handle("app:resetLocalStateCache", async () => {
   await fs.promises.rm(toolRunDirPath, { recursive: true, force: true });
   await fs.promises.mkdir(toolRunDirPath, { recursive: true });
 
-  await fs.promises.rm(toolchainCachePath, { recursive: true, force: true });
-  await fs.promises.mkdir(toolchainCachePath, { recursive: true });
-
-  const seedMessage = await seedToolchainCache(scannerRootPath, toolchainCachePath);
-  process.env.USS_TOOLS_DIR = toolchainCachePath;
-
   store = await ScanStore.create(storeFilePath);
   scannerBridge = new PythonScannerBridge(scannerRootPath);
   toolManager = new ToolManager(scannerRootPath, toolRunDirPath);
@@ -529,24 +511,14 @@ ipcMain.handle("app:resetLocalStateCache", async () => {
     role: "Admin",
     details: "Local state and cache reset via Tool Manager.",
   });
-
-  const toolStatus = await toolManager.bootstrapProfile("all", "core");
-  log.info(
-    `Reset completed. ${seedMessage} Core warmup ready=${toolStatus.ready}/${toolStatus.total}, missing=${toolStatus.missing}.`,
-  );
+  log.info("Reset completed. App-managed external toolchain remains disabled.");
 
   return {
     success: true,
     message: "Local state and cache reset completed.",
     storeBackupPath: fs.existsSync(storeBackupPath) ? storeBackupPath : "",
-    toolchainCachePath,
-    seedMessage,
-    coreWarmup: {
-      ready: toolStatus.ready,
-      total: toolStatus.total,
-      missing: toolStatus.missing,
-      success: toolStatus.success,
-    },
+    toolchainCachePath: "",
+    seedMessage: "App-managed external toolchain is disabled by security policy.",
   };
 });
 
@@ -613,88 +585,8 @@ function resolveScannerRoot(appPath: string): string {
   return process.cwd();
 }
 
-function resolveToolchainPath(scannerRoot: string): string {
-  return path.join(scannerRoot, ".toolchain");
-}
-
-function inferTargetKind(target: string): string {
-  const value = target.trim();
-  if (!value) {
-    return "Codebase scan";
-  }
-  if (/^ssh:\/\//i.test(value)) {
-    return "Remote SSH scan";
-  }
-  try {
-    const resolved = path.resolve(value);
-    if (fs.existsSync(resolved)) {
-      return "Codebase scan";
-    }
-  } catch {
-    // Ignore filesystem probe failure and continue.
-  }
-  if (/^[a-zA-Z]:[\\/]/.test(value) || value.includes("\\") || value.startsWith(".") || value.startsWith("..")) {
-    return "Codebase scan";
-  }
-  if (
-    /^https?:\/\//i.test(value) ||
-    /^\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?(?:\/.*)?$/.test(value) ||
-    /^localhost(?::\d+)?(?:\/.*)?$/i.test(value) ||
-    /^[a-z0-9.-]+\.[a-z]{2,}(?::\d+)?(?:\/.*)?$/i.test(value)
-  ) {
-    return "Runtime IP/URL scan";
-  }
-  return "Codebase scan";
-}
-
 function isStoppedScanMessage(message: string): boolean {
   const normalized = message.trim().toLowerCase();
   return normalized.includes("scan stopped by user");
 }
 
-async function seedToolchainCache(
-  scannerRoot: string,
-  cacheDir: string,
-  additionalSources: string[] = [],
-): Promise<string> {
-  await fs.promises.mkdir(cacheDir, { recursive: true });
-  if (await directoryHasFiles(cacheDir)) {
-    return `Toolchain cache already present: ${cacheDir}`;
-  }
-
-  const resourceSeed = path.join(process.resourcesPath, "toolchain-seed");
-  const envSeed = process.env.CODESENTINELX_TOOLCHAIN_SEED || "";
-  const sourceCandidates = [envSeed, resourceSeed, ...additionalSources, path.join(scannerRoot, ".toolchain")]
-    .filter(Boolean)
-    .map((item) => path.resolve(item));
-
-  for (const source of sourceCandidates) {
-    if (source === path.resolve(cacheDir)) {
-      continue;
-    }
-    if (!fs.existsSync(source)) {
-      continue;
-    }
-    if (!(await directoryHasFiles(source))) {
-      continue;
-    }
-
-    await fs.promises.cp(source, cacheDir, {
-      recursive: true,
-      force: true,
-      errorOnExist: false,
-    });
-    return `Seeded toolchain cache from ${source} -> ${cacheDir}`;
-  }
-
-  return `No bundled toolchain seed found. Cache will be hydrated on demand: ${cacheDir}`;
-}
-
-async function directoryHasFiles(dirPath: string): Promise<boolean> {
-  try {
-    const entries = await fs.promises.readdir(dirPath);
-    return entries.length > 0;
-  } catch {
-    return false;
-  }
-}

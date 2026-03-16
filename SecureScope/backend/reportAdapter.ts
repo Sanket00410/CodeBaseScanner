@@ -19,7 +19,12 @@ export function applyFindingState(
   report: UniversalScanReport,
   states: Record<string, FindingReviewState>,
 ): UniversalScanReport {
-  const findings = (report.vulnerability_fixed_code_report.findings || []).map((finding) => ({ ...finding }));
+  const clone = cloneStructured(report);
+  if (!clone) {
+    return report;
+  }
+
+  const findings = (clone.vulnerability_fixed_code_report.findings || []).map((finding) => ({ ...finding }));
 
   let reviewed = 0;
   for (const finding of findings) {
@@ -38,46 +43,12 @@ export function applyFindingState(
     }
   }
 
-  return {
-    ...report,
-    scanner: { ...report.scanner },
-    executive_summary: {
-      ...report.executive_summary,
-      severity_distribution: { ...(report.executive_summary.severity_distribution || {}) },
-      top_vulnerability_types: [...(report.executive_summary.top_vulnerability_types || [])],
-      top_owasp_categories: [...(report.executive_summary.top_owasp_categories || [])],
-      affected_modules: [...(report.executive_summary.affected_modules || [])],
-      recommended_action_plan: [...(report.executive_summary.recommended_action_plan || [])],
-    },
-    existing_implementation_report: {
-      ...report.existing_implementation_report,
-      summary: {
-        ...report.existing_implementation_report.summary,
-        category_distribution: { ...(report.existing_implementation_report.summary.category_distribution || {}) },
-        coverage_levels: { ...(report.existing_implementation_report.summary.coverage_levels || {}) },
-        standards_coverage: { ...(report.existing_implementation_report.summary.standards_coverage || {}) },
-      },
-      controls: [...(report.existing_implementation_report.controls || [])],
-      compliance_matrix: [...(report.existing_implementation_report.compliance_matrix || [])],
-      profile_compliance: cloneProfileCompliance(report.existing_implementation_report.profile_compliance),
-    },
-    vulnerability_fixed_code_report: {
-      ...report.vulnerability_fixed_code_report,
-      summary: {
-        ...report.vulnerability_fixed_code_report.summary,
-        severity_distribution: { ...(report.vulnerability_fixed_code_report.summary.severity_distribution || {}) },
-        top_vulnerability_types: [...(report.vulnerability_fixed_code_report.summary.top_vulnerability_types || [])],
-        top_owasp_categories: [...(report.vulnerability_fixed_code_report.summary.top_owasp_categories || [])],
-        affected_modules: [...(report.vulnerability_fixed_code_report.summary.affected_modules || [])],
-        reviewed_findings: reviewed,
-        open_findings: Math.max(0, findings.length - reviewed),
-      },
-      findings,
-      auto_fix_recommendations: [...(report.vulnerability_fixed_code_report.auto_fix_recommendations || [])],
-      toolchain_status: { ...(report.vulnerability_fixed_code_report.toolchain_status || {}) },
-    },
-    profile_compliance: cloneProfileCompliance(report.profile_compliance || report.existing_implementation_report.profile_compliance),
-  };
+  clone.vulnerability_fixed_code_report.findings = findings;
+  clone.vulnerability_fixed_code_report.summary.reviewed_findings = reviewed;
+  clone.vulnerability_fixed_code_report.summary.open_findings = Math.max(0, findings.length - reviewed);
+  clone.profile_compliance =
+    clone.profile_compliance || clone.existing_implementation_report.profile_compliance || report.profile_compliance;
+  return clone;
 }
 
 function cloneProfileCompliance(
@@ -90,6 +61,13 @@ function cloneProfileCompliance(
     return undefined;
   }
   return JSON.parse(JSON.stringify(profile));
+}
+
+function cloneStructured<T>(payload: T | undefined): T | undefined {
+  if (payload === undefined) {
+    return undefined;
+  }
+  return JSON.parse(JSON.stringify(payload)) as T;
 }
 
 export function toScanView(record: ScanRecord): ScanView {
@@ -105,12 +83,21 @@ export function toScanView(record: ScanRecord): ScanView {
 }
 
 export function toHistoryItem(record: ScanRecord): ScanHistoryItem {
+  const summary = record.report.vulnerability_fixed_code_report.summary;
+  const suppressionReport =
+    (record.report.vulnerability_fixed_code_report as { suppression_report?: { suppressed_count?: number } }).suppression_report ||
+    (record.report as { suppression_report?: { suppressed_count?: number } }).suppression_report ||
+    {};
   return {
     scanId: record.scanId,
     projectPath: record.projectPath,
     startedAt: record.startedAt,
     completedAt: record.completedAt,
     risk: record.report.executive_summary.risk_rating,
-    totalFindings: record.report.vulnerability_fixed_code_report.summary.total_findings,
+    riskScore: record.report.executive_summary.risk_score,
+    totalFindings: summary.total_findings,
+    reviewedFindings: summary.reviewed_findings || 0,
+    suppressedCount: Number(suppressionReport.suppressed_count || 0),
+    topModule: (summary.affected_modules || [])[0]?.module || "",
   };
 }

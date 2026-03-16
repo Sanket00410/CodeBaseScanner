@@ -9,22 +9,23 @@ const api = {
   resumeScan: async (scanId: string) => ipcRenderer.invoke("scan:resume", scanId),
   stopScan: async (scanId: string) => ipcRenderer.invoke("scan:stop", scanId),
   getScanHistory: async () => ipcRenderer.invoke("scan:history"),
+  getPortfolioSummary: async () => ipcRenderer.invoke("scan:portfolioSummary"),
   getScanById: async (scanId: string) => ipcRenderer.invoke("scan:getById", scanId),
   markReviewed: async (payload: { scanId: string; findingId: string; actor: string; role: UserRole }) =>
     ipcRenderer.invoke("scan:markReviewed", payload),
   generatePatch: async (payload: { scanId: string; findingId: string }) => ipcRenderer.invoke("scan:generatePatch", payload),
   exportReport: async (request: ExportRequest) => ipcRenderer.invoke("scan:export", request),
-  renderReportHtml: async (payload: { scanId: string; reportType: ExportRequest["reportType"] }) =>
+  renderReportHtml: async (payload: { scanId: string; reportType: ExportRequest["reportType"]; reportStyle?: ExportRequest["reportStyle"] }) =>
     ipcRenderer.invoke("scan:renderHtml", payload),
   openPath: async (targetPath: string) => ipcRenderer.invoke("shell:openPath", targetPath),
   listAuditLogs: async (scanId?: string) => ipcRenderer.invoke("audit:list", scanId),
-  listTools: async () => ipcRenderer.invoke("tools:list"),
-  checkTool: async (payload: { tool: string }) => ipcRenderer.invoke("tools:check", payload),
-  installTool: async (payload: { tool: string }) => ipcRenderer.invoke("tools:install", payload),
-  bootstrapTools: async (payload: { profile: "codebase" | "website" | "ip" | "all"; mode: "core" | "full" }) =>
-    ipcRenderer.invoke("tools:bootstrap", payload),
-  runTool: async (payload: { tool: string; target: string }) => ipcRenderer.invoke("tools:run", payload),
-  resetLocalStateCache: async () => ipcRenderer.invoke("app:resetLocalStateCache"),
+  getToolAccessConfig: async (payload?: { authToken?: string }) => ipcRenderer.invoke("tools:authConfig", payload),
+  requestToolAccessOtp: async (payload: { email: string }) => ipcRenderer.invoke("tools:requestOtp", payload),
+  verifyToolAccess: async (payload: { email: string; otp: string; mfaCode?: string }) =>
+    ipcRenderer.invoke("tools:verifyAccess", payload),
+  logoutToolAccess: async (payload: { authToken?: string }) => ipcRenderer.invoke("tools:logout", payload),
+  listTools: async (payload?: { authToken?: string }) => ipcRenderer.invoke("tools:list", payload),
+  resetLocalStateCache: async (payload?: { authToken?: string }) => ipcRenderer.invoke("app:resetLocalStateCache", payload),
   onScanProgress: (
     callback: (payload: {
       scanId: string;

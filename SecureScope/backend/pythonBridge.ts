@@ -45,8 +45,8 @@ export class PythonScannerBridge {
     await this.setControlState(controlFile, "running");
 
     const normalizedTarget = normalizeTargetInput(request.projectPath);
-    const targetType = inferTargetType(normalizedTarget);
-    const scanEnv = buildScanEnvironment(controlFile, targetType, request);
+    const scanPreset = request.scanPreset || "standard";
+    const scanEnv = buildScanEnvironment(this.scannerRoot, controlFile, scanPreset, request.scmContext);
 
     const args = [
       "-m",
@@ -55,7 +55,7 @@ export class PythonScannerBridge {
       "--path",
       normalizedTarget,
       "--target-type",
-      targetType,
+      "local",
       "--format",
       "json",
       "--report-type",
@@ -106,7 +106,7 @@ export class PythonScannerBridge {
           scanId,
           stage: "running",
           progress: state.lastProgress,
-          message: "Scanner is processing files, dependencies, runtime endpoints, and toolchain checks.",
+          message: `Scanner is processing local files and secure coding rules in native codebase mode (${scanPreset}).`,
           status: "running",
         });
       }, 3000);
@@ -304,70 +304,129 @@ export class PythonScannerBridge {
   }
 }
 
-function buildScanEnvironment(controlFile: string, targetType: "local" | "http" | "ssh", request: ScanRequest): NodeJS.ProcessEnv {
+function buildScanEnvironment(
+  scannerRoot: string,
+  controlFile: string,
+  scanPreset: "fast" | "standard" | "deep",
+  scmContext?: ScanRequest["scmContext"],
+): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     PYTHONUTF8: "1",
     USS_SCAN_CONTROL_FILE: controlFile,
     USS_MAX_FINDINGS: "0",
+    USS_USE_EXTERNAL_TOOLS: process.env.USS_USE_EXTERNAL_TOOLS || "1",
+    USS_AUTO_BOOTSTRAP_TOOLS: "0",
   };
-
-  if (targetType === "http") {
-    // Runtime scans are discovery-heavy (API + endpoint crawl), so defaults are deeper than codebase mode.
-    env.USS_RUNTIME_MAX_URLS = env.USS_RUNTIME_MAX_URLS || "260";
-    env.USS_RUNTIME_CRAWL_DEPTH = env.USS_RUNTIME_CRAWL_DEPTH || "3";
-    env.USS_RUNTIME_CRAWL_MAX_PAGES = env.USS_RUNTIME_CRAWL_MAX_PAGES || "220";
-    env.USS_RUNTIME_TOOL_TARGET_LIMIT = env.USS_RUNTIME_TOOL_TARGET_LIMIT || "160";
-    env.USS_RUNTIME_NUCLEI_MAX_TARGETS = env.USS_RUNTIME_NUCLEI_MAX_TARGETS || "140";
-    env.USS_EXTERNAL_TOOL_TIMEOUT_SECONDS = env.USS_EXTERNAL_TOOL_TIMEOUT_SECONDS || "900";
-    env.USS_RUNTIME_NUCLEI_TIMEOUT_SECONDS = env.USS_RUNTIME_NUCLEI_TIMEOUT_SECONDS || "1200";
-    env.USS_REMOTE_HTTP_TIMEOUT_SECONDS = env.USS_REMOTE_HTTP_TIMEOUT_SECONDS || "10";
-
-    const runtimeAuth = request.runtimeAuth || {};
-    const token = sanitizeEnvValue(runtimeAuth.token);
-    const cookie = sanitizeEnvValue(runtimeAuth.cookie);
-    const headerName = sanitizeHeaderName(runtimeAuth.headerName);
-    const headerValue = sanitizeEnvValue(runtimeAuth.headerValue);
-
-    if (token) {
-      env.USS_RUNTIME_AUTH_TOKEN = token;
-    } else {
-      delete env.USS_RUNTIME_AUTH_TOKEN;
-    }
-
-    if (cookie) {
-      env.USS_RUNTIME_AUTH_COOKIE = cookie;
-    } else {
-      delete env.USS_RUNTIME_AUTH_COOKIE;
-    }
-
-    if (headerName && headerValue) {
-      env.USS_RUNTIME_AUTH_HEADER_NAME = headerName;
-      env.USS_RUNTIME_AUTH_HEADER_VALUE = headerValue;
-    } else {
-      delete env.USS_RUNTIME_AUTH_HEADER_NAME;
-      delete env.USS_RUNTIME_AUTH_HEADER_VALUE;
+  env.USS_EXTERNAL_TOOL_TIMEOUT_SECONDS = env.USS_EXTERNAL_TOOL_TIMEOUT_SECONDS || "900";
+  for (const key of Object.keys(env)) {
+    if (/^USS_(?:.*_)?TOOLS$/.test(key) || key === "USS_TOOLS_DIR") {
+      delete env[key];
     }
   }
+  delete env.USS_DIFF_BASE_REF;
+  delete env.USS_DIFF_HEAD_REF;
+  delete env.USS_CHANGED_FILES_FILE;
+  delete env.USS_CHANGED_FILES_JSON;
+  delete env.USS_CHANGED_LINES_JSON;
+  env.USS_REPORT_CHAIN_FILE = path.join(scannerRoot, "exports", ".integrity", "report_chain.json");
+  env.USS_SUPPRESSION_LIFECYCLE_FILE = path.join(scannerRoot, "exports", ".integrity", "suppression_lifecycle.json");
+  if (scmContext) {
+    if (scmContext.diffBaseRef) {
+      env.USS_DIFF_BASE_REF = String(scmContext.diffBaseRef);
+    }
+    if (scmContext.diffHeadRef) {
+      env.USS_DIFF_HEAD_REF = String(scmContext.diffHeadRef);
+    }
+    if (scmContext.changedFilesFile) {
+      env.USS_CHANGED_FILES_FILE = String(scmContext.changedFilesFile);
+    }
+    if (scmContext.changedFilesJson) {
+      env.USS_CHANGED_FILES_JSON = String(scmContext.changedFilesJson);
+    }
+    if (scmContext.changedLinesJson) {
+      env.USS_CHANGED_LINES_JSON = String(scmContext.changedLinesJson);
+    }
+  }
+  applyScanPreset(env, scanPreset);
 
   return env;
 }
 
-function sanitizeEnvValue(value: string | undefined, maxLength = 4096): string {
-  const normalized = String(value || "").trim();
-  if (!normalized) {
-    return "";
+function applyScanPreset(env: NodeJS.ProcessEnv, preset: "fast" | "standard" | "deep"): void {
+  const logicalCores = Math.max(2, Math.min(12, os.cpus().length || 4));
+  const toolPresets: Record<NonNullable<ScanRequest["scanPreset"]>, string[]> = {
+    fast: ["semgrep", "gitleaks", "bandit", "trivy", "checkov"],
+    standard: [
+      "semgrep",
+      "gitleaks",
+      "bandit",
+      "trivy",
+      "checkov",
+      "gosec",
+      "govulncheck",
+      "eslint-security",
+      "cppcheck",
+      "spotbugs",
+      "findsecbugs",
+      "flawfinder",
+      "hadolint",
+      "tfsec",
+      "grype",
+    ],
+    deep: [
+      "bandit",
+      "checkov",
+      "codeql",
+      "findsecbugs",
+      "flawfinder",
+      "gitleaks",
+      "gosec",
+      "govulncheck",
+      "grype",
+      "hadolint",
+      "osv-scanner",
+      "owasp-dependency-check",
+      "pip-audit",
+      "safety",
+      "semgrep",
+      "snyk",
+      "spotbugs",
+      "tfsec",
+      "trivy",
+    ],
+  };
+  env.USS_SCAN_PRESET = preset;
+  if (!env.USS_CODEBASE_TOOLS) {
+    env.USS_CODEBASE_TOOLS = toolPresets[preset].join(",");
   }
-  return normalized.slice(0, maxLength);
-}
-
-function sanitizeHeaderName(value: string | undefined): string {
-  const normalized = String(value || "").trim();
-  if (!normalized) {
-    return "";
+  if (!env.USS_EXTERNAL_TOOLS) {
+    env.USS_EXTERNAL_TOOLS = env.USS_CODEBASE_TOOLS;
   }
-  const allowed = normalized.match(/^[A-Za-z0-9-]{1,120}$/);
-  return allowed ? normalized : "";
+  if (!env.USS_TOOL_WORKERS) {
+    env.USS_TOOL_WORKERS = String(Math.max(2, Math.min(6, logicalCores)));
+  }
+  if (!env.USS_EXTERNAL_TOOL_WORKERS) {
+    env.USS_EXTERNAL_TOOL_WORKERS = env.USS_TOOL_WORKERS;
+  }
+  if (preset === "fast") {
+    env.USS_FILE_SCAN_WORKERS = String(logicalCores);
+    env.USS_MAX_FILE_SIZE_KB = "512";
+    env.USS_ACTIVE_POC_MODE = "0";
+    env.USS_ACTIVE_POC_MAX_FINDINGS = "0";
+    return;
+  }
+  if (preset === "deep") {
+    env.USS_FILE_SCAN_WORKERS = String(Math.max(4, Math.min(8, logicalCores)));
+    env.USS_MAX_FILE_SIZE_KB = "2048";
+    env.USS_ACTIVE_POC_MODE = "1";
+    env.USS_ACTIVE_POC_MAX_FINDINGS = "0";
+    return;
+  }
+  env.USS_FILE_SCAN_WORKERS = String(Math.max(4, Math.min(8, logicalCores)));
+  env.USS_MAX_FILE_SIZE_KB = "1024";
+  env.USS_ACTIVE_POC_MODE = "1";
+  env.USS_ACTIVE_POC_MAX_FINDINGS = "80";
 }
 
 function resolvePythonExecutable(scannerRoot: string): string {
@@ -393,47 +452,31 @@ function resolvePythonExecutable(scannerRoot: string): string {
 function normalizeTargetInput(rawTarget: string): string {
   const target = rawTarget.trim();
   if (!target) {
-    throw new Error("Scan target is required.");
+    throw new Error("Codebase folder is required.");
   }
-  const targetType = inferTargetType(target);
-  if (targetType === "local") {
-    return path.resolve(target);
+  if (
+    /^ssh:\/\//i.test(target) ||
+    /^https?:\/\//i.test(target) ||
+    /^\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?(?:\/.*)?$/.test(target) ||
+    /^localhost(?::\d+)?(?:\/.*)?$/i.test(target) ||
+    /^[a-z0-9.-]+\.[a-z]{2,}(?::\d+)?(?:\/.*)?$/i.test(target)
+  ) {
+    throw new Error("Only local codebase folders are supported. Website, IP, and SSH targets are disabled.");
   }
-  return target;
-}
-
-function inferTargetType(target: string): "local" | "http" | "ssh" {
-  const value = target.trim();
-  if (!value) {
-    return "local";
+  const resolved = path.resolve(target);
+  if (!fs.existsSync(resolved)) {
+    throw new Error("Selected codebase folder does not exist.");
   }
-  if (/^ssh:\/\//i.test(value)) {
-    return "ssh";
-  }
-  if (/^https?:\/\//i.test(value)) {
-    return "http";
-  }
+  let stats: fs.Stats;
   try {
-    const resolved = path.resolve(value);
-    if (fs.existsSync(resolved)) {
-      return "local";
-    }
+    stats = fs.statSync(resolved);
   } catch {
-    // Ignore filesystem lookup failures and continue with heuristics.
+    throw new Error("Selected codebase folder is not accessible.");
   }
-  if (/^[a-zA-Z]:[\\/]/.test(value) || value.includes("\\") || value.startsWith(".") || value.startsWith("..")) {
-    return "local";
+  if (!stats.isDirectory()) {
+    throw new Error("Only directories can be scanned in codebase-only mode.");
   }
-  if (/^\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?(?:\/.*)?$/.test(value)) {
-    return "http";
-  }
-  if (/^localhost(?::\d+)?(?:\/.*)?$/i.test(value)) {
-    return "http";
-  }
-  if (/^[a-z0-9.-]+\.[a-z]{2,}(?::\d+)?(?:\/.*)?$/i.test(value)) {
-    return "http";
-  }
-  return "local";
+  return resolved;
 }
 
 function parseProgressLine(line: string): { progress: number; stage: string; currentFile?: string; message: string } | null {

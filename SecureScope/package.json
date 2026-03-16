@@ -11,20 +11,21 @@
     "dev:renderer": "vite --config frontend/vite.config.ts",
     "dev:main:watch": "node scripts/clean-dir.cjs dist-main && tsc -p tsconfig.main.json --watch --preserveWatchOutput",
     "dev:electron": "wait-on tcp:5182 file:dist-main/electron/main.js && cross-env ELECTRON_START_URL=http://localhost:5182 node electron/dev-launcher.cjs",
-    "prepare:toolchain-seed": "node scripts/prepare-toolchain-seed.cjs",
-    "build": "npm run prepare:toolchain-seed && npm run build:renderer && npm run build:main && electron-builder",
+    "build": "npm run build:renderer && npm run build:main && electron-builder",
     "build:renderer": "vite build --config frontend/vite.config.ts",
     "build:main": "node scripts/clean-dir.cjs dist-main && tsc -p tsconfig.main.json",
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p frontend/tsconfig.json --noEmit"
   },
   "dependencies": {
     "electron-log": "^5.2.4",
+    "nodemailer": "^6.10.1",
     "pdfkit": "^0.15.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@types/node": "^22.13.1",
+    "@types/nodemailer": "^6.4.17",
     "@types/pdfkit": "^0.17.2",
     "@types/react": "^18.3.20",
     "@types/react-dom": "^18.3.6",
@@ -50,15 +51,6 @@
       "dist-main/**/*",
       "node_modules/**/*",
       "package.json"
-    ],
-    "extraResources": [
-      {
-        "from": "build/toolchain-seed",
-        "to": "toolchain-seed",
-        "filter": [
-          "**/*"
-        ]
-      }
     ],
     "win": {
       "signAndEditExecutable": false,

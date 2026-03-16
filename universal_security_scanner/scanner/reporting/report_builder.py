@@ -125,42 +125,184 @@ def _normalize_snippet(value: str | None) -> str:
     return re.sub(r"\s+", " ", value.strip())
 
 
+PY_KEYWORDS = {
+    "and",
+    "as",
+    "assert",
+    "break",
+    "class",
+    "continue",
+    "def",
+    "del",
+    "elif",
+    "else",
+    "except",
+    "false",
+    "finally",
+    "for",
+    "from",
+    "if",
+    "import",
+    "in",
+    "is",
+    "lambda",
+    "none",
+    "nonlocal",
+    "not",
+    "or",
+    "pass",
+    "raise",
+    "return",
+    "true",
+    "try",
+    "while",
+    "with",
+    "yield",
+}
+
+SQL_KEYWORDS = {
+    "select",
+    "from",
+    "where",
+    "and",
+    "or",
+    "insert",
+    "into",
+    "update",
+    "delete",
+    "join",
+    "on",
+    "values",
+    "set",
+    "limit",
+    "group",
+    "order",
+    "by",
+}
+
+
+def _extract_identifiers(snippet: str, max_items: int = 4) -> list[str]:
+    candidates = re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*\b", snippet or "")
+    picked: list[str] = []
+    for candidate in candidates:
+        lowered = candidate.lower()
+        if lowered in PY_KEYWORDS or lowered in SQL_KEYWORDS:
+            continue
+        if lowered.startswith(("cursor", "query", "sql", "execute", "subprocess", "system", "path", "self")):
+            continue
+        if candidate.isupper():
+            continue
+        if candidate not in picked:
+            picked.append(candidate)
+        if len(picked) >= max_items:
+            break
+    return picked
+
+
+def _normalize_sql_query_from_snippet(snippet: str) -> str:
+    fragments = re.findall(r'"([^"]+)"|\'([^\']+)\'', snippet or "")
+    text_parts = ["".join(fragment).strip() for fragment in fragments if "".join(fragment).strip()]
+    query = " ".join(text_parts).strip()
+    if not query:
+        query = "SELECT * FROM table WHERE id = %s"
+    query = re.sub(r"\{[A-Za-z_][A-Za-z0-9_]*\}", "%s", query)
+    query = re.sub(r"\s+", " ", query).strip()
+    return query
+
+
+def _build_sql_fix(snippet: str) -> str:
+    params = _extract_identifiers(snippet, max_items=3)
+    if not params:
+        params = ["user_input"]
+    tuple_expr = f"({params[0]},)" if len(params) == 1 else f"({', '.join(params)})"
+    query = _normalize_sql_query_from_snippet(snippet)
+    return "\n".join(
+        [
+            f'query = "{query}"',
+            f"params = {tuple_expr}",
+            "cursor.execute(query, params)",
+        ]
+    )
+
+
+def _build_command_fix(snippet: str) -> str:
+    args = _extract_identifiers(snippet, max_items=2)
+    user_arg = args[0] if args else "user_input"
+    command_match = re.search(r"""['"]([A-Za-z0-9_./-]+)['"]""", snippet or "")
+    base_command = command_match.group(1) if command_match else "/usr/bin/tool"
+    return "\n".join(
+        [
+            "import shlex",
+            f"safe_args = shlex.split(str({user_arg}))",
+            f"subprocess.run([{base_command!r}, *safe_args], check=True, shell=False)",
+        ]
+    )
+
+
+def _build_path_fix(snippet: str) -> str:
+    vars_found = _extract_identifiers(snippet, max_items=2)
+    file_var = vars_found[0] if vars_found else "user_path"
+    return "\n".join(
+        [
+            "from pathlib import Path",
+            "base_dir = Path('/app/data').resolve()",
+            f"requested = str({file_var}).lstrip('/\\\\')",
+            "safe_path = (base_dir / requested).resolve()",
+            "if base_dir not in safe_path.parents and safe_path != base_dir:",
+            "    raise ValueError('Invalid path')",
+        ]
+    )
+
+
+def _build_xss_fix(snippet: str) -> str:
+    sink_match = re.search(r"=\s*([A-Za-z_][A-Za-z0-9_]*)", snippet or "")
+    payload_var = sink_match.group(1) if sink_match else "user_input"
+    return "\n".join(
+        [
+            "from markupsafe import escape",
+            f"safe_output = escape(str({payload_var}))",
+            "target_element.textContent = safe_output",
+        ]
+    )
+
+
+def _build_eval_fix(snippet: str) -> str:
+    vars_found = _extract_identifiers(snippet, max_items=1)
+    expr_var = vars_found[0] if vars_found else "expression"
+    return "\n".join(
+        [
+            "import ast",
+            f"tree = ast.parse(str({expr_var}), mode='eval')",
+            "validate_allowed_nodes(tree)",
+            "result = evaluate_safe_ast(tree)",
+        ]
+    )
+
+
 def _fix_artifacts(vulnerability_type: str, evidence: str | None, recommendation: str, file_path: str) -> tuple[str, str, str, str]:
     lowered = vulnerability_type.lower()
     original = evidence.strip() if evidence else ""
     fixed = recommendation.strip()
     confidence = "Medium"
+    snippet = original or recommendation or ""
 
     if "sql injection" in lowered:
-        fixed = (
-            'query = "SELECT * FROM users WHERE id = %s"\n'
-            "cursor.execute(query, (user_id,))"
-        )
+        fixed = _build_sql_fix(snippet)
         confidence = "High"
     elif "xss" in lowered:
-        fixed = (
-            "const safeContent = sanitize(userInput);\n"
-            "targetElement.textContent = safeContent;"
-        )
+        fixed = _build_xss_fix(snippet)
         confidence = "High"
     elif "command injection" in lowered:
-        fixed = (
-            "subprocess.run([\"/usr/bin/tool\", user_arg], check=True, shell=False)"
-        )
+        fixed = _build_command_fix(snippet)
         confidence = "High"
     elif "path traversal" in lowered:
-        fixed = (
-            "safe_base = Path('/app/data').resolve()\n"
-            "safe_path = (safe_base / user_file).resolve()\n"
-            "if not str(safe_path).startswith(str(safe_base)):\n"
-            "    raise ValueError('Invalid path')"
-        )
+        fixed = _build_path_fix(snippet)
         confidence = "High"
     elif "secret" in lowered or "hardcoded" in lowered:
-        fixed = (
-            "import os\n"
-            "api_key = os.environ['API_KEY']  # managed by vault/secret manager"
-        )
+        vars_found = _extract_identifiers(snippet, max_items=1)
+        key_name = vars_found[0].upper() if vars_found else "API_KEY"
+        value_name = vars_found[0] if vars_found else "secret_value"
+        fixed = "import os\n" + f"{value_name} = os.environ[{key_name!r}]  # managed by vault/secret manager"
         confidence = "High"
     elif "weak cryptography" in lowered:
         fixed = (
@@ -175,10 +317,7 @@ def _fix_artifacts(vulnerability_type: str, evidence: str | None, recommendation
         )
         confidence = "Medium"
     elif "unsafe eval" in lowered:
-        fixed = (
-            "ALLOWED_ACTIONS = {'sum': safe_sum, 'avg': safe_avg}\n"
-            "result = ALLOWED_ACTIONS[action](payload)"
-        )
+        fixed = _build_eval_fix(snippet)
         confidence = "High"
     elif "race condition" in lowered:
         fixed = (
@@ -200,6 +339,12 @@ def _fix_artifacts(vulnerability_type: str, evidence: str | None, recommendation
         confidence = "Medium"
     elif recommendation:
         fixed = recommendation.strip()
+        if original:
+            fixed = (
+                "# Context-aware remediation required for this exact code path.\n"
+                f"# Original: {original[:180]}\n"
+                f"# Guidance: {recommendation.strip()}"
+            )
         confidence = "Low"
 
     if not original:

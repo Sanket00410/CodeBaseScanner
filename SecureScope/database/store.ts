@@ -6,11 +6,17 @@ import { randomUUID } from "node:crypto";
 import { toHistoryItem, toScanView } from "../backend/reportAdapter";
 import {
   AuditEntry,
+  EnterpriseAssuranceSummary,
+  FalsePositiveReport,
   FindingReviewState,
+  PortfolioSummary,
+  RoleAwareReport,
   ScanHistoryItem,
   ScanRecord,
   ScanView,
   Severity,
+  ToolExecutionStatus,
+  ToolchainExecutionSummary,
   ToolchainStatusEntry,
   UserRole,
   UniversalScanReport,
@@ -42,6 +48,7 @@ const SEVERITY_SET = new Set<Severity>(["Critical", "High", "Medium", "Low", "In
 export class ScanStore {
   private state: PersistedState;
   private readonly dbFile: string;
+  private persistChain: Promise<void> = Promise.resolve();
 
   private constructor(dbFile: string, state: PersistedState) {
     this.dbFile = dbFile;
@@ -72,11 +79,15 @@ export class ScanStore {
   async addScan(record: ScanRecord): Promise<void> {
     const compacted = compactScanRecord(record);
     this.state.scans = [compacted, ...this.state.scans].slice(0, MAX_SCAN_HISTORY);
-    await this.persist();
+    await this.persistQueued();
   }
 
   listHistory(): ScanHistoryItem[] {
     return this.state.scans.map(toHistoryItem);
+  }
+
+  getPortfolioSummary(): PortfolioSummary {
+    return buildPortfolioSummary(this.state.scans);
   }
 
   getScanView(scanId: string): ScanView | null {
@@ -106,7 +117,7 @@ export class ScanStore {
       reviewedBy: actor,
       reviewedAt: new Date().toISOString(),
     };
-    await this.persist();
+    await this.persistQueued();
     return toScanView(record);
   }
 
@@ -121,7 +132,7 @@ export class ScanStore {
       createdAt: new Date().toISOString(),
     };
     this.state.audits = [entry, ...this.state.audits].slice(0, MAX_AUDIT_HISTORY);
-    await this.persist();
+    await this.persistQueued();
   }
 
   listAudits(scanId?: string): AuditEntry[] {
@@ -245,6 +256,12 @@ export class ScanStore {
 
     this.state.audits = this.state.audits.slice(0, 80).map((entry) => compactAuditEntry(entry, true));
   }
+
+  private async persistQueued(): Promise<void> {
+    const next = this.persistChain.then(() => this.persist());
+    this.persistChain = next.catch(() => undefined);
+    await next;
+  }
 }
 
 function normalizeState(input: PersistedState): PersistedState {
@@ -335,6 +352,7 @@ function compactReport(input: unknown): UniversalScanReport {
       homepage: asString(tool.homepage, ""),
       integrated: Boolean(tool.integrated),
       recommended_command: asString(tool.recommended_command, ""),
+      execution: normalizeToolExecutionStatus(tool.execution),
     };
   }
 
@@ -343,6 +361,53 @@ function compactReport(input: unknown): UniversalScanReport {
     .filter((item) => isPlainObject(item))
     .map((item) => item as Record<string, unknown>)
     .slice(0, MAX_AUTOFIX_RECOMMENDATIONS);
+
+  const profileCompliance =
+    normalizeProfileCompliance(raw.profile_compliance) ||
+    normalizeProfileCompliance(existing.profile_compliance);
+  const enterpriseAssurance =
+    normalizeEnterpriseAssurance(vulnerabilitySummary.enterprise_assurance) ||
+    normalizeEnterpriseAssurance(executive.enterprise_assurance) ||
+    normalizeEnterpriseAssurance(existing.enterprise_assurance);
+  const toolchainExecution =
+    normalizeToolchainExecutionSummary(vulnerabilitySummary.toolchain_execution) ||
+    normalizeToolchainExecutionSummary(executive.toolchain_execution);
+  const activePocSummary = normalizeActivePocSummary(vulnerabilitySummary.active_poc);
+  const releaseGateDistribution = normalizeCountMap(vulnerabilitySummary.release_gate_distribution);
+  const releaseGateDistributionFallback = Object.keys(releaseGateDistribution).length
+    ? releaseGateDistribution
+    : normalizeCountMap(executive.release_gate_distribution);
+  const riskIntelligence =
+    normalizeRiskIntelligence(vulnerabilitySummary.risk_intelligence) ||
+    normalizeRiskIntelligence(executive.risk_intelligence);
+  const gitDiffTracking =
+    normalizeGitDiffTracking(vulnerabilitySummary.git_diff_tracking) ||
+    normalizeGitDiffTracking(executive.git_diff_tracking);
+  const authAbuseSessionSecurity =
+    normalizeAuthAbuseSessionSecurity(vulnerabilitySummary.auth_abuse_session_security) ||
+    normalizeAuthAbuseSessionSecurity(executive.auth_abuse_session_security);
+  const falsePositiveReport =
+    normalizeFalsePositiveReport(raw.false_positive_report) ||
+    normalizeFalsePositiveReport(vulnerability.false_positive_report) ||
+    normalizeFalsePositiveReport(vulnerabilitySummary.false_positive_report);
+  const roleAwareReport =
+    normalizeRoleAwareReport(raw.role_aware_report) ||
+    normalizeRoleAwareReport(vulnerability.role_aware_report) ||
+    normalizeRoleAwareReport(vulnerabilitySummary.role_aware_report);
+  const deterministicReplay =
+    normalizeDeterministicReplay(vulnerabilitySummary.deterministic_replay) ||
+    normalizeDeterministicReplay(vulnerability.deterministic_replay) ||
+    normalizeDeterministicReplay(executive.deterministic_replay);
+  const reportIntegrityChain =
+    normalizeReportIntegrityChain(vulnerabilitySummary.report_integrity_chain) ||
+    normalizeReportIntegrityChain(vulnerability.report_integrity_chain) ||
+    normalizeReportIntegrityChain(executive.report_integrity_chain);
+  const policyWorkflow =
+    normalizeCompactObject(vulnerabilitySummary.policy_workflow) ||
+    normalizeCompactObject(executive.policy_workflow);
+  const suppressionLifecycle =
+    normalizeCompactObject(vulnerabilitySummary.suppression_lifecycle) ||
+    normalizeCompactObject(executive.suppression_lifecycle);
 
   const report: UniversalScanReport = {
     scanner: {
@@ -367,6 +432,12 @@ function compactReport(input: unknown): UniversalScanReport {
       affected_modules: normalizeAffectedModuleRows(executive.affected_modules),
       recommended_action_plan: asArray(executive.recommended_action_plan).map((item) => truncateText(asString(item), 400)).filter(Boolean).slice(0, 20),
       implemented_controls: asOptionalNumber(executive.implemented_controls),
+      toolchain_execution: toolchainExecution,
+      enterprise_assurance: enterpriseAssurance,
+      deterministic_replay: deterministicReplay,
+      report_integrity_chain: reportIntegrityChain,
+      policy_workflow: policyWorkflow,
+      suppression_lifecycle: suppressionLifecycle,
     },
     existing_implementation_report: {
       report_type: "existing_implementation",
@@ -381,6 +452,8 @@ function compactReport(input: unknown): UniversalScanReport {
       },
       controls,
       compliance_matrix: complianceMatrix,
+      profile_compliance: profileCompliance,
+      enterprise_assurance: enterpriseAssurance,
     },
     vulnerability_fixed_code_report: {
       report_type: "vulnerability_fixed_code",
@@ -399,13 +472,32 @@ function compactReport(input: unknown): UniversalScanReport {
         top_vulnerability_types: normalizeTopTypeRows(vulnerabilitySummary.top_vulnerability_types),
         top_owasp_categories: normalizeTopOwaspRows(vulnerabilitySummary.top_owasp_categories),
         affected_modules: normalizeAffectedModuleRows(vulnerabilitySummary.affected_modules),
+        release_gate_distribution: releaseGateDistributionFallback,
+        risk_intelligence: riskIntelligence,
+        git_diff_tracking: gitDiffTracking,
+        auth_abuse_session_security: authAbuseSessionSecurity,
         open_findings: asOptionalNumber(vulnerabilitySummary.open_findings),
         reviewed_findings: asOptionalNumber(vulnerabilitySummary.reviewed_findings),
+        toolchain_execution: toolchainExecution,
+        enterprise_assurance: enterpriseAssurance,
+        active_poc: activePocSummary,
+        false_positive_candidates: asOptionalNumber(vulnerabilitySummary.false_positive_candidates),
+        deterministic_replay: deterministicReplay,
+        report_integrity_chain: reportIntegrityChain,
+        policy_workflow: policyWorkflow,
+        suppression_lifecycle: suppressionLifecycle,
       },
       findings,
       auto_fix_recommendations: autoFixRecommendations,
       toolchain_status: toolchainStatus,
+      false_positive_report: falsePositiveReport,
+      role_aware_report: roleAwareReport,
+      deterministic_replay: deterministicReplay,
+      report_integrity_chain: reportIntegrityChain,
     },
+    profile_compliance: profileCompliance,
+    false_positive_report: falsePositiveReport,
+    role_aware_report: roleAwareReport,
   };
 
   syncReportSummary(report);
@@ -417,6 +509,7 @@ function compactFinding(input: unknown, aggressive = false): VulnerabilityFindin
   const severity = normalizeSeverity(raw.severity);
   const textLimit = aggressive ? Math.floor(MAX_FINDING_TEXT_LENGTH * 0.6) : MAX_FINDING_TEXT_LENGTH;
   const patchLimit = aggressive ? Math.floor(MAX_PATCH_LENGTH * 0.55) : MAX_PATCH_LENGTH;
+  const pocLimit = aggressive ? Math.floor(MAX_FINDING_TEXT_LENGTH * 0.45) : Math.floor(MAX_FINDING_TEXT_LENGTH * 0.75);
 
   return {
     finding_uid: asString(raw.finding_uid, ""),
@@ -433,8 +526,47 @@ function compactFinding(input: unknown, aggressive = false): VulnerabilityFindin
     recommendation: truncateText(asString(raw.recommendation, ""), textLimit),
     original_code: truncateText(asString(raw.original_code, ""), textLimit),
     fixed_code: truncateText(asString(raw.fixed_code, ""), textLimit),
+    ai_suggested_fix: asOptionalString(truncateText(asString(raw.ai_suggested_fix, ""), textLimit)),
+    ai_remediation_summary: asOptionalString(truncateText(asString(raw.ai_remediation_summary, ""), textLimit)),
+    ai_validation_steps: asOptionalString(truncateText(asString(raw.ai_validation_steps, ""), textLimit)),
+    ai_fix_source: asOptionalString(truncateText(asString(raw.ai_fix_source, ""), 200)),
+    ai_fix_confidence_label: asOptionalString(truncateText(asString(raw.ai_fix_confidence_label, ""), 32)),
+    ai_fix_confidence_score: asOptionalNumber(raw.ai_fix_confidence_score),
+    ai_fix_grounded: raw.ai_fix_grounded === undefined ? undefined : Boolean(raw.ai_fix_grounded),
+    ai_grounding_notes: asOptionalString(truncateText(asString(raw.ai_grounding_notes, ""), textLimit)),
+    remediation_confidence: asOptionalString(asString(raw.remediation_confidence || raw.autofix_confidence || "", "")),
+    code_evidence_excerpt: asOptionalString(truncateText(asString(raw.code_evidence_excerpt, ""), textLimit)),
+    source_line_snippet: asOptionalString(truncateText(asString(raw.source_line_snippet, ""), textLimit)),
+    code_owner: asOptionalString(truncateText(asString(raw.code_owner, ""), 220)),
+    rule_confidence: asOptionalNumber(raw.rule_confidence),
+    rule_confidence_label: asOptionalString(asString(raw.rule_confidence_label, "")),
+    git_diff_file_changed: raw.git_diff_file_changed === undefined ? undefined : Boolean(raw.git_diff_file_changed),
+    git_diff_line_changed: raw.git_diff_line_changed === undefined ? undefined : Boolean(raw.git_diff_line_changed),
+    dependency_reachability: normalizeDependencyReachability(raw.dependency_reachability),
     patch_preview: truncateText(asString(raw.patch_preview, ""), patchLimit),
+    attack_scenario: asOptionalString(truncateText(asString(raw.attack_scenario, ""), textLimit)),
+    exploitation_example: asOptionalString(truncateText(asString(raw.exploitation_example, ""), textLimit)),
+    proof_of_concept: asOptionalString(truncateText(asString(raw.proof_of_concept, ""), pocLimit)),
+    proof_of_concept_template: asOptionalString(truncateText(asString(raw.proof_of_concept_template, ""), pocLimit)),
+    cve_ids: asArray(raw.cve_ids).map((item) => asString(item).toUpperCase()).filter(Boolean).slice(0, 20),
+    advisory_ids: asArray(raw.advisory_ids).map((item) => asString(item).toUpperCase()).filter(Boolean).slice(0, 20),
+    dependency_name: asOptionalString(truncateText(asString(raw.dependency_name, ""), 200)),
+    dependency_version: asOptionalString(truncateText(asString(raw.dependency_version, ""), 120)),
+    dependency_id: asOptionalString(truncateText(asString(raw.dependency_id, ""), 120)),
+    known_exploited: raw.known_exploited === undefined ? undefined : Boolean(raw.known_exploited),
+    exploit_maturity: asOptionalString(truncateText(asString(raw.exploit_maturity, ""), 120)),
+    exploitability_context: asOptionalString(truncateText(asString(raw.exploitability_context, ""), textLimit)),
+    release_gate_action: asOptionalString(truncateText(asString(raw.release_gate_action, ""), 80)),
+    active_poc: normalizeActivePoc(raw.active_poc, pocLimit),
+    evidence_replay_pack: normalizeEvidenceReplayPack(raw.evidence_replay_pack, textLimit),
     rule_id: asString(raw.rule_id, "rule"),
+    fix_artifact_kind:
+      asString(raw.fix_artifact_kind, "").toLowerCase() === "exact_patch"
+        ? "exact_patch"
+        : asString(raw.fix_artifact_kind, "").toLowerCase() === "guidance"
+          ? "guidance"
+          : undefined,
+    fix_artifact_label: asOptionalString(truncateText(asString(raw.fix_artifact_label, ""), 120)),
     evidence_sources: asArray(raw.evidence_sources).map((item) => asString(item)).filter(Boolean).slice(0, 20),
     affected_module: asOptionalString(raw.affected_module),
     tool: asOptionalString(raw.tool),
@@ -613,6 +745,585 @@ function normalizeAffectedModuleRows(input: unknown): Array<{ module: string; co
     .slice(0, 40);
 }
 
+function normalizeProfileCompliance(input: unknown): UniversalScanReport["profile_compliance"] | undefined {
+  const raw = asRecord(input);
+  if (!Object.keys(raw).length) {
+    return undefined;
+  }
+  const frameworks = asArray(raw.frameworks)
+    .map((entry) => {
+      const framework = asRecord(entry);
+      const rows = asArray(framework.rows)
+        .map((rowInput, index) => {
+          const row = asRecord(rowInput);
+          const statusRaw = asString(row.status, "gap").toLowerCase();
+          const status: "covered" | "gap" | "not_applicable" =
+            statusRaw === "covered" ? "covered" : statusRaw === "not_applicable" ? "not_applicable" : "gap";
+          const id = asString(row.id, asString(row.item_id, asString(row.key, `ITEM-${index + 1}`)));
+          const title = asString(
+            row.title,
+            asString(row.category, asString(row.name, asString(row.description, "Uncategorized item"))),
+          );
+          const findingCount = asNumber(row.finding_count, asNumber(row.findings, 0));
+          const controlCount = asNumber(row.control_count, asNumber(row.controls, 0));
+          const total = asNumber(row.count, findingCount + controlCount);
+          return {
+            id,
+            title,
+            status,
+            finding_count: findingCount,
+            control_count: controlCount,
+            count: total,
+          };
+        })
+        .slice(0, 80);
+
+      const summary = asRecord(framework.summary);
+      return {
+        framework_id: asString(framework.framework_id, asString(framework.id, "unknown-framework")),
+        framework_name: asString(framework.framework_name, asString(framework.name, "Framework")),
+        version: asString(framework.version, "N/A"),
+        label: asString(framework.label, asString(framework.framework_name, "Framework")),
+        prefix: asString(framework.prefix, ""),
+        applicable: Boolean(framework.applicable),
+        summary: {
+          covered: asNumber(summary.covered, 0),
+          gap: asNumber(summary.gap, 0),
+          not_applicable: asNumber(summary.not_applicable, 0),
+          mapped_findings: asNumber(summary.mapped_findings, 0),
+          mapped_controls: asNumber(summary.mapped_controls, 0),
+        },
+        rows,
+      };
+    })
+    .slice(0, 12);
+
+  const versions = asRecord(raw.framework_versions);
+  const summary = asRecord(raw.summary);
+  const scanProfile: "codebase" = "codebase";
+
+  return {
+    scan_profile: scanProfile,
+    scan_profile_label: asString(raw.scan_profile_label, "Codebase"),
+    framework_versions: {
+      owasp_top_10: asString(versions.owasp_top_10, "2021"),
+      owasp_api_top_10: asString(versions.owasp_api_top_10, "2023"),
+      asvs: asString(versions.asvs, "5.0.0"),
+      wstg: asString(versions.wstg, "4.2"),
+    },
+    applicable_framework_ids: asArray(raw.applicable_framework_ids).map((item) => asString(item)).filter(Boolean).slice(0, 20),
+    frameworks,
+    summary: {
+      frameworks_total: asNumber(summary.frameworks_total, frameworks.length),
+      frameworks_applicable: asNumber(
+        summary.frameworks_applicable,
+        frameworks.filter((framework) => framework.applicable).length,
+      ),
+      items_covered: asNumber(summary.items_covered, 0),
+      items_gap: asNumber(summary.items_gap, 0),
+      items_not_applicable: asNumber(summary.items_not_applicable, 0),
+      mapped_findings_total: asNumber(summary.mapped_findings_total, 0),
+      mapped_controls_total: asNumber(summary.mapped_controls_total, 0),
+    },
+  };
+}
+
+function normalizeEnterpriseAssurance(input: unknown): EnterpriseAssuranceSummary | undefined {
+  const raw = asRecord(input);
+  if (!Object.keys(raw).length) {
+    return undefined;
+  }
+  const statusRaw = asString(raw.status, "blocked").toLowerCase();
+  const status: EnterpriseAssuranceSummary["status"] =
+    statusRaw === "ready" ? "ready" : statusRaw === "warning" ? "warning" : "blocked";
+  return {
+    status,
+    is_enterprise_ready: Boolean(raw.is_enterprise_ready),
+    scan_profile: "codebase",
+    required_tools: asArray(raw.required_tools).map((item) => asString(item)).filter(Boolean).slice(0, 40),
+    required_tools_total: asNumber(raw.required_tools_total, 0),
+    required_tools_ready: asNumber(raw.required_tools_ready, 0),
+    required_tools_coverage_percent: asNumber(raw.required_tools_coverage_percent, 0),
+    recommended_tools: asArray(raw.recommended_tools).map((item) => asString(item)).filter(Boolean).slice(0, 40),
+    recommended_tools_total: asOptionalNumber(raw.recommended_tools_total),
+    recommended_tools_ready: asOptionalNumber(raw.recommended_tools_ready),
+    recommended_tools_coverage_percent: asOptionalNumber(raw.recommended_tools_coverage_percent),
+    toolchain_success_rate_percent: asNumber(raw.toolchain_success_rate_percent, 0),
+    toolchain_attempted_tools: asNumber(raw.toolchain_attempted_tools, 0),
+    toolchain_failed_tools: asNumber(raw.toolchain_failed_tools, 0),
+    toolchain_unavailable_tools: asNumber(raw.toolchain_unavailable_tools, 0),
+    toolchain_no_runner_tools: asNumber(raw.toolchain_no_runner_tools, 0),
+    readiness_score: asNumber(raw.readiness_score, 0),
+    blockers: asArray(raw.blockers).map((item) => truncateText(asString(item), 500)).filter(Boolean).slice(0, 30),
+    advisories: asArray(raw.advisories).map((item) => truncateText(asString(item), 500)).filter(Boolean).slice(0, 30),
+    recommendation: truncateText(asString(raw.recommendation, ""), 1000),
+  };
+}
+
+function normalizeToolchainExecutionSummary(input: unknown): ToolchainExecutionSummary | undefined {
+  const raw = asRecord(input);
+  if (!Object.keys(raw).length) {
+    return undefined;
+  }
+  const failureRows = asArray(raw.failures)
+    .map((item) => asRecord(item))
+    .map((row) => ({
+      tool: asString(row.tool, "unknown"),
+      status: asString(row.status, "unknown"),
+      message: truncateText(asString(row.message, ""), 500),
+      errors: asArray(row.errors).map((error) => truncateText(asString(error), 500)).filter(Boolean).slice(0, 10),
+    }))
+    .slice(0, 40);
+  const slowRows = asArray(raw.slowest_tools)
+    .map((item) => asRecord(item))
+    .map((row) => ({
+      tool: asString(row.tool, "unknown"),
+      duration_ms: asNumber(row.duration_ms, 0),
+      findings_count: asNumber(row.findings_count, 0),
+      status: asString(row.status, "unknown"),
+    }))
+    .slice(0, 30);
+  return {
+    total_tools: asNumber(raw.total_tools, 0),
+    selected_tools: asNumber(raw.selected_tools, 0),
+    available_tools: asNumber(raw.available_tools, 0),
+    integrated_tools: asNumber(raw.integrated_tools, 0),
+    runner_available_tools: asNumber(raw.runner_available_tools, 0),
+    attempted_tools: asNumber(raw.attempted_tools, 0),
+    successful_tools: asNumber(raw.successful_tools, 0),
+    failed_tools: asNumber(raw.failed_tools, 0),
+    unavailable_tools: asNumber(raw.unavailable_tools, 0),
+    no_runner_tools: asNumber(raw.no_runner_tools, 0),
+    skipped_tools: asNumber(raw.skipped_tools, 0),
+    success_rate_percent: asNumber(raw.success_rate_percent, 0),
+    status_distribution: normalizeCountMap(raw.status_distribution),
+    failures: failureRows,
+    slowest_tools: slowRows,
+  };
+}
+
+function normalizeToolExecutionStatus(input: unknown): ToolExecutionStatus | undefined {
+  const raw = asRecord(input);
+  if (!Object.keys(raw).length) {
+    return undefined;
+  }
+  return {
+    attempted: Boolean(raw.attempted),
+    status: asString(raw.status, "unknown"),
+    duration_ms: asNumber(raw.duration_ms, 0),
+    findings_count: asNumber(raw.findings_count, 0),
+    errors: asArray(raw.errors).map((item) => truncateText(asString(item), 500)).filter(Boolean).slice(0, 12),
+    evidence: normalizeToolExecutionEvidence(raw.evidence),
+  };
+}
+
+function normalizeToolExecutionEvidence(input: unknown): ToolExecutionStatus["evidence"] {
+  return asArray(input)
+    .map((item) => asRecord(item))
+    .map((row) => ({
+      timestamp: asOptionalString(row.timestamp),
+      command: asOptionalString(truncateText(asString(row.command, ""), 1200)),
+      cwd: asOptionalString(truncateText(asString(row.cwd, ""), 500)),
+      exit_code: asOptionalNumber(row.exit_code),
+      duration_ms: asOptionalNumber(row.duration_ms),
+      stdout_sha256: asOptionalString(asString(row.stdout_sha256, "")),
+      stderr_sha256: asOptionalString(asString(row.stderr_sha256, "")),
+      stdout_bytes: asOptionalNumber(row.stdout_bytes),
+      stderr_bytes: asOptionalNumber(row.stderr_bytes),
+      stdout_preview: asOptionalString(truncateText(asString(row.stdout_preview, ""), 1800)),
+      stderr_preview: asOptionalString(truncateText(asString(row.stderr_preview, ""), 1800)),
+    }))
+    .slice(0, 8);
+}
+
+function normalizeActivePoc(input: unknown, maxLength: number): VulnerabilityFinding["active_poc"] | undefined {
+  const raw = asRecord(input);
+  if (!Object.keys(raw).length) {
+    return undefined;
+  }
+  return {
+    mode: asOptionalString(raw.mode),
+    family: asOptionalString(raw.family),
+    command: asOptionalString(truncateText(asString(raw.command, ""), maxLength)),
+    status: asOptionalString(raw.status),
+    executed: raw.executed === undefined ? undefined : Boolean(raw.executed),
+    exit_code: raw.exit_code === null || raw.exit_code === undefined ? undefined : asNumber(raw.exit_code, 0),
+    output: asOptionalString(truncateText(asString(raw.output, ""), maxLength)),
+    line_tested: raw.line_tested === undefined ? undefined : asNumber(raw.line_tested, 0),
+  };
+}
+
+function normalizeActivePocSummary(input: unknown): { executed: number; passed: number; failed: number; skipped: number } | undefined {
+  const raw = asRecord(input);
+  if (!Object.keys(raw).length) {
+    return undefined;
+  }
+  const passed = asNumber(raw.passed, asNumber(raw.verified, 0));
+  const failed = asNumber(raw.failed, asNumber(raw.inconclusive, 0));
+  return {
+    executed: asNumber(raw.executed, 0),
+    passed,
+    failed,
+    skipped: asNumber(raw.skipped, 0),
+  };
+}
+
+function normalizeEvidenceReplayPack(
+  input: unknown,
+  maxLength: number,
+): VulnerabilityFinding["evidence_replay_pack"] | undefined {
+  const raw = asRecord(input);
+  if (!Object.keys(raw).length) {
+    return undefined;
+  }
+  const envRaw = asRecord(raw.env_fingerprint);
+  const outputHashesRaw = asRecord(raw.output_hashes);
+  const outputSizesRaw = asRecord(raw.output_sizes);
+  const replayScriptRaw = asRecord(raw.replay_script);
+  return {
+    enabled: raw.enabled === undefined ? undefined : Boolean(raw.enabled),
+    mode: asOptionalString(asString(raw.mode, "")),
+    inferred_tool: asOptionalString(asString(raw.inferred_tool, "")),
+    recorded: raw.recorded === undefined ? undefined : Boolean(raw.recorded),
+    env_fingerprint: {
+      os: asOptionalString(asString(envRaw.os, "")),
+      os_release: asOptionalString(asString(envRaw.os_release, "")),
+      platform: asOptionalString(asString(envRaw.platform, "")),
+      architecture: asOptionalString(asString(envRaw.architecture, "")),
+      python_version: asOptionalString(asString(envRaw.python_version, "")),
+    },
+    replay_id: asOptionalString(asString(raw.replay_id, "")),
+    timestamp: asOptionalString(asString(raw.timestamp, "")),
+    tool: asOptionalString(asString(raw.tool, "")),
+    command: asOptionalString(truncateText(asString(raw.command, ""), maxLength)),
+    cwd: asOptionalString(truncateText(asString(raw.cwd, ""), 500)),
+    exit_code: raw.exit_code === null || raw.exit_code === undefined ? undefined : asNumber(raw.exit_code, 0),
+    duration_ms: asOptionalNumber(raw.duration_ms),
+    output_hashes: {
+      stdout_sha256: asOptionalString(asString(outputHashesRaw.stdout_sha256, "")),
+      stderr_sha256: asOptionalString(asString(outputHashesRaw.stderr_sha256, "")),
+    },
+    output_sizes: {
+      stdout_bytes: asOptionalNumber(outputSizesRaw.stdout_bytes),
+      stderr_bytes: asOptionalNumber(outputSizesRaw.stderr_bytes),
+    },
+    record_sha256: asOptionalString(asString(raw.record_sha256, "")),
+    replay_script: {
+      windows_ps1: asOptionalString(truncateText(asString(replayScriptRaw.windows_ps1, ""), 1800)),
+      posix_sh: asOptionalString(truncateText(asString(replayScriptRaw.posix_sh, ""), 1800)),
+    },
+    reason: asOptionalString(truncateText(asString(raw.reason, ""), 600)),
+  };
+}
+
+function normalizeDeterministicReplay(input: unknown):
+  | {
+      enabled: boolean;
+      mode: string;
+      findings_total: number;
+      findings_with_replay: number;
+      findings_without_replay: number;
+      replay_coverage_percent: number;
+      tool_evidence_records: number;
+      tools_with_evidence: string[];
+      tool_mismatch_counts: Record<string, number>;
+      env_fingerprint: Record<string, unknown>;
+      record_hashes: string[];
+    }
+  | undefined {
+  const raw = asRecord(input);
+  if (!Object.keys(raw).length) {
+    return undefined;
+  }
+  return {
+    enabled: Boolean(raw.enabled),
+    mode: asString(raw.mode, "deterministic-evidence-replay"),
+    findings_total: asNumber(raw.findings_total, 0),
+    findings_with_replay: asNumber(raw.findings_with_replay, 0),
+    findings_without_replay: asNumber(raw.findings_without_replay, 0),
+    replay_coverage_percent: asNumber(raw.replay_coverage_percent, 0),
+    tool_evidence_records: asNumber(raw.tool_evidence_records, 0),
+    tools_with_evidence: asArray(raw.tools_with_evidence).map((item) => asString(item)).filter(Boolean).slice(0, 80),
+    tool_mismatch_counts: normalizeCountMap(raw.tool_mismatch_counts),
+    env_fingerprint: (sanitizeUnknownValue(raw.env_fingerprint, 2) as Record<string, unknown>) || {},
+    record_hashes: asArray(raw.record_hashes)
+      .map((item) => asString(item))
+      .filter(Boolean)
+      .slice(0, 300),
+  };
+}
+
+function normalizeReportIntegrityChain(input: unknown):
+  | {
+      chain_version: string;
+      tamper_evident: boolean;
+      generated_at: string;
+      metadata_sha256: string;
+      findings_sha256: string;
+      tool_evidence_sha256: string;
+      report_sha256: string;
+      previous_report_sha256?: string | null;
+      chain_note?: string;
+    }
+  | undefined {
+  const raw = asRecord(input);
+  if (!Object.keys(raw).length) {
+    return undefined;
+  }
+  return {
+    chain_version: asString(raw.chain_version, "1.0"),
+    tamper_evident: Boolean(raw.tamper_evident),
+    generated_at: asString(raw.generated_at, ""),
+    metadata_sha256: asString(raw.metadata_sha256, ""),
+    findings_sha256: asString(raw.findings_sha256, ""),
+    tool_evidence_sha256: asString(raw.tool_evidence_sha256, ""),
+    report_sha256: asString(raw.report_sha256, ""),
+    previous_report_sha256:
+      raw.previous_report_sha256 === undefined ? undefined : (raw.previous_report_sha256 === null ? null : asString(raw.previous_report_sha256, "")),
+    chain_note: asOptionalString(truncateText(asString(raw.chain_note, ""), 600)),
+  };
+}
+
+function normalizeRiskIntelligence(input: unknown):
+  | {
+      findings_with_cve: number;
+      findings_cvss_ge_7: number;
+      known_exploited_findings: number;
+    }
+  | undefined {
+  const raw = asRecord(input);
+  if (!Object.keys(raw).length) {
+    return undefined;
+  }
+  return {
+    findings_with_cve: asNumber(raw.findings_with_cve, 0),
+    findings_cvss_ge_7: asNumber(raw.findings_cvss_ge_7, 0),
+    known_exploited_findings: asNumber(raw.known_exploited_findings, 0),
+  };
+}
+
+function normalizeGitDiffTracking(input: unknown):
+  | {
+      enabled: boolean;
+      changed_files: number;
+      changed_lines: number;
+      findings_on_changed_files: number;
+      findings_on_changed_lines: number;
+    }
+  | undefined {
+  const raw = asRecord(input);
+  if (!Object.keys(raw).length) {
+    return undefined;
+  }
+  return {
+    enabled: Boolean(raw.enabled),
+    changed_files: asNumber(raw.changed_files, 0),
+    changed_lines: asNumber(raw.changed_lines, 0),
+    findings_on_changed_files: asNumber(raw.findings_on_changed_files, 0),
+    findings_on_changed_lines: asNumber(raw.findings_on_changed_lines, 0),
+  };
+}
+
+function normalizeAffectedFileRows(
+  input: unknown,
+): Array<{ file: string; folder: string; count: number; critical: number; high: number }> {
+  return asArray(input)
+    .map((item) => {
+      const row = asRecord(item);
+      return {
+        file: asString(row.file, "unknown"),
+        folder: asString(row.folder, "."),
+        count: asNumber(row.count, 0),
+        critical: asNumber(row.critical, 0),
+        high: asNumber(row.high, 0),
+      };
+    })
+    .filter((row) => row.file)
+    .slice(0, 120);
+}
+
+function normalizeAuthAbuseSessionSecurity(input: unknown):
+  | {
+      total_findings: number;
+      severity_distribution: Record<string, number>;
+      top_vulnerability_types: Array<{ type: string; count: number }>;
+      affected_modules: Array<{ module: string; count: number; critical: number; high: number }>;
+      affected_files: Array<{ file: string; folder: string; count: number; critical: number; high: number }>;
+    }
+  | undefined {
+  const raw = asRecord(input);
+  if (!Object.keys(raw).length) {
+    return undefined;
+  }
+  return {
+    total_findings: asNumber(raw.total_findings, 0),
+    severity_distribution: normalizeSeverityDistribution(raw.severity_distribution),
+    top_vulnerability_types: normalizeTopTypeRows(raw.top_vulnerability_types),
+    affected_modules: normalizeAffectedModuleRows(raw.affected_modules),
+    affected_files: normalizeAffectedFileRows(raw.affected_files),
+  };
+}
+
+function normalizeFalsePositiveReport(input: unknown): FalsePositiveReport | undefined {
+  const raw = asRecord(input);
+  if (!Object.keys(raw).length) {
+    return undefined;
+  }
+  const candidates = asArray(raw.candidates)
+    .map((item) => asRecord(item))
+    .map((row) => ({
+      finding_uid: asOptionalString(row.finding_uid),
+      vulnerability_title: asOptionalString(row.vulnerability_title),
+      severity: asOptionalString(row.severity) as Severity | undefined,
+      file_path: asOptionalString(row.file_path),
+      line_number: asOptionalNumber(row.line_number),
+      reason_summary: asOptionalString(truncateText(asString(row.reason_summary, ""), 500)),
+      reason_detail: asOptionalString(truncateText(asString(row.reason_detail, ""), 1200)),
+      confidence: asOptionalNumber(row.confidence),
+      verification_steps: asArray(row.verification_steps)
+        .map((step) => truncateText(asString(step), 500))
+        .filter(Boolean)
+        .slice(0, 8),
+    }))
+    .slice(0, 120);
+
+  return {
+    policy_note: asOptionalString(truncateText(asString(raw.policy_note, ""), 2000)),
+    candidate_count: asOptionalNumber(raw.candidate_count),
+    candidates,
+  };
+}
+
+function normalizeDependencyReachability(input: unknown):
+  | {
+      status: string;
+      score: number;
+      priority_factor?: number;
+      package_candidates?: string[];
+      import_evidence?: string[];
+      manifest_present?: boolean;
+      lockfile_present?: boolean;
+      reasoning?: string;
+    }
+  | undefined {
+  const raw = asRecord(input);
+  if (!Object.keys(raw).length) {
+    return undefined;
+  }
+  return {
+    status: asString(raw.status, "unknown"),
+    score: asNumber(raw.score, 1),
+    priority_factor: asOptionalNumber(raw.priority_factor),
+    package_candidates: asArray(raw.package_candidates).map((item) => asString(item)).filter(Boolean).slice(0, 8),
+    import_evidence: asArray(raw.import_evidence).map((item) => asString(item)).filter(Boolean).slice(0, 8),
+    manifest_present: raw.manifest_present === undefined ? undefined : Boolean(raw.manifest_present),
+    lockfile_present: raw.lockfile_present === undefined ? undefined : Boolean(raw.lockfile_present),
+    reasoning: asOptionalString(truncateText(asString(raw.reasoning, ""), 600)),
+  };
+}
+
+function normalizeRoleAwareReport(input: unknown): RoleAwareReport | undefined {
+  const raw = asRecord(input);
+  if (!Object.keys(raw).length) {
+    return undefined;
+  }
+  return {
+    metadata: sanitizeUnknownValue(raw.metadata, 3) as Record<string, unknown>,
+    visualization_hints: sanitizeUnknownValue(raw.visualization_hints, 3) as Record<string, unknown>,
+    cto_board_view: sanitizeUnknownValue(raw.cto_board_view, 4) as Record<string, unknown>,
+    ciso_security_view: sanitizeUnknownValue(raw.ciso_security_view, 4) as Record<string, unknown>,
+    developer_devops_view: sanitizeUnknownValue(raw.developer_devops_view, 4) as Record<string, unknown>,
+    risk_story_mode: sanitizeUnknownValue(raw.risk_story_mode, 4) as Record<string, unknown>,
+    advanced_features: sanitizeUnknownValue(raw.advanced_features, 4) as Record<string, unknown>,
+    enterprise_assurance: normalizeEnterpriseAssurance(raw.enterprise_assurance),
+    false_positive_report: normalizeFalsePositiveReport(raw.false_positive_report),
+  };
+}
+
+function buildPortfolioSummary(scans: ScanRecord[]): PortfolioSummary {
+  if (scans.length === 0) {
+    return {
+      scansTotal: 0,
+      repositoriesTotal: 0,
+      trendDirection: "unavailable",
+      trendDelta: 0,
+      hotModules: [],
+      recurringCwe: [],
+      fixVelocityPercent: 0,
+      suppressionDriftScore: 0,
+    };
+  }
+
+  const uniqueRepos = new Set(scans.map((scan) => scan.projectPath));
+  const moduleCounts = new Map<string, number>();
+  const cweCounts = new Map<string, number>();
+  let totalFindings = 0;
+  let totalReviewed = 0;
+  let totalDrift = 0;
+
+  for (const scan of scans) {
+    const summary = scan.report.vulnerability_fixed_code_report.summary;
+    const findings = scan.report.vulnerability_fixed_code_report.findings || [];
+    totalFindings += summary.total_findings || findings.length;
+    totalReviewed += summary.reviewed_findings || 0;
+
+    const suppressionReport = asRecord((scan.report as LooseRecord).suppression_report);
+    totalDrift += asNumber(suppressionReport.suppression_drift_score, 0);
+
+    for (const moduleRow of summary.affected_modules || []) {
+      const current = moduleCounts.get(moduleRow.module) || 0;
+      moduleCounts.set(moduleRow.module, current + moduleRow.count);
+    }
+
+    for (const finding of findings) {
+      const cwe = asString((finding as unknown as LooseRecord).cwe_id, "").trim();
+      if (!cwe || cwe.toUpperCase() === "N/A") {
+        continue;
+      }
+      cweCounts.set(cwe, (cweCounts.get(cwe) || 0) + 1);
+    }
+  }
+
+  const latest = scans[0];
+  const previousSameProject = scans.find(
+    (item, index) => index > 0 && item.projectPath === latest.projectPath,
+  );
+  const latestRisk = latest?.report.executive_summary.risk_score || 0;
+  const previousRisk = previousSameProject?.report.executive_summary.risk_score;
+  let trendDirection: PortfolioSummary["trendDirection"] = "unavailable";
+  let trendDelta = 0;
+  if (typeof previousRisk === "number") {
+    trendDelta = Number((latestRisk - previousRisk).toFixed(2));
+    if (trendDelta >= 1) {
+      trendDirection = "declining";
+    } else if (trendDelta <= -1) {
+      trendDirection = "improving";
+    } else {
+      trendDirection = "stable";
+    }
+  }
+
+  const hotModules = [...moduleCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([module, count]) => ({ module, count }));
+  const recurringCwe = [...cweCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([cwe, count]) => ({ cwe, count }));
+
+  return {
+    scansTotal: scans.length,
+    repositoriesTotal: uniqueRepos.size,
+    trendDirection,
+    trendDelta,
+    hotModules,
+    recurringCwe,
+    fixVelocityPercent: Number(((totalReviewed / Math.max(1, totalFindings)) * 100).toFixed(2)),
+    suppressionDriftScore: Number((totalDrift / Math.max(1, scans.length)).toFixed(2)),
+  };
+}
+
 function normalizeCountMap(input: unknown): Record<string, number> {
   const source = asRecord(input);
   const result: Record<string, number> = {};
@@ -620,6 +1331,17 @@ function normalizeCountMap(input: unknown): Record<string, number> {
     result[String(key)] = asNumber(value, 0);
   }
   return result;
+}
+
+function normalizeCompactObject(input: unknown): Record<string, unknown> | undefined {
+  if (!isPlainObject(input)) {
+    return undefined;
+  }
+  const sanitized = sanitizeUnknownValue(input, 2);
+  if (!isPlainObject(sanitized)) {
+    return undefined;
+  }
+  return sanitized as Record<string, unknown>;
 }
 
 function sanitizeUnknownValue(value: unknown, depth: number): unknown {

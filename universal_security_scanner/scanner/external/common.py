@@ -11,9 +11,16 @@ from typing import Any
 from universal_security_scanner.models import Severity
 
 
-def run_command(command: list[str], timeout_seconds: int, cwd: Path | None = None) -> tuple[int, str, str]:
+def run_command(
+    command: list[str],
+    timeout_seconds: int,
+    cwd: Path | None = None,
+    env_overrides: dict[str, str] | None = None,
+) -> tuple[int, str, str]:
     env = os.environ.copy()
     env.setdefault("USS_WRAPPER_PYTHON", sys.executable)
+    if env_overrides:
+        env.update(env_overrides)
     completed = subprocess.run(
         command,
         capture_output=True,

@@ -586,7 +586,8 @@ class ReportExporter:
             (
                 "<tr>"
                 f"<td class='risk-{html.escape(str(alert.get('severity', 'Info')).lower())}'>{html.escape(str(alert.get('severity', 'Info')))}</td>"
-                f"<td><button type='button' class='alert-link' data-alert-id='{html.escape(str(alert.get('id')))}'>{html.escape(str(alert.get('title')))}</button></td>"
+                f"<td><button type='button' class='alert-link' data-alert-id='{html.escape(str(alert.get('id')))}' "
+                f"aria-controls='{html.escape(str(alert.get('id')))}' aria-expanded='false'>{html.escape(str(alert.get('title')))}</button></td>"
                 f"<td align='center'>{alert.get('count', 0)}</td>"
                 f"<td>{html.escape(str(alert.get('cwe', 'N/A')))}</td>"
                 f"<td>{html.escape(str(alert.get('owasp', 'N/A')))}</td>"
@@ -880,12 +881,30 @@ class ReportExporter:
         }}).join("");
       }}
 
+      function openAlertSection(id) {{
+        var target = document.getElementById(id);
+        if (!target) return;
+        document.querySelectorAll(".alert-block").forEach(function (section) {{
+          if (section.id === id) {{
+            section.classList.remove("hidden-section");
+          }} else {{
+            section.classList.add("hidden-section");
+          }}
+        }});
+        document.querySelectorAll(".alert-link").forEach(function (item) {{
+          item.setAttribute("aria-expanded", item.getAttribute("data-alert-id") === id ? "true" : "false");
+        }});
+        target.scrollIntoView({{ behavior: "smooth", block: "start" }});
+        if (!target.hasAttribute("tabindex")) {{
+          target.setAttribute("tabindex", "-1");
+        }}
+      }}
+
       document.querySelectorAll(".alert-link").forEach(function (button) {{
         button.addEventListener("click", function () {{
           var id = button.getAttribute("data-alert-id");
           if (!id) return;
-          var section = document.getElementById(id);
-          if (section) section.classList.toggle("hidden-section");
+          openAlertSection(id);
         }});
       }});
 

@@ -1,0 +1,184 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CodeSentinelX Enterprise Security Dashboard</title>
+  <!-- vendor css + app css injected by export service -->
+</head>
+<body data-theme="dark">
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 64 64" role="img">
+          <defs>
+            <linearGradient id="cxs-g" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#3cd3ff"></stop>
+              <stop offset="100%" stop-color="#1f88ff"></stop>
+            </linearGradient>
+          </defs>
+          <path d="M32 4l22 10v16c0 14-9.5 25.4-22 30C19.5 55.4 10 44 10 30V14L32 4z" fill="url(#cxs-g)"></path>
+          <path d="M23 28l7 7 11-11" fill="none" stroke="#061322" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"></path>
+        </svg>
+      </div>
+      <div class="brand-copy">
+        <div class="brand-title">CodeSentinelX</div>
+        <div class="brand-subtitle">Enterprise Secure Code Analytics</div>
+      </div>
+      <div class="top-meta" id="topMeta">Latest scan intelligence</div>
+    </div>
+    <div class="topbar-actions">
+      <label class="toggle-wrap" title="Toggle dark mode">
+        <span>Dark</span>
+        <input type="checkbox" id="darkModeToggle" checked />
+      </label>
+      <button id="downloadHtmlBtn" class="btn">HTML</button>
+      <button id="downloadPdfBtn" class="btn">PDF</button>
+      <button id="downloadSarifBtn" class="btn">SARIF</button>
+      <button id="downloadJsonBtn" class="btn">JSON</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-head">
+        <h2>Navigation</h2>
+        <p>Switch between intelligence views</p>
+      </div>
+      <nav id="sidebarNav" class="sidebar-nav">
+        <button data-page="overview" class="nav-item active"><span class="nav-icon">OV</span><span class="nav-copy">Overview</span></button>
+        <button data-page="vulnerabilities" class="nav-item"><span class="nav-icon">VU</span><span class="nav-copy">Vulnerabilities</span></button>
+        <button data-page="dependencies" class="nav-item"><span class="nav-icon">DP</span><span class="nav-copy">Dependencies</span></button>
+        <button data-page="secrets" class="nav-item"><span class="nav-icon">SC</span><span class="nav-copy">Secrets</span></button>
+        <button data-page="metrics" class="nav-item"><span class="nav-icon">MT</span><span class="nav-copy">Metrics</span></button>
+        <button data-page="compliance" class="nav-item"><span class="nav-icon">CP</span><span class="nav-copy">Compliance</span></button>
+        <button data-page="trends" class="nav-item"><span class="nav-icon">TR</span><span class="nav-copy">Trends</span></button>
+        <button data-page="remediation" class="nav-item"><span class="nav-icon">RM</span><span class="nav-copy">Remediation</span></button>
+        <button data-page="rules" class="nav-item"><span class="nav-icon">RL</span><span class="nav-copy">Rules</span></button>
+      </nav>
+    </aside>
+
+    <main class="main">
+      <section id="page-overview" class="page active">
+        <div class="page-header">
+          <h1>Security Command Overview</h1>
+          <p id="overviewMeta" class="muted"></p>
+        </div>
+
+        <div class="score-card" id="securityScoreCard">
+          <div class="score-label">Security Score</div>
+          <div class="score-ring-wrap">
+            <svg class="score-ring" viewBox="0 0 120 120" aria-hidden="true">
+              <circle class="score-ring-bg" cx="60" cy="60" r="50"></circle>
+              <circle class="score-ring-fg" id="securityScoreRing" cx="60" cy="60" r="50"></circle>
+            </svg>
+            <div class="score-value" id="securityScoreValue">0</div>
+          </div>
+          <div class="score-band" id="securityScoreBand">Unknown</div>
+        </div>
+
+        <div id="summaryCards" class="summary-grid"></div>
+
+        <div class="chart-grid">
+          <div class="panel"><h2>Severity Distribution</h2><canvas id="severityChart"></canvas></div>
+          <div class="panel"><h2>Category Distribution</h2><canvas id="categoryChart"></canvas></div>
+          <div class="panel panel-wide"><h2>Trend Chart</h2><canvas id="trendChart"></canvas></div>
+        </div>
+      </section>
+
+      <section id="page-vulnerabilities" class="page">
+        <div class="page-header">
+          <h1>Vulnerability Registry</h1>
+          <div class="filters-row">
+            <select id="severityFilter"><option value="">All Severities</option></select>
+            <select id="categoryFilter"><option value="">All Categories</option></select>
+            <select id="statusFilter"><option value="">All Status</option></select>
+          </div>
+        </div>
+        <div class="panel table-panel">
+          <table id="vulnerabilitiesTable" class="display nowrap" style="width:100%">
+            <thead>
+              <tr>
+                <th>ID</th><th>Severity</th><th>Title</th><th>Category</th><th>File</th><th>Line</th><th>Status</th><th>CVSS</th><th>Rule</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="page-dependencies" class="page">
+        <div class="page-header"><h1>Dependency Intelligence</h1></div>
+        <div class="panel table-panel">
+          <table id="dependenciesTable" class="display nowrap" style="width:100%">
+            <thead>
+              <tr><th>Package</th><th>Version</th><th>CVE</th><th>Severity</th><th>CVSS</th><th>Fixed Version</th><th>Advisory</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="page-secrets" class="page">
+        <div class="page-header"><h1>Secret Exposure</h1></div>
+        <div class="panel table-panel">
+          <table id="secretsTable" class="display nowrap" style="width:100%">
+            <thead>
+              <tr><th>Type</th><th>File</th><th>Line</th><th>Masked Value</th><th>Severity</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="page-metrics" class="page">
+        <div class="page-header"><h1>Engineering Metrics</h1></div>
+        <div id="metricsCards" class="summary-grid"></div>
+        <div class="chart-grid">
+          <div class="panel"><h2>Security Rating Profile</h2><canvas id="metricsChart"></canvas></div>
+        </div>
+      </section>
+
+      <section id="page-compliance" class="page">
+        <div class="page-header"><h1>Compliance Mapping</h1></div>
+        <div class="panel"><h2>OWASP Top 10</h2><div class="table-wrap"><table id="owaspComplianceTable"><thead><tr><th>ID</th><th>Category</th><th>Status</th><th>Findings</th><th>Controls</th><th>Total</th></tr></thead><tbody></tbody></table></div></div>
+        <div class="panel"><h2>CWE Mapping</h2><div class="table-wrap"><table id="cweComplianceTable"><thead><tr><th>CWE</th><th>Issue Count</th></tr></thead><tbody></tbody></table></div></div>
+        <div class="panel"><h2>PCI DSS (Derived)</h2><div class="table-wrap"><table id="pciComplianceTable"><thead><tr><th>Control Family</th><th>Issue Count</th></tr></thead><tbody></tbody></table></div></div>
+      </section>
+
+      <section id="page-trends" class="page">
+        <div class="page-header"><h1>Trend Analytics</h1></div>
+        <div class="panel panel-wide"><canvas id="historyTrendChart"></canvas></div>
+      </section>
+
+      <section id="page-remediation" class="page">
+        <div class="page-header"><h1>Remediation Plan</h1></div>
+        <div class="remediation-grid">
+          <div class="panel"><h2>Fix Immediately (Critical)</h2><ul id="remediationCritical" class="bullet-list"></ul></div>
+          <div class="panel"><h2>Fix Soon (High)</h2><ul id="remediationHigh" class="bullet-list"></ul></div>
+          <div class="panel"><h2>Fix Later (Medium/Low)</h2><ul id="remediationLater" class="bullet-list"></ul></div>
+        </div>
+      </section>
+
+      <section id="page-rules" class="page">
+        <div class="page-header"><h1>Rule Library</h1></div>
+        <div class="panel table-panel">
+          <table id="rulesTable" class="display nowrap" style="width:100%">
+            <thead><tr><th>Rule ID</th><th>Title</th><th>Severity</th><th>Category</th><th>CWE</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <aside id="vulnDetailDrawer" class="drawer" aria-hidden="true">
+    <div class="drawer-head">
+      <h2>Vulnerability Detail</h2>
+      <button id="closeDrawerBtn" class="btn btn-small">Close</button>
+    </div>
+    <div id="vulnDetailContent" class="drawer-content"></div>
+  </aside>
+  <!-- vendor js + app js injected by export service -->
+</body>
+</html>

@@ -2,17 +2,21 @@ import React, { useEffect, useMemo, useState } from "react";
 
 import {
   AuditLogEntry,
+  EnterpriseAssuranceSummary,
+  PortfolioSummary,
   ProfileComplianceReport,
   ResetLocalStateCacheResult,
-  RuntimeAuthProfile,
+  ScmDiffContext,
   ScanHistoryItem,
   ScanProgress,
   ScanView,
+  ScanPreset,
   Severity,
-  ToolActionResult,
-  ToolBootstrapMode,
-  ToolBootstrapResult,
   ToolCatalogItem,
+  ToolchainExecutionSummary,
+  ToolManagerAuthConfig,
+  ToolManagerOtpResult,
+  ToolManagerVerifyResult,
   ToolScanProfile,
   ToolchainStatusEntry,
   UserRole,
@@ -20,14 +24,17 @@ import {
 } from "./types";
 
 type AppTab = "dashboard" | "existing" | "vulnerabilities" | "compliance" | "history" | "tools";
-type ExportFormat = "json" | "html" | "pdf" | "sarif" | "csv" | "patch";
-type ExportType = "existing" | "vulnerability" | "fixes" | "combined";
+type ExportFormat = "json" | "xml" | "html" | "pdf" | "sarif" | "csv" | "patch";
+type ExportType = "existing" | "vulnerability" | "fixes" | "finding_details" | "combined";
+type ReportStyle = "classic" | "modern";
 type DashboardSection = "overview" | "toolchain" | "assets" | "operations";
 type ExistingSection = "summary" | "controls" | "compliance";
 type VulnerabilitySection = "queue" | "detail";
 type ComplianceSection = "profile" | "matrix" | "actions";
 type HistorySection = "scans" | "audits";
-type ToolManagerSection = "codebase" | "website" | "ip" | "roles" | "provisioning";
+type ToolManagerSection = "codebase" | "roles" | "policy";
+type FindingScope = "all" | "new" | "changed";
+type FindingGroupMode = "none" | "module" | "owner";
 type RoleCapabilities = {
   canRunScan: boolean;
   canReviewFindings: boolean;
@@ -36,34 +43,29 @@ type RoleCapabilities = {
   canProvisionTools: boolean;
 };
 
-const TABS: Array<{ key: AppTab; label: string; icon: string; shortcut: string }> = [
-  { key: "dashboard", label: "Dashboard", icon: "CM", shortcut: "1" },
-  { key: "existing", label: "Existing Security Report", icon: "ES", shortcut: "2" },
-  { key: "vulnerabilities", label: "Vulnerability Report", icon: "VR", shortcut: "3" },
-  { key: "compliance", label: "Compliance", icon: "CP", shortcut: "4" },
-  { key: "history", label: "Scan History", icon: "HS", shortcut: "5" },
-  { key: "tools", label: "Tool Manager", icon: "TM", shortcut: "6" },
+const TABS: Array<{ key: AppTab; label: string; icon: string }> = [
+  { key: "dashboard", label: "Code Risk Overview", icon: "CM" },
+  { key: "existing", label: "Secure Coding Controls", icon: "ES" },
+  { key: "vulnerabilities", label: "Code Findings", icon: "VR" },
+  { key: "compliance", label: "Compliance", icon: "CP" },
+  { key: "history", label: "Scan History", icon: "HS" },
+  { key: "tools", label: "Analyzer Catalog", icon: "TM" },
 ];
 
 const ROLES: UserRole[] = ["Admin", "Security Analyst", "Developer", "Auditor"];
 const SEVERITY_ORDER: Severity[] = ["Critical", "High", "Medium", "Low", "Info"];
-const TOOL_PROFILES: ToolScanProfile[] = ["codebase", "website", "ip"];
+const TOOL_PROFILES: ToolScanProfile[] = ["codebase"];
+const SCAN_PRESETS: Array<{ key: ScanPreset; label: string; helper: string }> = [
+  { key: "fast", label: "Fast", helper: "Faster triage. Disables active PoC checks and uses smaller file budget." },
+  { key: "standard", label: "Standard", helper: "Balanced depth/speed for daily secure coding scans." },
+  { key: "deep", label: "Deep", helper: "Maximum depth. Full file budget and uncapped active PoC checks." },
+];
 
 const TOOL_PROFILE_META: Record<ToolScanProfile, { label: string; icon: string; helper: string }> = {
   codebase: {
     label: "Codebase Tools",
     icon: "CB",
-    helper: "Use for local folders, repositories, and SSH codebase paths.",
-  },
-  website: {
-    label: "Website Tools",
-    icon: "WS",
-    helper: "Use for HTTP/HTTPS application targets and localhost runtime scans.",
-  },
-  ip: {
-    label: "IP/Network Tools",
-    icon: "IP",
-    helper: "Use for host/IP attack-surface and network exposure checks.",
+    helper: "Reference-only catalog for secure code analysis engines and code-focused rules.",
   },
 };
 
@@ -72,7 +74,7 @@ const ROLE_DRILLDOWN: Array<{ role: UserRole; purpose: string; drillDownUse: str
     role: "Admin",
     purpose: "Govern platform policies and team-level risk posture.",
     drillDownUse: "Escalate from executive trends into cross-project critical findings and ownership.",
-    primaryActions: "Policy changes, baseline updates, toolchain provisioning, exception approvals.",
+    primaryActions: "Policy changes, baseline updates, analyzer governance, exception approvals.",
   },
   {
     role: "Security Analyst",
@@ -149,6 +151,20 @@ interface FileFindingAggregate {
   total: number;
 }
 
+interface ActiveScanSession {
+  scanId: string;
+  target: string;
+  role: UserRole;
+  status: ScanProgress["status"];
+  stage: string;
+  progress: number;
+  message: string;
+  currentFile?: string;
+  startedAt: string;
+  updatedAt: string;
+  resultReady: boolean;
+}
+
 function aggregateFindingsByFile(findings: VulnerabilityFinding[]): FileFindingAggregate[] {
   const map = new Map<string, FileFindingAggregate>();
   for (const finding of findings) {
@@ -191,6 +207,11 @@ function normalizeFindingPath(value: string): string {
   return String(value || "").replaceAll("\\", "/");
 }
 
+function buildScanStatusLine(payload: { stage: string; message: string; currentFile?: string }): string {
+  const filePart = payload.currentFile ? ` | ${payload.currentFile}` : "";
+  return `${payload.stage}${filePart} | ${payload.message}`;
+}
+
 function folderFromFindingPath(value: string): string {
   const normalized = normalizeFindingPath(value);
   const schemeMatch = normalized.match(/^https?:\/\/[^/]+/i);
@@ -209,30 +230,16 @@ function folderFromFindingPath(value: string): string {
   return normalized.slice(0, idx);
 }
 
-function detectTargetMode(value: string): "codebase" | "runtime-ip" {
-  const target = value.trim();
-  if (!target) {
-    return "codebase";
-  }
-  if (/^ssh:\/\//i.test(target)) {
-    return "codebase";
-  }
-  if (/^https?:\/\//i.test(target)) {
-    return "runtime-ip";
-  }
-  if (/^\d{1,3}(\.\d{1,3}){3}(:\d+)?(\/.*)?$/.test(target)) {
-    return "runtime-ip";
-  }
-  if (/^localhost(:\d+)?(\/.*)?$/i.test(target)) {
-    return "runtime-ip";
-  }
-  if (/^[a-z0-9.-]+\.[a-z]{2,}(:\d+)?(\/.*)?$/i.test(target)) {
-    return "runtime-ip";
-  }
-  return "codebase";
-}
-
 function normalizeToolEntry(tool: string, info: ToolchainStatusEntry): ToolchainStatusEntry {
+  const execution = info.execution
+    ? {
+        attempted: Boolean(info.execution.attempted),
+        status: String(info.execution.status || "pending"),
+        duration_ms: Number(info.execution.duration_ms || 0),
+        findings_count: Number(info.execution.findings_count || 0),
+        errors: Array.isArray(info.execution.errors) ? info.execution.errors.map((item) => String(item)) : [],
+      }
+    : undefined;
   return {
     ...info,
     name: info.name || tool,
@@ -246,6 +253,7 @@ function normalizeToolEntry(tool: string, info: ToolchainStatusEntry): Toolchain
     runner_available: Boolean(info.runner_available),
     integrated: Boolean(info.integrated),
     recommended_command: info.recommended_command || info.command,
+    execution,
   };
 }
 
@@ -277,32 +285,15 @@ function inferToolProfiles(tool: {
   target_modes: string[];
   scan_profiles?: ToolScanProfile[];
 }): ToolScanProfile[] {
-  const explicit = (tool.scan_profiles || []).filter((profile): profile is ToolScanProfile =>
-    TOOL_PROFILES.includes(profile as ToolScanProfile),
-  );
+  const explicit = (tool.scan_profiles || []).filter((profile): profile is ToolScanProfile => profile === "codebase");
   if (explicit.length > 0) {
-    return [...new Set(explicit)];
+    return ["codebase"];
   }
-
-  const profiles = new Set<ToolScanProfile>();
   const modes = new Set(tool.target_modes || []);
   if (modes.has("codebase") || modes.has("remote-codebase")) {
-    profiles.add("codebase");
+    return ["codebase"];
   }
-  if (modes.has("runtime")) {
-    profiles.add("website");
-    const category = String(tool.category || "").toLowerCase();
-    const name = String(tool.name || "").toLowerCase();
-    if (
-      category.includes("network") ||
-      category.includes("attack surface") ||
-      category.includes("kubernetes") ||
-      ["nmap", "amass", "kube-bench", "kube-hunter", "runtime_http_probe"].includes(name)
-    ) {
-      profiles.add("ip");
-    }
-  }
-  return [...profiles];
+  return [];
 }
 
 function roleDrilldownSummary(role: UserRole): string {
@@ -311,6 +302,35 @@ function roleDrilldownSummary(role: UserRole): string {
     return "";
   }
   return `${item.purpose} ${item.drillDownUse}`;
+}
+
+function enterpriseStatusClass(status: string | undefined): string {
+  if (status === "ready") {
+    return "enterprise-ready";
+  }
+  if (status === "warning") {
+    return "enterprise-warning";
+  }
+  return "enterprise-blocked";
+}
+
+function formatPercent(value: number | undefined): string {
+  const normalized = Number(value || 0);
+  return `${normalized.toFixed(2)}%`;
+}
+
+function formatDuration(seconds: number): string {
+  const safe = Math.max(0, Math.floor(seconds));
+  const hh = Math.floor(safe / 3600);
+  const mm = Math.floor((safe % 3600) / 60);
+  const ss = safe % 60;
+  if (hh > 0) {
+    return `${hh}h ${mm}m ${ss}s`;
+  }
+  if (mm > 0) {
+    return `${mm}m ${ss}s`;
+  }
+  return `${ss}s`;
 }
 
 function resolveProfileCompliance(scan: ScanView | null): ProfileComplianceReport | null {
@@ -324,23 +344,53 @@ function resolveProfileCompliance(scan: ScanView | null): ProfileComplianceRepor
   return scan.report.profile_compliance || null;
 }
 
+function resolveEnterpriseAssurance(scan: ScanView | null): EnterpriseAssuranceSummary | null {
+  if (!scan) {
+    return null;
+  }
+  return (
+    scan.report.vulnerability_fixed_code_report.summary.enterprise_assurance ||
+    scan.report.executive_summary.enterprise_assurance ||
+    scan.report.existing_implementation_report.enterprise_assurance ||
+    null
+  );
+}
+
+function resolveToolchainExecution(scan: ScanView | null): ToolchainExecutionSummary | null {
+  if (!scan) {
+    return null;
+  }
+  return (
+    scan.report.vulnerability_fixed_code_report.summary.toolchain_execution ||
+    scan.report.executive_summary.toolchain_execution ||
+    null
+  );
+}
+
 export default function App(): React.JSX.Element {
   const [tab, setTab] = useState<AppTab>("dashboard");
   const [projectPath, setProjectPath] = useState("");
-  const [runtimeAuthToken, setRuntimeAuthToken] = useState("");
-  const [runtimeAuthCookie, setRuntimeAuthCookie] = useState("");
-  const [runtimeAuthHeaderName, setRuntimeAuthHeaderName] = useState("");
-  const [runtimeAuthHeaderValue, setRuntimeAuthHeaderValue] = useState("");
+  const [scanPreset, setScanPreset] = useState<ScanPreset>("standard");
+  const [diffBaseRef, setDiffBaseRef] = useState("");
+  const [diffHeadRef, setDiffHeadRef] = useState("");
+  const [changedFilesManifestPath, setChangedFilesManifestPath] = useState("");
+  const [showScmOptions, setShowScmOptions] = useState(false);
   const [role, setRole] = useState<UserRole>("Security Analyst");
-  const [isScanning, setIsScanning] = useState(false);
+  const [scanSessions, setScanSessions] = useState<Record<string, ActiveScanSession>>({});
   const [activeScanId, setActiveScanId] = useState("");
   const [scanStatus, setScanStatus] = useState<ScanProgress["status"]>("completed");
   const [statusText, setStatusText] = useState("Ready");
   const [progress, setProgress] = useState(0);
+  const [progressHeartbeatTs, setProgressHeartbeatTs] = useState<number>(Date.now());
+  const [lastProgressUpdateTs, setLastProgressUpdateTs] = useState<number>(Date.now());
+  const [lastCompletedScanId, setLastCompletedScanId] = useState("");
   const [scan, setScan] = useState<ScanView | null>(null);
+  const [baselineScan, setBaselineScan] = useState<ScanView | null>(null);
   const [history, setHistory] = useState<ScanHistoryItem[]>([]);
+  const [portfolioSummary, setPortfolioSummary] = useState<PortfolioSummary | null>(null);
   const [audits, setAudits] = useState<AuditLogEntry[]>([]);
   const [lastExport, setLastExport] = useState("");
+  const [vulnerabilityReportStyle, setVulnerabilityReportStyle] = useState<ReportStyle>("classic");
   const [reportPreviewHtml, setReportPreviewHtml] = useState("");
   const [previewReportType, setPreviewReportType] = useState<ExportType | "">("");
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
@@ -352,13 +402,33 @@ export default function App(): React.JSX.Element {
   const [toolSection, setToolSection] = useState<ToolManagerSection>("codebase");
   const [scanLogs, setScanLogs] = useState<string[]>([]);
   const [severityFilter, setSeverityFilter] = useState<Severity | "All">("All");
+  const [findingScope, setFindingScope] = useState<FindingScope>("all");
+  const [findingGroupMode, setFindingGroupMode] = useState<FindingGroupMode>("none");
   const [searchText, setSearchText] = useState("");
   const [selectedFindingId, setSelectedFindingId] = useState("");
   const [toolCatalog, setToolCatalog] = useState<ToolCatalogItem[]>([]);
   const [toolSearchText, setToolSearchText] = useState("");
   const [toolBusyKey, setToolBusyKey] = useState("");
   const [toolActionLogs, setToolActionLogs] = useState<string[]>([]);
+  const [toolAuthConfig, setToolAuthConfig] = useState<ToolManagerAuthConfig | null>(null);
+  const [toolAuthToken, setToolAuthToken] = useState("");
+  const [toolOwnerEmail, setToolOwnerEmail] = useState("");
+  const [toolOwnerOtp, setToolOwnerOtp] = useState("");
+  const [toolOwnerMfa, setToolOwnerMfa] = useState("");
+  const [toolAuthBusy, setToolAuthBusy] = useState(false);
+  const [toolOtpRequested, setToolOtpRequested] = useState(false);
+  const [showOwnerAccessPanel, setShowOwnerAccessPanel] = useState(false);
   const roleCaps = useMemo(() => ROLE_CAPABILITIES[role], [role]);
+  const toolAuthEnabled = Boolean(toolAuthConfig?.enabled);
+  const toolSessionValid = !toolAuthEnabled || Boolean(toolAuthToken);
+  const toolAuthOtpRequired = Boolean(toolAuthConfig?.otpRequired);
+  const toolAuthTotpOnly = toolAuthConfig?.authMode === "totp_only";
+  const canOpenOwnerLogin = role === "Admin" || role === "Security Analyst";
+  const isToolManagerVisible = !toolAuthEnabled || toolSessionValid;
+  const visibleTabs = useMemo(
+    () => TABS.filter((item) => item.key !== "tools" || isToolManagerVisible),
+    [isToolManagerVisible],
+  );
 
   const findings = useMemo(() => {
     if (!scan) {
@@ -367,10 +437,31 @@ export default function App(): React.JSX.Element {
     return sortFindings(scan.report.vulnerability_fixed_code_report.findings || []);
   }, [scan]);
 
+  const baselineFindingIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (!baselineScan) {
+      return ids;
+    }
+    for (const item of baselineScan.report.vulnerability_fixed_code_report.findings || []) {
+      ids.add(item.finding_uid);
+    }
+    return ids;
+  }, [baselineScan]);
+
   const filteredFindings = useMemo(() => {
     const query = searchText.trim().toLowerCase();
     return findings.filter((item) => {
       if (severityFilter !== "All" && item.severity !== severityFilter) {
+        return false;
+      }
+      if (findingScope === "new" && baselineFindingIds.has(item.finding_uid)) {
+        return false;
+      }
+      if (
+        findingScope === "changed" &&
+        !item.git_diff_file_changed &&
+        !item.git_diff_line_changed
+      ) {
         return false;
       }
       if (!query) {
@@ -382,17 +473,39 @@ export default function App(): React.JSX.Element {
         item.file_path,
         item.cwe_id,
         item.owasp_mapping,
+        item.code_owner || "",
+        item.affected_module || "",
       ]
         .join(" ")
         .toLowerCase();
       return text.includes(query);
     });
-  }, [findings, searchText, severityFilter]);
+  }, [findings, searchText, severityFilter, findingScope, baselineFindingIds]);
+
+  const groupedFilteredFindings = useMemo(() => {
+    if (findingGroupMode === "none") {
+      return [{ key: "All Findings", items: filteredFindings }];
+    }
+    const groups = new Map<string, VulnerabilityFinding[]>();
+    for (const item of filteredFindings) {
+      const key =
+        findingGroupMode === "module"
+          ? item.affected_module || folderFromFindingPath(item.file_path)
+          : item.code_owner || "Unassigned";
+      const bucket = groups.get(key) || [];
+      bucket.push(item);
+      groups.set(key, bucket);
+    }
+    return [...groups.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([key, items]) => ({ key, items }));
+  }, [filteredFindings, findingGroupMode]);
 
   const affectedFiles = useMemo(() => aggregateFindingsByFile(findings), [findings]);
   const affectedFolders = useMemo(() => aggregateFindingsByFolder(findings), [findings]);
   const profileCompliance = useMemo(() => resolveProfileCompliance(scan), [scan]);
-  const targetMode = useMemo(() => detectTargetMode(projectPath), [projectPath]);
+  const enterpriseAssurance = useMemo(() => resolveEnterpriseAssurance(scan), [scan]);
+  const toolchainExecution = useMemo(() => resolveToolchainExecution(scan), [scan]);
   const toolchainEntries = useMemo<ToolchainStatusEntry[]>(() => {
     if (!scan) {
       return [];
@@ -434,12 +547,7 @@ export default function App(): React.JSX.Element {
       };
     });
   }, [toolCatalog, toolchainEntries]);
-  const activeToolProfile = useMemo<ToolScanProfile>(() => {
-    if (toolSection === "codebase" || toolSection === "website" || toolSection === "ip") {
-      return toolSection;
-    }
-    return targetMode === "runtime-ip" ? "website" : "codebase";
-  }, [toolSection, targetMode]);
+  const activeToolProfile = useMemo<ToolScanProfile>(() => "codebase", []);
   const filteredToolRows = useMemo(() => {
     const query = toolSearchText.trim().toLowerCase();
     return toolRows
@@ -474,8 +582,6 @@ export default function App(): React.JSX.Element {
   const toolProfileStats = useMemo(() => {
     const stats: Record<ToolScanProfile, { total: number; ready: number; integrated: number }> = {
       codebase: { total: 0, ready: 0, integrated: 0 },
-      website: { total: 0, ready: 0, integrated: 0 },
-      ip: { total: 0, ready: 0, integrated: 0 },
     };
     for (const row of toolRows) {
       for (const profile of row.scan_profiles) {
@@ -502,37 +608,183 @@ export default function App(): React.JSX.Element {
     return picked || filteredFindings[0];
   }, [filteredFindings, selectedFindingId]);
 
+  const activeScanSessions = useMemo(
+    () =>
+      Object.values(scanSessions).sort(
+        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      ),
+    [scanSessions],
+  );
+
+  const selectedActiveSession = useMemo(() => {
+    if (activeScanId && scanSessions[activeScanId]) {
+      return scanSessions[activeScanId];
+    }
+    return activeScanSessions[0] || null;
+  }, [activeScanId, activeScanSessions, scanSessions]);
+
+  const isScanning = useMemo(
+    () => activeScanSessions.some((item) => item.status === "running" || item.status === "paused"),
+    [activeScanSessions],
+  );
+
+  const hasScmContext = useMemo(
+    () => Boolean(diffBaseRef.trim() || diffHeadRef.trim() || changedFilesManifestPath.trim()),
+    [diffBaseRef, diffHeadRef, changedFilesManifestPath],
+  );
+
+  const secondsSinceProgressUpdate = useMemo(
+    () => Math.max(0, Math.floor((progressHeartbeatTs - lastProgressUpdateTs) / 1000)),
+    [progressHeartbeatTs, lastProgressUpdateTs],
+  );
+
+  const selectedSessionElapsed = useMemo(() => {
+    if (!selectedActiveSession) {
+      return 0;
+    }
+    const started = new Date(selectedActiveSession.startedAt).getTime();
+    if (Number.isNaN(started)) {
+      return 0;
+    }
+    return Math.max(0, Math.floor((progressHeartbeatTs - started) / 1000));
+  }, [selectedActiveSession, progressHeartbeatTs]);
+
+  const isFinalizingPhase = useMemo(
+    () =>
+      scanStatus === "running" &&
+      progress >= 95 &&
+      progress < 100 &&
+      secondsSinceProgressUpdate >= 8,
+    [scanStatus, progress, secondsSinceProgressUpdate],
+  );
+
+  const displayProgress = useMemo(() => {
+    if (!isFinalizingPhase) {
+      return progress;
+    }
+    const pulse = ((Math.sin(progressHeartbeatTs / 850) + 1) / 2) * 1.6;
+    return Math.min(99.4, Math.max(95, progress) + pulse);
+  }, [isFinalizingPhase, progress, progressHeartbeatTs]);
+
   useEffect(() => {
     const dispose = window.codeSentinelX.onScanProgress((payload) => {
-      setActiveScanId(payload.scanId);
-      setScanStatus(payload.status);
-      if (payload.status === "running" || payload.status === "paused") {
-        setIsScanning(true);
-      } else if (payload.status === "completed" || payload.status === "failed" || payload.status === "stopped") {
-        setIsScanning(false);
+      const nowTs = Date.now();
+      const now = new Date().toISOString();
+      setScanSessions((previous) => {
+        const current = previous[payload.scanId];
+        return {
+          ...previous,
+          [payload.scanId]: {
+            scanId: payload.scanId,
+            target: current?.target || "Unknown target",
+            role: current?.role || "Security Analyst",
+            status: payload.status,
+            stage: payload.stage,
+            progress: payload.progress,
+            message: payload.message,
+            currentFile: payload.currentFile,
+            startedAt: current?.startedAt || now,
+            updatedAt: now,
+            resultReady: current?.resultReady || payload.status === "completed",
+          },
+        };
+      });
+      setActiveScanId((current) => (payload.stage === "queued" || !current ? payload.scanId : current));
+      if (!activeScanId || activeScanId === payload.scanId) {
+        setScanStatus(payload.status);
+        setStatusText(buildScanStatusLine(payload));
+        setProgress(payload.progress);
       }
-
-      const filePart = payload.currentFile ? ` | ${payload.currentFile}` : "";
-      setStatusText(`${payload.stage}${filePart} | ${payload.message}`);
-      setProgress(payload.progress);
+      setLastProgressUpdateTs(nowTs);
+      if (payload.status === "completed") {
+        setLastCompletedScanId(payload.scanId);
+        window.codeSentinelX
+          .getScanById(payload.scanId)
+          .then((result) => {
+            if (result) {
+              setScan((current) => {
+                if (!current || current.scanId === result.scanId) {
+                  return result;
+                }
+                return current;
+              });
+            }
+          })
+          .catch(() => undefined);
+      }
       const time = new Date().toLocaleTimeString();
-      const line = `[${time}] ${payload.stage}${filePart} | ${payload.message}`;
+      const line = `[${time}] ${payload.scanId.slice(0, 8)} | ${buildScanStatusLine(payload)}`;
       setScanLogs((previous) => [line, ...previous].slice(0, 300));
     });
     return () => dispose();
+  }, [activeScanId]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setProgressHeartbeatTs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
   }, []);
 
   useEffect(() => {
     loadHistory().catch((error) => setStatusText(`History load failed: ${String(error)}`));
     loadAudits().catch(() => undefined);
-    loadTools().catch((error) => setStatusText(`Tool catalog load failed: ${String(error)}`));
+    loadToolAuthConfig()
+      .then((config) => {
+        if (!config.enabled || config.sessionValid) {
+          return loadTools();
+        }
+        return Promise.resolve();
+      })
+      .catch((error) => setStatusText(`Analyzer Catalog auth load failed: ${String(error)}`));
   }, []);
+
+  useEffect(() => {
+    if (!scan) {
+      setBaselineScan(null);
+      return;
+    }
+    const sameProjectHistory = history
+      .filter((item) => item.projectPath === scan.projectPath && item.scanId !== scan.scanId)
+      .sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime());
+    const olderBaseline =
+      sameProjectHistory.find((item) => new Date(item.completedAt).getTime() < new Date(scan.completedAt).getTime()) ||
+      sameProjectHistory[0];
+    if (!olderBaseline) {
+      setBaselineScan(null);
+      return;
+    }
+    window.codeSentinelX
+      .getScanById(olderBaseline.scanId)
+      .then((value) => setBaselineScan(value))
+      .catch(() => setBaselineScan(null));
+  }, [scan, history]);
 
   useEffect(() => {
     if (selectedFinding && selectedFinding.finding_uid !== selectedFindingId) {
       setSelectedFindingId(selectedFinding.finding_uid);
     }
   }, [selectedFinding, selectedFindingId]);
+
+  useEffect(() => {
+    if (!selectedActiveSession) {
+      return;
+    }
+    if (!activeScanId) {
+      setActiveScanId(selectedActiveSession.scanId);
+    }
+    setScanStatus(selectedActiveSession.status);
+    setProgress(selectedActiveSession.progress);
+    setLastProgressUpdateTs(Date.now());
+    setStatusText(buildScanStatusLine(selectedActiveSession));
+  }, [activeScanId, selectedActiveSession]);
+
+  useEffect(() => {
+    if (!isToolManagerVisible && tab === "tools") {
+      setTab("dashboard");
+    }
+    if ((isToolManagerVisible || !canOpenOwnerLogin) && showOwnerAccessPanel) {
+      setShowOwnerAccessPanel(false);
+    }
+  }, [isToolManagerVisible, tab, showOwnerAccessPanel, canOpenOwnerLogin]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -545,7 +797,7 @@ export default function App(): React.JSX.Element {
 
       if (event.altKey && /^\d$/.test(event.key)) {
         const index = Number(event.key) - 1;
-        const targetTab = TABS[index];
+        const targetTab = visibleTabs[index];
         if (targetTab) {
           event.preventDefault();
           setTab(targetTab.key);
@@ -599,7 +851,7 @@ export default function App(): React.JSX.Element {
         return;
       }
       if (tab === "tools") {
-        const items: ToolManagerSection[] = ["codebase", "website", "ip", "roles", "provisioning"];
+        const items: ToolManagerSection[] = ["codebase", "roles", "policy"];
         if (items[index]) {
           event.preventDefault();
           setToolSection(items[index]);
@@ -609,11 +861,33 @@ export default function App(): React.JSX.Element {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [tab]);
+  }, [tab, visibleTabs]);
+
+  useEffect(() => {
+    if (tab !== "tools") {
+      return;
+    }
+    loadToolAuthConfig()
+      .then(async (config) => {
+        if (!config.enabled || toolAuthToken) {
+          await loadTools();
+        }
+      })
+      .catch((error) => setStatusText(`Analyzer Catalog init failed: ${String(error)}`));
+  }, [tab, toolAuthToken]);
 
   const loadHistory = async (): Promise<void> => {
-    const items = await window.codeSentinelX.getScanHistory();
+    const [items, summary] = await Promise.all([window.codeSentinelX.getScanHistory(), window.codeSentinelX.getPortfolioSummary()]);
     setHistory(items);
+    setPortfolioSummary(summary);
+    if (items.length > 0) {
+      const latest = [...items].sort(
+        (a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime(),
+      )[0];
+      if (latest?.scanId) {
+        setLastCompletedScanId(latest.scanId);
+      }
+    }
   };
 
   const loadAudits = async (scanId?: string): Promise<void> => {
@@ -621,9 +895,25 @@ export default function App(): React.JSX.Element {
     setAudits(items);
   };
 
+  const loadToolAuthConfig = async (tokenOverride?: string): Promise<ToolManagerAuthConfig> => {
+    const token = tokenOverride !== undefined ? tokenOverride : toolAuthToken;
+    const config = await window.codeSentinelX.getToolAccessConfig({ authToken: token || undefined });
+    setToolAuthConfig(config);
+    return config;
+  };
+
   const loadTools = async (): Promise<void> => {
-    const tools = await window.codeSentinelX.listTools();
-    setToolCatalog(tools);
+    try {
+      const tools = await window.codeSentinelX.listTools({ authToken: toolAuthToken || undefined });
+      setToolCatalog(tools);
+    } catch (error) {
+      const message = String(error);
+      if (message.toLowerCase().includes("tool manager access denied") || message.toLowerCase().includes("session expired")) {
+        setToolCatalog([]);
+      } else {
+        throw error;
+      }
+    }
   };
 
   const browseProject = async (): Promise<void> => {
@@ -638,42 +928,72 @@ export default function App(): React.JSX.Element {
       setStatusText(`Role ${role} does not have permission to start scans.`);
       return;
     }
-    if (!projectPath.trim()) {
+    const targetPath = projectPath.trim();
+    if (!targetPath) {
       setStatusText("Select a project folder before scanning.");
       return;
     }
-    setIsScanning(true);
+    const roleForScan = role;
     setScanStatus("running");
-    setActiveScanId("");
     setProgress(0);
-    setReportPreviewHtml("");
-    setPreviewReportType("");
-    setScanLogs([]);
-    setStatusText(targetMode === "runtime-ip" ? "Submitting runtime/remote scan..." : "Submitting codebase scan...");
-    const runtimeAuth: RuntimeAuthProfile | undefined =
-      targetMode !== "runtime-ip"
-        ? undefined
-        : {
-            token: runtimeAuthToken.trim() || undefined,
-            cookie: runtimeAuthCookie.trim() || undefined,
-            headerName: runtimeAuthHeaderName.trim() || undefined,
-            headerValue: runtimeAuthHeaderValue.trim() || undefined,
-          };
+    setLastProgressUpdateTs(Date.now());
+    setStatusText("Submitting secure code analysis...");
+    const time = new Date().toLocaleTimeString();
+    setScanLogs((previous) => [`[${time}] queued | ${targetPath}`, ...previous].slice(0, 300));
     try {
+      const scmContext: ScmDiffContext | undefined =
+        diffBaseRef.trim() || diffHeadRef.trim() || changedFilesManifestPath.trim()
+          ? {
+              diffBaseRef: diffBaseRef.trim() || undefined,
+              diffHeadRef: diffHeadRef.trim() || undefined,
+              changedFilesFile: changedFilesManifestPath.trim() || undefined,
+            }
+          : undefined;
       const result = await window.codeSentinelX.startScan({
-        projectPath,
+        projectPath: targetPath,
         requestedBy: "local-user",
-        role,
-        runtimeAuth,
+        role: roleForScan,
+        scanPreset,
+        scmContext,
       });
-      setScan(result);
-      setActiveScanId(result.scanId);
-      setTab("dashboard");
+      let loadedResult = result;
+      try {
+        const fromStore = await window.codeSentinelX.getScanById(result.scanId);
+        if (fromStore) {
+          loadedResult = fromStore;
+        }
+      } catch {
+        // Keep the startScan result if store refresh is temporarily unavailable.
+      }
+      const now = new Date().toISOString();
+      setScanSessions((previous) => {
+        const current = previous[loadedResult.scanId];
+        return {
+          ...previous,
+          [loadedResult.scanId]: {
+            scanId: loadedResult.scanId,
+            target: targetPath,
+            role: roleForScan,
+            status: "completed",
+            stage: "completed",
+            progress: 100,
+            message: "Scan completed",
+            currentFile: current?.currentFile,
+            startedAt: current?.startedAt || now,
+            updatedAt: now,
+            resultReady: true,
+          },
+        };
+      });
+      setScan(loadedResult);
+      setActiveScanId(loadedResult.scanId);
+      setLastCompletedScanId(loadedResult.scanId);
       setStatusText("Scan completed");
       setScanStatus("completed");
       setProgress(100);
+      setLastProgressUpdateTs(Date.now());
       setSelectedFindingId("");
-      await Promise.all([loadHistory(), loadAudits(result.scanId)]);
+      await Promise.all([loadHistory(), loadAudits(loadedResult.scanId)]);
     } catch (error) {
       const message = String(error);
       if (message.toLowerCase().includes("scan stopped by user")) {
@@ -683,8 +1003,6 @@ export default function App(): React.JSX.Element {
         setStatusText(`Scan failed: ${message}`);
         setScanStatus("failed");
       }
-    } finally {
-      setIsScanning(false);
     }
   };
 
@@ -693,15 +1011,31 @@ export default function App(): React.JSX.Element {
       setStatusText(`Role ${role} does not have permission to control scans.`);
       return;
     }
-    if (!activeScanId) {
+    if (!selectedActiveSession) {
       setStatusText("No active scan found to pause.");
       return;
     }
-    const result = await window.codeSentinelX.pauseScan(activeScanId);
+    const result = await window.codeSentinelX.pauseScan(selectedActiveSession.scanId);
     setStatusText(result.message);
     if (result.success) {
       setScanStatus("paused");
-      setIsScanning(true);
+      setScanSessions((previous) => ({
+        ...previous,
+        [result.scanId]: {
+          ...(previous[result.scanId] || {
+            scanId: result.scanId,
+            target: "Unknown target",
+            role,
+            startedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            resultReady: false,
+          }),
+          status: "paused",
+          stage: "paused",
+          message: result.message,
+          updatedAt: new Date().toISOString(),
+        },
+      }));
     }
   };
 
@@ -710,15 +1044,31 @@ export default function App(): React.JSX.Element {
       setStatusText(`Role ${role} does not have permission to control scans.`);
       return;
     }
-    if (!activeScanId) {
+    if (!selectedActiveSession) {
       setStatusText("No active scan found to resume.");
       return;
     }
-    const result = await window.codeSentinelX.resumeScan(activeScanId);
+    const result = await window.codeSentinelX.resumeScan(selectedActiveSession.scanId);
     setStatusText(result.message);
     if (result.success) {
       setScanStatus("running");
-      setIsScanning(true);
+      setScanSessions((previous) => ({
+        ...previous,
+        [result.scanId]: {
+          ...(previous[result.scanId] || {
+            scanId: result.scanId,
+            target: "Unknown target",
+            role,
+            startedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            resultReady: false,
+          }),
+          status: "running",
+          stage: "running",
+          message: result.message,
+          updatedAt: new Date().toISOString(),
+        },
+      }));
     }
   };
 
@@ -727,14 +1077,31 @@ export default function App(): React.JSX.Element {
       setStatusText(`Role ${role} does not have permission to control scans.`);
       return;
     }
-    if (!activeScanId) {
+    if (!selectedActiveSession) {
       setStatusText("No active scan found to stop.");
       return;
     }
-    const result = await window.codeSentinelX.stopScan(activeScanId);
+    const result = await window.codeSentinelX.stopScan(selectedActiveSession.scanId);
     setStatusText(result.message);
     if (result.success) {
       setScanStatus("stopped");
+      setScanSessions((previous) => ({
+        ...previous,
+        [result.scanId]: {
+          ...(previous[result.scanId] || {
+            scanId: result.scanId,
+            target: "Unknown target",
+            role,
+            startedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            resultReady: false,
+          }),
+          status: "stopped",
+          stage: "stopped",
+          message: result.message,
+          updatedAt: new Date().toISOString(),
+        },
+      }));
     }
   };
 
@@ -745,10 +1112,19 @@ export default function App(): React.JSX.Element {
       return;
     }
     setScan(result);
+    setLastCompletedScanId(scanId);
     setStatusText(`Loaded scan ${scanId.slice(0, 8)}`);
     setProgress(100);
     setSelectedFindingId("");
     await loadAudits(scanId);
+  };
+
+  const reopenLastCompletedScan = async (): Promise<void> => {
+    if (!lastCompletedScanId) {
+      setStatusText("No completed scan available to reopen.");
+      return;
+    }
+    await openScan(lastCompletedScanId);
   };
 
   const markReviewed = async (findingId: string): Promise<void> => {
@@ -810,9 +1186,11 @@ export default function App(): React.JSX.Element {
       scanId: scan.scanId,
       reportType,
       format,
+      reportStyle: reportType === "vulnerability" ? vulnerabilityReportStyle : undefined,
     });
     setLastExport(output);
-    setStatusText(`Exported ${reportType} report as ${format}`);
+    const styleLabel = reportType === "vulnerability" ? ` (${vulnerabilityReportStyle})` : "";
+    setStatusText(`Exported ${reportType}${styleLabel} report as ${format}`);
     await loadAudits(scan.scanId);
   };
 
@@ -824,9 +1202,14 @@ export default function App(): React.JSX.Element {
     setIsPreviewLoading(true);
     setPreviewReportType(reportType);
     try {
-      const html = await window.codeSentinelX.renderReportHtml({ scanId: scan.scanId, reportType });
+      const html = await window.codeSentinelX.renderReportHtml({
+        scanId: scan.scanId,
+        reportType,
+        reportStyle: reportType === "vulnerability" ? vulnerabilityReportStyle : undefined,
+      });
       setReportPreviewHtml(html);
-      setStatusText(`Loaded ${reportType} report preview.`);
+      const styleLabel = reportType === "vulnerability" ? ` (${vulnerabilityReportStyle})` : "";
+      setStatusText(`Loaded ${reportType}${styleLabel} report preview.`);
       setTab("dashboard");
     } catch (error) {
       setPreviewReportType("");
@@ -855,120 +1238,176 @@ export default function App(): React.JSX.Element {
     setStatusText("Opened exported report.");
   };
 
-  const appendToolActionLog = (label: string, result: ToolActionResult): void => {
-    const stamp = new Date().toLocaleTimeString();
-    const status = result.success ? "SUCCESS" : "FAILED";
-    const output = result.outputPath ? ` | output=${result.outputPath}` : "";
-    const line = `[${stamp}] ${label} ${result.tool} => ${status} | ${result.message}${output}`;
-    setToolActionLogs((previous) => [line, ...previous].slice(0, 200));
-  };
-
-  const runToolAction = async (
-    key: string,
-    action: () => Promise<ToolActionResult>,
-    successMessage: string,
-  ): Promise<void> => {
-    setToolBusyKey(key);
+  const requestToolManagerOtp = async (): Promise<void> => {
+    if (!toolAuthConfig?.enabled) {
+      setStatusText("Analyzer Catalog owner lock is not enabled.");
+      return;
+    }
+    if (!toolOwnerEmail.trim()) {
+      setStatusText("Enter owner email before requesting OTP.");
+      return;
+    }
+    setToolAuthBusy(true);
     try {
-      const result = await action();
-      appendToolActionLog(key, result);
-      if (result.outputPath) {
-        setLastExport(result.outputPath);
-      }
-      if (!result.success) {
-        setStatusText(`Tool action failed: ${result.message}`);
+      const result = (await window.codeSentinelX.requestToolAccessOtp({
+        email: toolOwnerEmail.trim(),
+      })) as ToolManagerOtpResult;
+      if (result.success) {
+        setToolOtpRequested(true);
       } else {
-        setStatusText(`${successMessage} ${result.message}`);
+        setToolOtpRequested(false);
       }
-      await Promise.all([loadTools(), loadAudits()]);
+      setStatusText(result.message);
+      await loadAudits();
     } catch (error) {
-      setStatusText(`Tool action error: ${String(error)}`);
+      setStatusText(`OTP request failed: ${String(error)}`);
     } finally {
-      setToolBusyKey("");
+      setToolAuthBusy(false);
     }
   };
 
-  const checkTool = async (toolName: string): Promise<void> => {
-    if (!roleCaps.canManageTools) {
-      setStatusText(`Role ${role} has read-only access to Tool Manager.`);
+  const verifyToolManagerOtp = async (): Promise<void> => {
+    if (!toolAuthConfig?.enabled) {
+      setStatusText("Analyzer Catalog owner lock is not enabled.");
       return;
     }
-    await runToolAction(
-      `check-${toolName}`,
-      () => window.codeSentinelX.checkTool({ tool: toolName }),
-      "Tool check completed.",
-    );
-  };
-
-  const installTool = async (toolName: string): Promise<void> => {
-    if (!roleCaps.canManageTools) {
-      setStatusText(`Role ${role} has read-only access to Tool Manager.`);
+    if (!toolOwnerEmail.trim()) {
+      setStatusText("Enter owner email.");
       return;
     }
-    await runToolAction(
-      `install-${toolName}`,
-      () => window.codeSentinelX.installTool({ tool: toolName }),
-      "Tool install completed.",
-    );
-  };
-
-  const runSingleTool = async (toolName: string): Promise<void> => {
-    if (!roleCaps.canManageTools) {
-      setStatusText(`Role ${role} has read-only access to Tool Manager.`);
+    if (toolAuthOtpRequired && !toolOwnerOtp.trim()) {
+      setStatusText("Enter OTP code.");
       return;
     }
-    if (!projectPath.trim()) {
-      setStatusText("Enter a target path/URL/IP before running a tool.");
+    if (toolAuthConfig.mfaRequired && !toolOwnerMfa.trim()) {
+      setStatusText("MFA code is required.");
       return;
     }
-    await runToolAction(
-      `run-${toolName}`,
-      () => window.codeSentinelX.runTool({ tool: toolName, target: projectPath }),
-      "Tool run completed.",
-    );
-  };
-
-  const appendBootstrapLog = (result: ToolBootstrapResult): void => {
-    const stamp = new Date().toLocaleTimeString();
-    const status = result.success ? "SUCCESS" : "PARTIAL";
-    const summaryLine = `[${stamp}] bootstrap ${result.profile}/${result.mode} => ${status} | ready=${result.ready}/${result.total} | ${result.message}`;
-    const issueLines = result.tools
-      .filter((item) => !item.available)
-      .slice(0, 15)
-      .map((item) => `[${stamp}] missing ${item.tool} | ${item.message}`);
-    setToolActionLogs((previous) => [summaryLine, ...issueLines, ...previous].slice(0, 300));
-  };
-
-  const bootstrapToolsByProfile = async (
-    profile: ToolScanProfile | "all",
-    mode: ToolBootstrapMode,
-    successMessage: string,
-  ): Promise<void> => {
-    if (!roleCaps.canProvisionTools) {
-      setStatusText(`Role ${role} cannot provision toolchains.`);
-      return;
-    }
-    const key = `bootstrap-${profile}-${mode}`;
-    setToolBusyKey(key);
+    setToolAuthBusy(true);
     try {
-      const result = await window.codeSentinelX.bootstrapTools({ profile, mode });
-      appendBootstrapLog(result);
-      if (!result.success) {
-        setStatusText(`Provisioning completed with gaps: ${result.message}`);
-      } else {
-        setStatusText(`${successMessage} ${result.message}`);
+      const result = (await window.codeSentinelX.verifyToolAccess({
+        email: toolOwnerEmail.trim(),
+        otp: toolAuthOtpRequired ? toolOwnerOtp.trim() : "",
+        mfaCode: toolOwnerMfa.trim() || undefined,
+      })) as ToolManagerVerifyResult;
+
+      if (!result.success || !result.authToken) {
+        setStatusText(result.message);
+        return;
       }
-      await Promise.all([loadTools(), loadAudits()]);
+
+      setToolAuthToken(result.authToken);
+      setToolOwnerOtp("");
+      setToolOwnerMfa("");
+      setToolOtpRequested(false);
+      const config = await loadToolAuthConfig(result.authToken);
+      if (!config.enabled || config.sessionValid) {
+        await loadTools();
+      }
+      setStatusText(result.message);
+      await loadAudits();
     } catch (error) {
-      setStatusText(`Provisioning failed: ${String(error)}`);
+      setStatusText(`Analyzer Catalog verification failed: ${String(error)}`);
     } finally {
-      setToolBusyKey("");
+      setToolAuthBusy(false);
     }
+  };
+
+  const logoutToolManagerSession = async (): Promise<void> => {
+    setToolAuthBusy(true);
+    try {
+      const result = await window.codeSentinelX.logoutToolAccess({ authToken: toolAuthToken || undefined });
+      setToolAuthToken("");
+      setToolCatalog([]);
+      setToolOwnerOtp("");
+      setToolOwnerMfa("");
+      setToolOtpRequested(false);
+      await loadToolAuthConfig("");
+      setStatusText(result.message || "Analyzer Catalog session ended.");
+      await loadAudits();
+    } catch (error) {
+      setStatusText(`Logout failed: ${String(error)}`);
+    } finally {
+      setToolAuthBusy(false);
+    }
+  };
+
+  const renderOwnerAccessPanel = (): React.JSX.Element => {
+    return (
+      <section className="panel stack-gap">
+        <div className="tool-auth-panel">
+          <h3>Analyzer Catalog Owner Access</h3>
+          <p className="muted-text">
+            Owner-only mode is enabled. Only the configured email can unlock Analyzer Catalog operations.
+          </p>
+          <p className="muted-text">{toolAuthConfig?.message || ""}</p>
+
+          <div className="tool-auth-grid">
+            <input
+              value={toolOwnerEmail}
+              onChange={(event) => setToolOwnerEmail(event.target.value)}
+              placeholder="Owner email"
+              autoComplete="off"
+              disabled={toolAuthBusy}
+            />
+            {toolAuthOtpRequired ? (
+              <div className="button-row">
+                <button type="button" onClick={requestToolManagerOtp} disabled={toolAuthBusy || !toolAuthConfig?.smtpConfigured}>
+                  {toolAuthBusy ? "Sending..." : "Send OTP"}
+                </button>
+              </div>
+            ) : (
+              <div className="muted-text">TOTP-only mode: use your authenticator app code.</div>
+            )}
+          </div>
+          <div className="tool-auth-grid">
+            {toolAuthOtpRequired && (
+              <input
+                value={toolOwnerOtp}
+                onChange={(event) => setToolOwnerOtp(event.target.value)}
+                placeholder="6-digit OTP"
+                autoComplete="one-time-code"
+                disabled={toolAuthBusy}
+              />
+            )}
+            <input
+              value={toolOwnerMfa}
+              onChange={(event) => setToolOwnerMfa(event.target.value)}
+              placeholder={toolAuthTotpOnly ? "Authenticator code (required)" : toolAuthConfig?.mfaRequired ? "MFA code (required)" : "MFA code (optional)"}
+              autoComplete="one-time-code"
+              disabled={toolAuthBusy}
+            />
+          </div>
+
+          <div className="button-row">
+            <button
+              type="button"
+              onClick={verifyToolManagerOtp}
+              disabled={
+                toolAuthBusy ||
+                !toolOwnerEmail.trim() ||
+                (toolAuthOtpRequired && (!toolOtpRequested || !toolOwnerOtp.trim())) ||
+                (Boolean(toolAuthConfig?.mfaRequired) && !toolOwnerMfa.trim())
+              }
+            >
+              {toolAuthBusy ? "Verifying..." : "Verify and Unlock"}
+            </button>
+            <button type="button" onClick={() => setShowOwnerAccessPanel(false)} disabled={toolAuthBusy}>
+              Close
+            </button>
+          </div>
+        </div>
+      </section>
+    );
   };
 
   const resetLocalStateCache = async (): Promise<void> => {
     if (!roleCaps.canProvisionTools) {
       setStatusText(`Role ${role} cannot reset local state/cache.`);
+      return;
+    }
+    if (toolAuthEnabled && !toolAuthToken) {
+      setStatusText("Analyzer Catalog owner authentication is required.");
       return;
     }
     if (isScanning) {
@@ -977,7 +1416,7 @@ export default function App(): React.JSX.Element {
     }
 
     const confirmed = window.confirm(
-      "Reset local state/cache?\n\nThis will clear scan history, audit state, tool-run cache, and local .toolchain cache for this app profile.",
+      "Reset local state/cache?\n\nThis will clear scan history, audit state, exported preview cache, and tool-run cache for this app profile.",
     );
     if (!confirmed) {
       return;
@@ -986,7 +1425,9 @@ export default function App(): React.JSX.Element {
     const key = "reset-local-state-cache";
     setToolBusyKey(key);
     try {
-      const result = (await window.codeSentinelX.resetLocalStateCache()) as ResetLocalStateCacheResult;
+      const result = (await window.codeSentinelX.resetLocalStateCache({
+        authToken: toolAuthToken || undefined,
+      })) as ResetLocalStateCacheResult;
       const stamp = new Date().toLocaleTimeString();
       const coreLine = result.coreWarmup
         ? ` | coreWarmup=${result.coreWarmup.ready}/${result.coreWarmup.total} ready, missing=${result.coreWarmup.missing}`
@@ -997,6 +1438,9 @@ export default function App(): React.JSX.Element {
       setToolActionLogs((previous) => [line, ...previous].slice(0, 300));
 
       setScan(null);
+      setScanSessions({});
+      setActiveScanId("");
+      setLastCompletedScanId("");
       setSelectedFindingId("");
       setProgress(0);
       setLastExport("");
@@ -1026,7 +1470,7 @@ export default function App(): React.JSX.Element {
         <SubTabs
           tabs={[
             { key: "overview", label: "Overview", icon: "OV" },
-            { key: "toolchain", label: "Toolchain", icon: "TL" },
+            { key: "toolchain", label: "Analyzer Coverage", icon: "TL" },
             { key: "assets", label: "Assets", icon: "AS" },
             { key: "operations", label: "Operations", icon: "OP" },
           ]}
@@ -1043,6 +1487,16 @@ export default function App(): React.JSX.Element {
               <MetricCard label="Deduplicated Findings" value={String(vulnSummary.total_findings)} />
               <MetricCard label="Open Findings" value={String(vulnSummary.open_findings ?? vulnSummary.total_findings)} />
               <MetricCard label="Reviewed Findings" value={String(vulnSummary.reviewed_findings || 0)} />
+              <MetricCard
+                label="Enterprise Status"
+                value={(enterpriseAssurance?.status || "blocked").toUpperCase()}
+              />
+              <MetricCard label="Readiness Score" value={String(enterpriseAssurance?.readiness_score ?? 0)} />
+              <MetricCard
+                label="Required Tool Coverage"
+                value={formatPercent(enterpriseAssurance?.required_tools_coverage_percent)}
+              />
+              <MetricCard label="Tool Success Rate" value={formatPercent(toolchainExecution?.success_rate_percent)} />
             </div>
 
             <div className="severity-strip">
@@ -1119,25 +1573,81 @@ export default function App(): React.JSX.Element {
                 </ol>
               </div>
             </div>
+
+            <div className="two-col">
+              <div className="subpanel">
+                <h3>Enterprise Readiness Verdict</h3>
+                <p className={`enterprise-pill ${enterpriseStatusClass(enterpriseAssurance?.status)}`}>
+                  {(enterpriseAssurance?.status || "blocked").toUpperCase()}
+                </p>
+                <table className="simple-table">
+                  <tbody>
+                    <tr>
+                      <th>Score</th>
+                      <td>{enterpriseAssurance?.readiness_score ?? 0}</td>
+                    </tr>
+                    <tr>
+                      <th>Required Tools Ready</th>
+                      <td>
+                        {enterpriseAssurance?.required_tools_ready ?? 0}/{enterpriseAssurance?.required_tools_total ?? 0}
+                      </td>
+                    </tr>
+                    <tr>
+                      <th>Required Coverage</th>
+                      <td>{formatPercent(enterpriseAssurance?.required_tools_coverage_percent)}</td>
+                    </tr>
+                    <tr>
+                      <th>Tool Success Rate</th>
+                      <td>{formatPercent(toolchainExecution?.success_rate_percent)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <p className="muted-text">
+                  {enterpriseAssurance?.recommendation || "No enterprise assurance summary available for this scan."}
+                </p>
+              </div>
+
+              <div className="subpanel">
+                <h3>Enterprise Blockers</h3>
+                <ul className="action-list">
+                  {(enterpriseAssurance?.blockers || []).slice(0, 12).map((item, index) => (
+                    <li key={`${index}-${item}`}>{item}</li>
+                  ))}
+                  {(enterpriseAssurance?.blockers || []).length === 0 && <li>No enterprise blockers detected.</li>}
+                </ul>
+              </div>
+            </div>
           </>
         )}
 
         {dashboardSection === "toolchain" && (
           <>
             <div className="metric-grid toolchain-metrics">
-              <MetricCard label="Catalog Tools" value={String(toolchainEntries.length)} />
+              <MetricCard
+                label="Catalog Tools"
+                value={String(toolchainExecution?.total_tools ?? toolchainEntries.length)}
+              />
               <MetricCard
                 label="Selected This Scan"
-                value={String(toolchainEntries.filter((item) => item.selected).length)}
+                value={String(toolchainExecution?.selected_tools ?? toolchainEntries.filter((item) => item.selected).length)}
               />
-              <MetricCard label="Ready Tools" value={String(toolchainEntries.filter((item) => item.available).length)} />
+              <MetricCard
+                label="Ready Tools"
+                value={String(toolchainExecution?.available_tools ?? toolchainEntries.filter((item) => item.available).length)}
+              />
               <MetricCard
                 label="Integrated Parsers"
-                value={String(toolchainEntries.filter((item) => item.integrated).length)}
+                value={String(
+                  toolchainExecution?.integrated_tools ?? toolchainEntries.filter((item) => item.integrated).length,
+                )}
               />
+              <MetricCard label="Attempted Tools" value={String(toolchainExecution?.attempted_tools ?? 0)} />
+              <MetricCard label="Successful Tools" value={String(toolchainExecution?.successful_tools ?? 0)} />
+              <MetricCard label="Failed Tools" value={String(toolchainExecution?.failed_tools ?? 0)} />
+              <MetricCard label="Tool Success Rate" value={formatPercent(toolchainExecution?.success_rate_percent)} />
               <MetricCard
-                label="Runtime-Capable"
-                value={String(toolchainEntries.filter((item) => (item.target_modes || []).includes("runtime")).length)}
+                label="Local Scope"
+                value="Codebase only"
               />
               <MetricCard
                 label="Codebase-Capable"
@@ -1152,19 +1662,21 @@ export default function App(): React.JSX.Element {
 
             <div className="two-col">
               <div className="subpanel">
-                <h3>Toolchain Status and Coverage</h3>
+                <h3>Analyzer Status and Coverage</h3>
                 <div className="table-scroll">
                   <table className="simple-table toolchain-table">
                     <thead>
                       <tr>
                         <th>Tool</th>
                         <th>Selected</th>
-                        <th>Ready</th>
-                        <th>Modes</th>
+                        <th>Available</th>
+                        <th>Codebase Modes</th>
                         <th>Vulnerability Coverage</th>
                         <th>Category</th>
                         <th>Source</th>
-                        <th>Command</th>
+                        <th>Execution</th>
+                        <th>Duration (ms)</th>
+                        <th>Findings</th>
                         <th>Status</th>
                       </tr>
                     </thead>
@@ -1188,17 +1700,23 @@ export default function App(): React.JSX.Element {
                           </td>
                           <td>{entry.selected ? "Yes" : "No"}</td>
                           <td>{entry.available ? "Ready" : "Missing"}</td>
-                          <td>{(entry.target_modes || []).join(", ") || "-"}</td>
+                          <td>
+                            {(entry.target_modes || [])
+                              .filter((item) => item === "codebase" || item === "remote-codebase")
+                              .join(", ") || "codebase"}
+                          </td>
                           <td>{(entry.vulnerability_classes || []).join(", ") || "-"}</td>
                           <td>{entry.category || "-"}</td>
                           <td>{entry.source || "-"}</td>
-                          <td>{entry.command || entry.recommended_command || "-"}</td>
+                          <td>{entry.execution?.status || (entry.selected ? "pending" : "not_selected")}</td>
+                          <td>{entry.execution?.duration_ms ?? 0}</td>
+                          <td>{entry.execution?.findings_count ?? 0}</td>
                           <td>{entry.message || "-"}</td>
                         </tr>
                       ))}
                       {toolchainEntries.length === 0 && (
                         <tr>
-                          <td colSpan={9}>No toolchain data available.</td>
+                          <td colSpan={11}>No analyzer data available.</td>
                         </tr>
                       )}
                     </tbody>
@@ -1207,7 +1725,7 @@ export default function App(): React.JSX.Element {
               </div>
 
               <div className="subpanel">
-                <h3>Selected Tool Coverage Matrix</h3>
+                <h3>Selected Analyzer Coverage Matrix</h3>
                 <table className="simple-table">
                   <thead>
                     <tr>
@@ -1232,6 +1750,30 @@ export default function App(): React.JSX.Element {
                 <p className="muted-text">
                   Hover tool names in the table for quick context about what each tool does.
                 </p>
+                <h4>Execution Failures</h4>
+                <table className="simple-table">
+                  <thead>
+                    <tr>
+                      <th>Tool</th>
+                      <th>Status</th>
+                      <th>Message</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(toolchainExecution?.failures || []).slice(0, 12).map((item) => (
+                      <tr key={`${item.tool}-${item.status}`}>
+                        <td>{item.tool}</td>
+                        <td>{item.status}</td>
+                        <td>{item.message || (item.errors || []).join("; ") || "-"}</td>
+                      </tr>
+                    ))}
+                    {(toolchainExecution?.failures || []).length === 0 && (
+                      <tr>
+                        <td colSpan={3}>No execution failures recorded for selected tools.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           </>
@@ -1372,6 +1914,15 @@ export default function App(): React.JSX.Element {
             <MetricCard label="Implemented Controls" value={String(report.summary.implemented_controls)} />
             <MetricCard label="Security Categories" value={String(Object.keys(report.summary.category_distribution || {}).length)} />
             <MetricCard label="Standards Mapped" value={String(Object.keys(report.summary.standards_coverage || {}).length)} />
+            <MetricCard
+              label="Enterprise Status"
+              value={(enterpriseAssurance?.status || "blocked").toUpperCase()}
+            />
+            <MetricCard label="Readiness Score" value={String(enterpriseAssurance?.readiness_score ?? 0)} />
+            <MetricCard
+              label="Required Tool Coverage"
+              value={formatPercent(enterpriseAssurance?.required_tools_coverage_percent)}
+            />
           </div>
         )}
 
@@ -1462,6 +2013,16 @@ export default function App(): React.JSX.Element {
                   </button>
                 ))}
               </div>
+              <select value={findingScope} onChange={(event) => setFindingScope(event.target.value as FindingScope)}>
+                <option value="all">All findings</option>
+                <option value="new">New since last scan</option>
+                <option value="changed">Changed files only</option>
+              </select>
+              <select value={findingGroupMode} onChange={(event) => setFindingGroupMode(event.target.value as FindingGroupMode)}>
+                <option value="none">No grouping</option>
+                <option value="module">Group by module</option>
+                <option value="owner">Group by owner</option>
+              </select>
               <input
                 value={searchText}
                 onChange={(event) => setSearchText(event.target.value)}
@@ -1476,34 +2037,47 @@ export default function App(): React.JSX.Element {
                     <th>Severity</th>
                     <th>Issue</th>
                     <th>File</th>
+                    <th>Owner</th>
                     <th>CVSS</th>
                     <th>Line</th>
                     <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredFindings.map((item) => (
-                    <tr
-                      key={item.finding_uid}
-                      className={selectedFinding?.finding_uid === item.finding_uid ? "selected-row" : ""}
-                      onClick={() => {
-                        setSelectedFindingId(item.finding_uid);
-                        setVulnerabilitySection("detail");
-                      }}
-                    >
-                      <td>
-                        <span className={`sev-pill sev-${item.severity}`}>{item.severity}</span>
-                      </td>
-                      <td>{item.vulnerability_title || item.vulnerability_type || "Issue"}</td>
-                      <td>{normalizeFindingPath(item.file_path)}</td>
-                      <td>{(item.cvss_score || 0).toFixed(1)}</td>
-                      <td>{item.line_number}</td>
-                      <td>{item.status || "Open"}</td>
-                    </tr>
+                  {groupedFilteredFindings.map((group) => (
+                    <React.Fragment key={group.key}>
+                      {findingGroupMode !== "none" && (
+                        <tr className="group-row">
+                          <td colSpan={7}>
+                            {findingGroupMode === "module" ? "Module" : "Owner"}: {group.key} ({group.items.length})
+                          </td>
+                        </tr>
+                      )}
+                      {group.items.map((item) => (
+                        <tr
+                          key={item.finding_uid}
+                          className={selectedFinding?.finding_uid === item.finding_uid ? "selected-row" : ""}
+                          onClick={() => {
+                            setSelectedFindingId(item.finding_uid);
+                            setVulnerabilitySection("detail");
+                          }}
+                        >
+                          <td>
+                            <span className={`sev-pill sev-${item.severity}`}>{item.severity}</span>
+                          </td>
+                          <td>{item.vulnerability_title || item.vulnerability_type || "Issue"}</td>
+                          <td>{normalizeFindingPath(item.file_path)}</td>
+                          <td>{item.code_owner || "Unassigned"}</td>
+                          <td>{(item.cvss_score || 0).toFixed(1)}</td>
+                          <td>{item.line_number}</td>
+                          <td>{item.status || "Open"}</td>
+                        </tr>
+                      ))}
+                    </React.Fragment>
                   ))}
                   {filteredFindings.length === 0 && (
                     <tr>
-                      <td colSpan={6}>No findings match this filter.</td>
+                      <td colSpan={7}>No findings match this filter.</td>
                     </tr>
                   )}
                 </tbody>
@@ -1529,17 +2103,38 @@ export default function App(): React.JSX.Element {
                   <strong>Folder:</strong> {folderFromFindingPath(selectedFinding.file_path)}
                 </p>
                 <p>
+                  <strong>Code Owner:</strong> {selectedFinding.code_owner || "Unassigned"}
+                </p>
+                <p>
                   <strong>Description:</strong> {selectedFinding.description || "No additional description available."}
                 </p>
                 <p>
                   <strong>Source Tool:</strong> {selectedFinding.tool || "scanner"}
                 </p>
                 <p>
+                  <strong>Rule Confidence:</strong>{" "}
+                  {typeof selectedFinding.rule_confidence === "number"
+                    ? `${selectedFinding.rule_confidence_label || "Medium"} (${selectedFinding.rule_confidence.toFixed(2)})`
+                    : "Not scored"}
+                </p>
+                <p>
+                  <strong>Remediation Confidence:</strong> {selectedFinding.remediation_confidence || "Not scored"}
+                </p>
+                {selectedFinding.dependency_reachability && selectedFinding.dependency_reachability.status !== "not_applicable" && (
+                  <p>
+                    <strong>Dependency Reachability:</strong> {selectedFinding.dependency_reachability.status} (
+                    {selectedFinding.dependency_reachability.score.toFixed(2)}) -{" "}
+                    {selectedFinding.dependency_reachability.reasoning || "No reasoning available."}
+                  </p>
+                )}
+                <p>
                   <strong>Business Impact:</strong> {selectedFinding.business_impact}
                 </p>
                 <p>
                   <strong>Remediation:</strong> {selectedFinding.recommendation}
                 </p>
+                <h4>Code Evidence Excerpt</h4>
+                <pre>{selectedFinding.code_evidence_excerpt || selectedFinding.source_line_snippet || "No source context captured."}</pre>
                 <div className="code-grid">
                   <div>
                     <h4>Original Code</h4>
@@ -1550,7 +2145,7 @@ export default function App(): React.JSX.Element {
                     <pre>{selectedFinding.fixed_code || "No direct fix available."}</pre>
                   </div>
                 </div>
-                <h4>Patch Preview</h4>
+                <h4>Exact Code Diff Fix</h4>
                 <pre>{selectedFinding.patch_preview || "No patch preview available."}</pre>
                 <div className="button-row">
                   <button
@@ -1663,20 +2258,28 @@ export default function App(): React.JSX.Element {
                         </tr>
                       </thead>
                       <tbody>
-                        {(framework.rows || []).map((row) => (
-                          <tr key={`${framework.framework_id}-${row.id}`}>
-                            <td>{row.id}</td>
-                            <td>{row.title}</td>
+                        {(framework.rows || []).map((row, index) => {
+                          const rowAny = row as unknown as Record<string, unknown>;
+                          const rowId = String(rowAny.id ?? rowAny.item_id ?? `ITEM-${index + 1}`);
+                          const rowTitle = String(rowAny.title ?? rowAny.category ?? rowAny.name ?? "Unlabeled");
+                          const statusRaw = String(rowAny.status ?? "gap");
+                          const findings = Number(rowAny.finding_count ?? rowAny.findings ?? 0);
+                          const controls = Number(rowAny.control_count ?? rowAny.controls ?? 0);
+                          const total = Number(rowAny.count ?? (findings + controls));
+                          return (
+                          <tr key={`${framework.framework_id}-${rowId}-${index}`}>
+                            <td>{rowId}</td>
+                            <td>{rowTitle}</td>
                             <td>
-                              <span className={`compliance-status compliance-${row.status}`}>
-                                {row.status.replaceAll("_", " ")}
+                              <span className={`compliance-status compliance-${statusRaw}`}>
+                                {statusRaw.replaceAll("_", " ")}
                               </span>
                             </td>
-                            <td>{row.finding_count}</td>
-                            <td>{row.control_count}</td>
-                            <td>{row.count}</td>
+                            <td>{Number.isFinite(findings) ? findings : 0}</td>
+                            <td>{Number.isFinite(controls) ? controls : 0}</td>
+                            <td>{Number.isFinite(total) ? total : 0}</td>
                           </tr>
-                        ))}
+                        )})}
                       </tbody>
                     </table>
                   </div>
@@ -1739,40 +2342,114 @@ export default function App(): React.JSX.Element {
         />
 
         {historySection === "scans" && (
-          <div className="subpanel">
-            <h3>Scan History</h3>
-            <table className="simple-table">
-              <thead>
-                <tr>
-                  <th>Scan ID</th>
-                  <th>Project</th>
-                  <th>Risk</th>
-                  <th>Findings</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {history.map((item) => (
-                  <tr key={item.scanId}>
-                    <td>{item.scanId.slice(0, 8)}</td>
-                    <td>{item.projectPath}</td>
-                    <td>{item.risk}</td>
-                    <td>{item.totalFindings}</td>
-                    <td>
-                      <button type="button" onClick={() => openScan(item.scanId)}>
-                        Open
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {history.length === 0 && (
+          <>
+            {portfolioSummary && (
+              <div className="subpanel">
+                <h3>Local Portfolio Summary</h3>
+                <div className="tool-summary-grid">
+                  <span>Scans: {portfolioSummary.scansTotal}</span>
+                  <span>Repositories: {portfolioSummary.repositoriesTotal}</span>
+                  <span>
+                    Trend: {portfolioSummary.trendDirection}
+                    {portfolioSummary.trendDirection !== "unavailable" ? ` (${portfolioSummary.trendDelta > 0 ? "+" : ""}${portfolioSummary.trendDelta})` : ""}
+                  </span>
+                  <span>Fix velocity: {portfolioSummary.fixVelocityPercent.toFixed(1)}%</span>
+                  <span>Suppression drift: {portfolioSummary.suppressionDriftScore.toFixed(1)}</span>
+                </div>
+                <div className="table-split-grid">
+                  <div>
+                    <h4>Repeated Hot Modules</h4>
+                    <table className="simple-table">
+                      <thead>
+                        <tr>
+                          <th>Module</th>
+                          <th>Count</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(portfolioSummary.hotModules || []).map((item) => (
+                          <tr key={item.module}>
+                            <td>{item.module}</td>
+                            <td>{item.count}</td>
+                          </tr>
+                        ))}
+                        {(portfolioSummary.hotModules || []).length === 0 && (
+                          <tr>
+                            <td colSpan={2}>No repeated hot modules yet.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div>
+                    <h4>Recurring CWE Families</h4>
+                    <table className="simple-table">
+                      <thead>
+                        <tr>
+                          <th>CWE</th>
+                          <th>Count</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(portfolioSummary.recurringCwe || []).map((item) => (
+                          <tr key={item.cwe}>
+                            <td>{item.cwe}</td>
+                            <td>{item.count}</td>
+                          </tr>
+                        ))}
+                        {(portfolioSummary.recurringCwe || []).length === 0 && (
+                          <tr>
+                            <td colSpan={2}>No recurring CWE data yet.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="subpanel">
+              <h3>Scan History</h3>
+              <table className="simple-table">
+                <thead>
                   <tr>
-                    <td colSpan={5}>No scan history yet.</td>
+                    <th>Scan ID</th>
+                    <th>Project</th>
+                    <th>Risk</th>
+                    <th>Findings</th>
+                    <th>Reviewed</th>
+                    <th>Suppressed</th>
+                    <th>Top Module</th>
+                    <th>Action</th>
                   </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {history.map((item) => (
+                    <tr key={item.scanId}>
+                      <td>{item.scanId.slice(0, 8)}</td>
+                      <td>{item.projectPath}</td>
+                      <td>{item.risk}{typeof item.riskScore === "number" ? ` (${item.riskScore.toFixed(1)})` : ""}</td>
+                      <td>{item.totalFindings}</td>
+                      <td>{item.reviewedFindings || 0}</td>
+                      <td>{item.suppressedCount || 0}</td>
+                      <td>{item.topModule || "-"}</td>
+                      <td>
+                        <button type="button" onClick={() => openScan(item.scanId)}>
+                          Open
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {history.length === 0 && (
+                    <tr>
+                      <td colSpan={8}>No scan history yet.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
 
         {historySection === "audits" && (
@@ -1810,7 +2487,11 @@ export default function App(): React.JSX.Element {
   };
 
   const renderToolManager = (): React.JSX.Element => {
-    const isProfileSection = toolSection === "codebase" || toolSection === "website" || toolSection === "ip";
+    if (toolAuthEnabled && !toolSessionValid) {
+      return renderOwnerAccessPanel();
+    }
+
+    const isProfileSection = toolSection === "codebase";
     const profile = (isProfileSection ? toolSection : activeToolProfile) as ToolScanProfile;
     const profileMeta = TOOL_PROFILE_META[profile];
     const profileStats = toolProfileStats[profile];
@@ -1820,14 +2501,23 @@ export default function App(): React.JSX.Element {
         <SubTabs
           tabs={[
             { key: "codebase", label: "Codebase Tools", icon: "CB" },
-            { key: "website", label: "Website Tools", icon: "WS" },
-            { key: "ip", label: "IP Tools", icon: "IP" },
             { key: "roles", label: "Role Drill-Down", icon: "RL" },
-            { key: "provisioning", label: "Provisioning", icon: "PV" },
+            { key: "policy", label: "Execution Policy", icon: "PL" },
           ]}
           active={toolSection}
           onChange={(value) => setToolSection(value as ToolManagerSection)}
         />
+        {toolAuthEnabled && (
+          <div className="tool-auth-meta">
+            <span>
+              Owner session: active{" "}
+              {toolAuthConfig?.sessionExpiresAt ? `(expires ${new Date(toolAuthConfig.sessionExpiresAt).toLocaleTimeString()})` : ""}
+            </span>
+            <button type="button" onClick={logoutToolManagerSession} disabled={toolAuthBusy}>
+              End Owner Session
+            </button>
+          </div>
+        )}
 
         {isProfileSection && (
           <>
@@ -1838,33 +2528,18 @@ export default function App(): React.JSX.Element {
                   <button type="button" onClick={() => loadTools()}>
                     Refresh
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => bootstrapToolsByProfile(profile, "core", "Core profile provisioning completed.")}
-                    disabled={toolBusyKey === `bootstrap-${profile}-core` || !roleCaps.canProvisionTools}
-                    title={!roleCaps.canProvisionTools ? `Role ${role} cannot provision toolchains.` : ""}
-                  >
-                    {toolBusyKey === `bootstrap-${profile}-core` ? "Preparing..." : "Install Core Profile"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => bootstrapToolsByProfile(profile, "full", "Full profile provisioning completed.")}
-                    disabled={toolBusyKey === `bootstrap-${profile}-full` || !roleCaps.canProvisionTools}
-                    title={!roleCaps.canProvisionTools ? `Role ${role} cannot provision toolchains.` : ""}
-                  >
-                    {toolBusyKey === `bootstrap-${profile}-full` ? "Preparing..." : "Install Full Profile"}
-                  </button>
                 </div>
               </div>
               <p className="muted-text">{profileMeta.helper}</p>
-              {!roleCaps.canProvisionTools && (
-                <p className="muted-text">Provisioning is restricted for role {role}. Contact Admin/Security Analyst.</p>
-              )}
+              <p className="muted-text">
+                Desktop execution, downloads, and bundled external binaries are disabled by policy. This catalog maps
+                secure coding coverage only.
+              </p>
               <div className="tool-summary-grid">
-                <span>Tools in profile: {profileStats.total}</span>
-                <span>Ready on host: {profileStats.ready}</span>
-                <span>Integrated runners: {profileStats.integrated}</span>
-                <span>Target mode now: {targetMode === "runtime-ip" ? "Runtime/URL/IP" : "Codebase"}</span>
+                <span>Catalog entries: {profileStats.total}</span>
+                <span>Integrated references: {profileStats.integrated}</span>
+                <span>Desktop execution: disabled</span>
+                <span>Scope: local codebase folders only</span>
               </div>
               <input
                 value={toolSearchText}
@@ -1879,24 +2554,19 @@ export default function App(): React.JSX.Element {
                   <thead>
                     <tr>
                       <th>Tool</th>
-                      <th>Scan Profiles</th>
+                      <th>Coverage Profile</th>
                       <th>Category</th>
-                      <th>Modes</th>
+                      <th>Codebase Modes</th>
                       <th>Vulnerability Coverage</th>
-                      <th>Integrated</th>
-                      <th>Availability</th>
-                      <th>Source</th>
-                      <th>Command</th>
-                      <th>Actions</th>
+                      <th>Catalog Status</th>
+                      <th>Execution Policy</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredToolRows.map((row) => {
-                      const checkKey = `check-${row.name}`;
-                      const installKey = `install-${row.name}`;
-                      const runKey = `run-${row.name}`;
                       const status = row.status;
                       const profileText = row.scan_profiles.map((item) => TOOL_PROFILE_META[item].label).join(", ");
+                      const codebaseModes = row.target_modes.filter((item) => item === "codebase" || item === "remote-codebase");
                       return (
                         <tr key={row.name}>
                           <td>
@@ -1919,64 +2589,16 @@ export default function App(): React.JSX.Element {
                             </div>
                           </td>
                           <td>{row.category}</td>
-                          <td>{row.target_modes.join(", ")}</td>
+                          <td>{codebaseModes.length > 0 ? codebaseModes.join(", ") : "codebase"}</td>
                           <td>{row.vulnerability_classes.join(", ")}</td>
-                          <td>{row.integrated ? "Yes" : "Catalog"}</td>
-                          <td>{status ? (status.available ? "Ready" : "Missing") : "Unknown"}</td>
-                          <td>{status?.source || row.host_source || "-"}</td>
-                          <td>{status?.command || row.host_command || row.command}</td>
-                          <td>
-                            <div className="tool-actions">
-                              <button
-                                type="button"
-                                onClick={() => checkTool(row.name)}
-                                disabled={toolBusyKey === checkKey || !roleCaps.canManageTools || !row.integrated}
-                                title={
-                                  !row.integrated
-                                    ? "Catalog visibility only. Direct one-click run is available for integrated tools."
-                                    : !roleCaps.canManageTools
-                                      ? `Role ${role} has read-only tool access.`
-                                      : ""
-                                }
-                              >
-                                {toolBusyKey === checkKey ? "Checking..." : "Check"}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => installTool(row.name)}
-                                disabled={toolBusyKey === installKey || !roleCaps.canManageTools || !row.integrated}
-                                title={
-                                  !row.integrated
-                                    ? "Catalog visibility only. Direct one-click install is available for integrated tools."
-                                    : !roleCaps.canManageTools
-                                      ? `Role ${role} has read-only tool access.`
-                                      : ""
-                                }
-                              >
-                                {toolBusyKey === installKey ? "Installing..." : "Install"}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => runSingleTool(row.name)}
-                                disabled={toolBusyKey === runKey || !roleCaps.canManageTools || !row.integrated}
-                                title={
-                                  !row.integrated
-                                    ? "Catalog visibility only. Direct one-click run is available for integrated tools."
-                                    : !roleCaps.canManageTools
-                                    ? `Role ${role} has read-only tool access.`
-                                    : "Runs this tool only against current target field value."
-                                }
-                              >
-                                {toolBusyKey === runKey ? "Running..." : "Run"}
-                              </button>
-                            </div>
-                          </td>
+                          <td>{row.integrated ? "Catalog reference" : status?.available ? "Available" : "Reference only"}</td>
+                          <td>Install/run disabled in desktop by policy</td>
                         </tr>
                       );
                     })}
                     {filteredToolRows.length === 0 && (
                       <tr>
-                        <td colSpan={10}>No tools match this profile/search.</td>
+                        <td colSpan={7}>No tools match this profile/search.</td>
                       </tr>
                     )}
                   </tbody>
@@ -2015,28 +2637,12 @@ export default function App(): React.JSX.Element {
           </div>
         )}
 
-        {toolSection === "provisioning" && (
+        {toolSection === "policy" && (
           <>
             <div className="subpanel">
               <div className="tool-manager-head">
-                <h3>One-Click Tool Provisioning</h3>
+                <h3>Desktop Execution Policy</h3>
                 <div className="tool-actions">
-                  <button
-                    type="button"
-                    onClick={() => bootstrapToolsByProfile("all", "core", "Core enterprise toolchain is ready.")}
-                    disabled={toolBusyKey === "bootstrap-all-core" || !roleCaps.canProvisionTools}
-                    title={!roleCaps.canProvisionTools ? `Role ${role} cannot provision toolchains.` : ""}
-                  >
-                    {toolBusyKey === "bootstrap-all-core" ? "Preparing..." : "Prepare This Laptop (Core)"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => bootstrapToolsByProfile("all", "full", "Full catalog bootstrap completed.")}
-                    disabled={toolBusyKey === "bootstrap-all-full" || !roleCaps.canProvisionTools}
-                    title={!roleCaps.canProvisionTools ? `Role ${role} cannot provision toolchains.` : ""}
-                  >
-                    {toolBusyKey === "bootstrap-all-full" ? "Preparing..." : "Prepare Full Catalog (Best Effort)"}
-                  </button>
                   <button
                     type="button"
                     className="danger-button"
@@ -2055,44 +2661,29 @@ export default function App(): React.JSX.Element {
                 </div>
               </div>
               <p className="muted-text">
-                Core mode installs integrated tools that run directly in CodeSentinelX. Full mode attempts catalog tools too
-                (some require vendor setup or separate licensing).
+                CodeSentinelX desktop is locked to native secure code analysis. External binaries, downloads, runtime
+                probing, and remote target execution are disabled.
               </p>
               <div className="provision-grid">
-                {TOOL_PROFILES.map((item) => (
-                  <article key={item} className="provision-card">
-                    <h4>{TOOL_PROFILE_META[item].label}</h4>
-                    <p className="muted-text">{TOOL_PROFILE_META[item].helper}</p>
-                    <p>
-                      Ready: {toolProfileStats[item].ready}/{toolProfileStats[item].total}
-                    </p>
-                    <div className="button-row">
-                      <button
-                        type="button"
-                        onClick={() => bootstrapToolsByProfile(item, "core", `${TOOL_PROFILE_META[item].label} core ready.`)}
-                        disabled={toolBusyKey === `bootstrap-${item}-core` || !roleCaps.canProvisionTools}
-                        title={!roleCaps.canProvisionTools ? `Role ${role} cannot provision toolchains.` : ""}
-                      >
-                        Core
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => bootstrapToolsByProfile(item, "full", `${TOOL_PROFILE_META[item].label} full bootstrap done.`)}
-                        disabled={toolBusyKey === `bootstrap-${item}-full` || !roleCaps.canProvisionTools}
-                        title={!roleCaps.canProvisionTools ? `Role ${role} cannot provision toolchains.` : ""}
-                      >
-                        Full
-                      </button>
-                    </div>
-                  </article>
-                ))}
+                <article className="provision-card">
+                  <h4>Allowed Activity</h4>
+                  <p className="muted-text">Static analysis of local folders, secure coding rules, dependency manifest review.</p>
+                </article>
+                <article className="provision-card">
+                  <h4>Blocked Activity</h4>
+                  <p className="muted-text">No website scans, no IP scans, no crawler traffic, no binary bootstrap, no shell download actions.</p>
+                </article>
+                <article className="provision-card">
+                  <h4>Reset Scope</h4>
+                  <p className="muted-text">Use reset only to clear local app state, cached reports, and UI state.</p>
+                </article>
               </div>
             </div>
           </>
         )}
 
         <div className="subpanel">
-          <h3>Tool Action Logs</h3>
+          <h3>Analyzer Policy Logs</h3>
           <div className="log-console">
             {toolActionLogs.length > 0 ? (
               toolActionLogs.map((line, index) => (
@@ -2101,7 +2692,7 @@ export default function App(): React.JSX.Element {
                 </div>
               ))
             ) : (
-              <p className="muted-text">No tool actions yet.</p>
+              <p className="muted-text">No analyzer policy events yet.</p>
             )}
           </div>
         </div>
@@ -2113,35 +2704,88 @@ export default function App(): React.JSX.Element {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand panel">
-          <p className="brand-eyebrow">CODESENTINEL X</p>
-          <h1>Security Command</h1>
-          <p>Scan every line. Quantify every risk.</p>
+          <div className="brand-header">
+            <div className="brand-mark" aria-hidden="true">
+              <svg viewBox="0 0 120 120" role="img">
+                <defs>
+                  <linearGradient id="csxGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#20d1ff" />
+                    <stop offset="100%" stopColor="#0f6ea6" />
+                  </linearGradient>
+                </defs>
+                <path d="M60 8 106 33v54L60 112 14 87V33z" fill="none" stroke="url(#csxGradient)" strokeWidth="8" />
+                <path d="M35 50c5-12 13-18 25-18 9 0 16 3 22 10l-11 10c-3-4-7-6-12-6-6 0-10 3-13 9-3 7-3 14 0 21 3 6 7 9 13 9 5 0 9-2 12-6l11 10c-6 7-13 10-22 10-12 0-20-6-25-18-5-13-5-27 0-41z" fill="url(#csxGradient)" />
+              </svg>
+            </div>
+            <div>
+              <p className="brand-eyebrow">CODESENTINEL X</p>
+              <h1>Secure Code Analysis</h1>
+            </div>
+          </div>
+          <p>Inspect every file. Prioritize real code risk.</p>
         </div>
 
         <nav className="panel nav">
-          {TABS.map((item) => (
+          {visibleTabs.map((item, index) => (
             <button
               key={item.key}
               type="button"
               className={tab === item.key ? "nav-active" : ""}
               onClick={() => setTab(item.key)}
-              title={`Shortcut: Alt+${item.shortcut}`}
+              title={`Shortcut: Alt+${index + 1}`}
             >
               <span className="nav-icon">{item.icon}</span>
               <span className="nav-label">{item.label}</span>
-              <kbd className="shortcut-hint">Alt+{item.shortcut}</kbd>
+              <kbd className="shortcut-hint">Alt+{index + 1}</kbd>
             </button>
           ))}
         </nav>
 
         <section className="panel status-panel">
           <h3>Live Scan Status</h3>
-          <p className="status-headline">{isScanning ? "Scan running..." : "Scan status"}</p>
+          <p className="status-headline">
+            {isScanning ? `${activeScanSessions.filter((item) => item.status === "running" || item.status === "paused").length} active scan(s)` : "Scan status"}
+          </p>
           <p className="status-summary">{statusText}</p>
           <div className="progress-track">
-            <div className="progress-fill" style={{ width: `${Math.min(100, Math.max(0, progress))}%` }} />
+            <div
+              className={`progress-fill ${isFinalizingPhase ? "progress-fill-finalizing" : ""}`}
+              style={{ width: `${Math.min(100, Math.max(0, displayProgress))}%` }}
+            />
           </div>
-          <p className="status-percent">{progress.toFixed(1)}%</p>
+          <p className="status-percent">{displayProgress.toFixed(1)}%</p>
+          {(scanStatus === "running" || scanStatus === "paused") && (
+            <p className="status-runtime">
+              {scanStatus === "paused" ? "Paused" : "Running"} for {formatDuration(selectedSessionElapsed)} | Last update {formatDuration(secondsSinceProgressUpdate)} ago
+            </p>
+          )}
+          {isFinalizingPhase && (
+            <p className="status-finalizing">
+              Finalizing evidence and reports. Scan is still running...
+            </p>
+          )}
+          {activeScanSessions.length > 0 && (
+            <div className="session-list">
+              <p className="session-list-label">Scan Sessions</p>
+              {activeScanSessions.slice(0, 8).map((session) => {
+                const live = session.status === "running" || session.status === "paused";
+                return (
+                  <button
+                    key={session.scanId}
+                    type="button"
+                    className={`session-chip ${activeScanId === session.scanId ? "session-chip-active" : ""}`}
+                    onClick={() => setActiveScanId(session.scanId)}
+                    title={session.target}
+                  >
+                    <span className="session-chip-main">{session.scanId.slice(0, 8)}</span>
+                    <span className="session-chip-meta">
+                      {live ? "live" : session.status} | {session.progress.toFixed(0)}%
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <div className="mini-log-list">
             {scanLogs.slice(0, 6).map((line, index) => (
               <div key={`${index}-${line}`} className="mini-log-line">
@@ -2150,23 +2794,51 @@ export default function App(): React.JSX.Element {
             ))}
             {scanLogs.length === 0 && <p className="muted-text">No events yet.</p>}
           </div>
-          <p className="shortcut-guide">Navigation: Alt+1..6 for main tabs, 1..9 for section tabs.</p>
+          {!scan && lastCompletedScanId && (
+            <div className="button-row">
+              <button type="button" onClick={reopenLastCompletedScan}>
+                Reopen Last Completed Scan ({lastCompletedScanId.slice(0, 8)})
+              </button>
+            </div>
+          )}
+          <p className="shortcut-guide">
+            Navigation: Alt+1..{Math.max(1, visibleTabs.length)} for main tabs, 1..9 for section tabs.
+          </p>
         </section>
 
         <section className="panel exports">
           <h3>Exports</h3>
+          <div className="report-style-row">
+            <span className="muted-text">Vulnerability Report Style</span>
+            <div className="report-style-toggle">
+              <button
+                type="button"
+                className={vulnerabilityReportStyle === "classic" ? "active" : ""}
+                onClick={() => setVulnerabilityReportStyle("classic")}
+              >
+                Classic (Old)
+              </button>
+              <button
+                type="button"
+                className={vulnerabilityReportStyle === "modern" ? "active" : ""}
+                onClick={() => setVulnerabilityReportStyle("modern")}
+              >
+                Modern (New)
+              </button>
+            </div>
+          </div>
           <div className="button-grid">
             <button type="button" onClick={() => exportReport("existing", "html")}>
-              Existing HTML
+              Controls HTML
             </button>
             <button type="button" onClick={() => exportReport("existing", "pdf")}>
-              Existing PDF
+              Controls PDF
             </button>
             <button type="button" onClick={() => exportReport("vulnerability", "html")}>
-              Vulnerability HTML
+              Findings HTML
             </button>
             <button type="button" onClick={() => exportReport("vulnerability", "pdf")}>
-              Vulnerability PDF
+              Findings PDF
             </button>
             <button type="button" onClick={() => exportReport("fixes", "html")}>
               Fixes HTML
@@ -2174,8 +2846,17 @@ export default function App(): React.JSX.Element {
             <button type="button" onClick={() => exportReport("fixes", "pdf")}>
               Fixes PDF
             </button>
+            <button type="button" onClick={() => exportReport("finding_details", "html")}>
+              Finding Details HTML
+            </button>
+            <button type="button" onClick={() => exportReport("finding_details", "pdf")}>
+              Finding Details PDF
+            </button>
             <button type="button" onClick={() => exportReport("vulnerability", "json")}>
               Vulnerability JSON
+            </button>
+            <button type="button" onClick={() => exportReport("vulnerability", "xml")}>
+              Vulnerability XML
             </button>
             <button type="button" onClick={() => exportReport("vulnerability", "sarif")}>
               Vulnerability SARIF
@@ -2189,13 +2870,16 @@ export default function App(): React.JSX.Element {
           </div>
           <div className="button-row">
             <button type="button" onClick={() => previewReport("vulnerability")} disabled={!scan}>
-              Preview Vulnerability
+              Preview Findings
             </button>
             <button type="button" onClick={() => previewReport("existing")} disabled={!scan}>
-              Preview Existing
+              Preview Controls
             </button>
             <button type="button" onClick={() => previewReport("fixes")} disabled={!scan}>
               Preview Fixes
+            </button>
+            <button type="button" onClick={() => previewReport("finding_details")} disabled={!scan}>
+              Preview Finding Details
             </button>
             <button type="button" onClick={openLastExport} disabled={!lastExport}>
               Open Last Export
@@ -2207,12 +2891,12 @@ export default function App(): React.JSX.Element {
       <main className="workspace">
         <header className="panel header">
           <div className="header-row">
-            <label htmlFor="projectPath">Target Folder / IP / SSH</label>
+            <label htmlFor="projectPath">Codebase Folder</label>
             <input
               id="projectPath"
               value={projectPath}
               onChange={(event) => setProjectPath(event.target.value)}
-              placeholder="C:\\projects\\critical-app  OR  https://10.0.0.8  OR  ssh://user@10.0.0.8/opt/app"
+              placeholder="C:\\projects\\critical-app"
             />
             <button type="button" onClick={browseProject}>
               Browse
@@ -2220,16 +2904,28 @@ export default function App(): React.JSX.Element {
             <button
               type="button"
               onClick={runScan}
-              disabled={isScanning || !roleCaps.canRunScan}
+              disabled={!roleCaps.canRunScan}
               title={!roleCaps.canRunScan ? `Role ${role} cannot start scans.` : ""}
             >
-              {isScanning ? "Scanning..." : "Run Scan"}
+              {isScanning ? `Run Scan (+${activeScanSessions.filter((item) => item.status === "running" || item.status === "paused").length} live)` : "Run Scan"}
             </button>
+            <select
+              value={scanPreset}
+              onChange={(event) => setScanPreset(event.target.value as ScanPreset)}
+              aria-label="Scan preset"
+              title={SCAN_PRESETS.find((item) => item.key === scanPreset)?.helper || "Scan preset"}
+            >
+              {SCAN_PRESETS.map((item) => (
+                <option key={item.key} value={item.key}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
             <div className="scan-controls">
               <button
                 type="button"
                 onClick={pauseScan}
-                disabled={!isScanning || scanStatus !== "running" || !activeScanId || !roleCaps.canRunScan}
+                disabled={!selectedActiveSession || selectedActiveSession.status !== "running" || !roleCaps.canRunScan}
                 title={!roleCaps.canRunScan ? `Role ${role} cannot control scans.` : "Pause active scan"}
               >
                 || Pause
@@ -2237,7 +2933,7 @@ export default function App(): React.JSX.Element {
               <button
                 type="button"
                 onClick={resumeScan}
-                disabled={!isScanning || scanStatus !== "paused" || !activeScanId || !roleCaps.canRunScan}
+                disabled={!selectedActiveSession || selectedActiveSession.status !== "paused" || !roleCaps.canRunScan}
                 title={!roleCaps.canRunScan ? `Role ${role} cannot control scans.` : "Resume paused scan"}
               >
                 {" > Resume"}
@@ -2245,7 +2941,7 @@ export default function App(): React.JSX.Element {
               <button
                 type="button"
                 onClick={stopScan}
-                disabled={!isScanning || !activeScanId || !roleCaps.canRunScan}
+                disabled={!selectedActiveSession || !roleCaps.canRunScan}
                 title={!roleCaps.canRunScan ? `Role ${role} cannot control scans.` : "Stop active scan"}
               >
                 [] Stop
@@ -2263,85 +2959,104 @@ export default function App(): React.JSX.Element {
                 </option>
               ))}
             </select>
+            {toolAuthEnabled && !toolSessionValid && canOpenOwnerLogin && (
+              <button type="button" onClick={() => setShowOwnerAccessPanel((previous) => !previous)}>
+                {showOwnerAccessPanel ? "Close Owner Access" : "Owner Login"}
+              </button>
+            )}
           </div>
-          <p className="target-mode">
-            Mode: {targetMode === "runtime-ip" ? "Runtime/Remote Target Scan" : "Codebase Security Scan"}
-          </p>
-          {targetMode === "runtime-ip" && (
-            <div className="runtime-auth-panel">
-              <div className="runtime-auth-head">
-                <strong>Authenticated Crawl</strong>
-                <span className="muted-text">Optional: token, cookie, or custom header for logged-in API coverage.</span>
-              </div>
-              <div className="runtime-auth-grid">
-                <input
-                  type="password"
-                  value={runtimeAuthToken}
-                  onChange={(event) => setRuntimeAuthToken(event.target.value)}
-                  placeholder="Bearer Token (without 'Bearer ')"
-                  autoComplete="off"
-                />
-                <input
-                  type="password"
-                  value={runtimeAuthCookie}
-                  onChange={(event) => setRuntimeAuthCookie(event.target.value)}
-                  placeholder="Cookie header value (e.g. session=...)"
-                  autoComplete="off"
-                />
-                <input
-                  value={runtimeAuthHeaderName}
-                  onChange={(event) => setRuntimeAuthHeaderName(event.target.value)}
-                  placeholder="Custom Header Name (e.g. X-API-Key)"
-                  autoComplete="off"
-                />
-                <input
-                  type="password"
-                  value={runtimeAuthHeaderValue}
-                  onChange={(event) => setRuntimeAuthHeaderValue(event.target.value)}
-                  placeholder="Custom Header Value"
-                  autoComplete="off"
-                />
-              </div>
+          <div className="scm-toggle-row">
+            <button type="button" className={showScmOptions ? "active" : ""} onClick={() => setShowScmOptions((previous) => !previous)}>
+              {showScmOptions ? "Hide PR/MR Differential Options" : "Show PR/MR Differential Options (Optional)"}
+            </button>
+            <span className="muted-text">
+              Use these fields only for differential scans between base/head commits or a changed-files manifest.
+            </span>
+            {hasScmContext && <span className="scm-configured-pill">Configured</span>}
+          </div>
+          {showScmOptions && (
+            <div className="header-row scm-row">
+              <label htmlFor="diffBaseRef">Diff Base</label>
+              <input
+                id="diffBaseRef"
+                value={diffBaseRef}
+                onChange={(event) => setDiffBaseRef(event.target.value)}
+                placeholder="Optional: origin/main or base commit SHA"
+              />
+              <label htmlFor="diffHeadRef">Diff Head</label>
+              <input
+                id="diffHeadRef"
+                value={diffHeadRef}
+                onChange={(event) => setDiffHeadRef(event.target.value)}
+                placeholder="Optional: HEAD or head commit SHA"
+              />
+              <label htmlFor="changedFilesManifestPath">Changed Files Manifest</label>
+              <input
+                id="changedFilesManifestPath"
+                value={changedFilesManifestPath}
+                onChange={(event) => setChangedFilesManifestPath(event.target.value)}
+                placeholder="Optional: path to JSON/newline changed files list"
+              />
             </div>
           )}
+          <p className="target-mode">Mode: Codebase Secure Analysis</p>
+          <p className="role-hint">
+            Scan preset ({scanPreset}): {SCAN_PRESETS.find((item) => item.key === scanPreset)?.helper}
+          </p>
           <p className="role-hint">
             Role Drill-Down ({role}): {roleDrilldownSummary(role)}
           </p>
           <p className="role-hint">
             Access: scan={roleCaps.canRunScan ? "yes" : "no"} | review={roleCaps.canReviewFindings ? "yes" : "no"} |
-            tools={roleCaps.canManageTools ? "manage" : "read-only"} | provisioning={roleCaps.canProvisionTools ? "yes" : "no"}
+            catalog={roleCaps.canManageTools ? "manage" : "read-only"} | reset={roleCaps.canProvisionTools ? "yes" : "no"}
           </p>
+          {toolAuthEnabled && (
+            <p className="role-hint">
+              Analyzer Catalog owner lock: {toolSessionValid ? "verified" : "locked"} | {toolAuthConfig?.message || ""}
+            </p>
+          )}
           <div className="report-switch">
             <button
               type="button"
               className={tab === "vulnerabilities" ? "active" : ""}
               onClick={() => setTab("vulnerabilities")}
             >
-              Vulnerability Report
+              Code Findings
             </button>
             <button
               type="button"
               className={tab === "existing" ? "active" : ""}
               onClick={() => setTab("existing")}
             >
-              Existing Security Implementation Report
+              Secure Coding Controls
             </button>
             <button type="button" className={tab === "dashboard" ? "active" : ""} onClick={() => setTab("dashboard")}>
-              Risk Overview
+              Code Risk Overview
             </button>
-            <button type="button" className={tab === "tools" ? "active" : ""} onClick={() => setTab("tools")}>
-              Tool Manager
-            </button>
+            {isToolManagerVisible && (
+              <button type="button" className={tab === "tools" ? "active" : ""} onClick={() => setTab("tools")}>
+                Analyzer Catalog
+              </button>
+            )}
           </div>
           <div className="status-row">
             <span>{statusText}</span>
             <div className="progress-wrap">
               <div className="progress-track">
-                <div className="progress-fill" style={{ width: `${Math.min(100, Math.max(0, progress))}%` }} />
+                <div
+                  className={`progress-fill ${isFinalizingPhase ? "progress-fill-finalizing" : ""}`}
+                  style={{ width: `${Math.min(100, Math.max(0, displayProgress))}%` }}
+                />
               </div>
-              <span>{progress.toFixed(1)}%</span>
+              <span>{displayProgress.toFixed(1)}%</span>
             </div>
           </div>
+          {isFinalizingPhase && <p className="status-finalizing">Finalizing scan output. Processing is still active.</p>}
+          {(scanStatus === "running" || scanStatus === "paused") && (
+            <p className="status-runtime">
+              {scanStatus === "paused" ? "Paused" : "Running"} for {formatDuration(selectedSessionElapsed)} | Last update {formatDuration(secondsSinceProgressUpdate)} ago
+            </p>
+          )}
           {lastExport && <p className="export-path">Last export: {lastExport}</p>}
         </header>
 
@@ -2351,6 +3066,7 @@ export default function App(): React.JSX.Element {
               <h3>
                 Report Preview
                 {previewReportType ? ` | ${previewReportType.toUpperCase()}` : ""}
+                {previewReportType === "vulnerability" ? ` | ${vulnerabilityReportStyle.toUpperCase()}` : ""}
               </h3>
               <div className="button-row">
                 <button type="button" onClick={closePreview}>
@@ -2365,11 +3081,13 @@ export default function App(): React.JSX.Element {
                 className="report-preview-frame"
                 srcDoc={reportPreviewHtml}
                 title="CodeSentinelX Report Preview"
-                sandbox="allow-same-origin"
+                sandbox="allow-same-origin allow-scripts"
               />
             )}
           </section>
         )}
+
+        {toolAuthEnabled && !toolSessionValid && canOpenOwnerLogin && showOwnerAccessPanel && renderOwnerAccessPanel()}
 
         {tab === "dashboard" && renderDashboard()}
         {tab === "existing" && renderExistingReport()}

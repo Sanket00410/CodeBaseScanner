@@ -5,6 +5,7 @@ CodeSentinelX is a Windows desktop application that uses the existing `Universal
 Detailed usage guide:
 
 - `docs/USER_GUIDE.md`
+- `docs/ENTERPRISE_ARCHITECTURE.md`
 
 ## What This App Uses
 
@@ -15,25 +16,37 @@ Detailed usage guide:
   - Expanded backend webapp coverage (file/line-level):
     SQLi, NoSQLi, Command Injection, LDAP Injection, SSRF, XSS, SSTI, Path Traversal, XXE,
     auth/authz flaws, JWT misconfiguration, open redirect, mass assignment, prototype pollution,
-    weak crypto, insecure RNG, hardcoded secrets, insecure cookie flags, CSRF disabled,
-    permissive CORS, unrestricted upload, sensitive logging, and security misconfiguration
+    weak crypto, weak TLS config, insecure RNG, hardcoded secrets, default credentials, insecure cookie flags,
+    CSRF disabled, permissive CORS, unrestricted upload, session fixation risks,
+    missing input validation controls, disabled logging/monitoring controls,
+    software/data integrity verification disabled, and security misconfiguration
+  - OWASP coverage baselines:
+    - OWASP Top 10 (2021)
+    - OWASP API Security Top 10 (2023)
+    - OWASP ASVS 5.0
+    - OWASP WSTG 4.2
   - Runtime/API endpoint hardening checks:
     endpoint discovery crawl, API/doc exposure checks, auth-aware API coverage, TRACE method exposure,
     cookie security flags, stack trace disclosure, sensitive API payload keys, auth endpoint cache-control checks
   - Existing security implementation detection
   - Vulnerability and fixed-code findings
-  - External analyzers with target-aware routing:
-    - Codebase/SSH (auto-enabled by default):
-      Semgrep, Trivy, Gitleaks, CodeQL, Bandit, Checkov, pip-audit, Grype, OSV-Scanner, tfsec, Hadolint, gosec, OWASP Dependency-Check
-    - Runtime URL/IP: built-in Runtime HTTP probe, Nuclei, Nikto, Nmap, ZAP baseline
-  - Enterprise catalog mapping for additional global tools (SAST, SCA, DAST, IaC, container, Kubernetes)
+  - CVE/CVSS/KEV enrichment for dependency and code findings:
+    - CVSS-aware prioritization (`CVSS >= 7` highlighted as high-priority)
+    - Known exploited vulnerability tagging (CISA KEV)
+    - Exploit maturity context (known exploited / public PoC / likely / unconfirmed)
+    - Release gate action mapping (`Block release`, `Fix before prod`, `Scheduled fix`, `Track`)
+  - Git diff-based vulnerability tracking for local repositories:
+    - Whether finding is on changed file/line relative to current git diff
+    - Repo-relative path and git status marker in finding payload
+  - Native code analyzers and local secure coding rules:
+    Semgrep, Trivy manifest analysis, Gitleaks, CodeQL, Bandit, Checkov, pip-audit, Grype, OSV-Scanner, tfsec, Hadolint, gosec, OWASP Dependency-Check
+  - Reference catalog mapping for additional code-analysis families (SAST, SCA, IaC, container policy)
 - Three separate reports in UI and exports:
   - Existing Security Implementation Report
   - Vulnerability Report
   - Original and Suggested Fix Report
-- Supports two scan target modes:
-  - Codebase scan via local folder path
-  - Runtime/remote scan via IP, URL, or SSH target (e.g., `https://10.0.0.8`, `ssh://user@10.0.0.8/opt/app`)
+- Supports one scan target mode:
+  - Codebase scan via local folder path only
 
 ## Features
 
@@ -46,34 +59,23 @@ Detailed usage guide:
   - Selected vs available tools
   - Tool-to-vulnerability coverage mapping
   - Hover descriptions for each tool
-- Dedicated Tool Manager tab:
-  - Profile tabs: `Codebase Tools`, `Website Tools`, `IP Tools`
-  - `Check` one tool
-  - `Install` one tool
-  - `Run` one tool against current target (outside full scan workflow)
-  - One-click profile provisioning:
-    - Core integrated toolchain
-    - Full catalog (best effort)
-  - One-click environment recovery:
-    - `Reset Local State/Cache` button in Tool Manager -> Provisioning
-    - Clears local app state/history cache and rehydrates local tool cache
+  - Enterprise assurance metrics:
+    - Readiness verdict (`READY` / `WARNING` / `BLOCKED`)
+    - Readiness score, required-tool coverage %, tool success rate
+    - Blocker list and tool execution failure list
+- Dedicated Analyzer Catalog tab:
+  - Profile tabs: `Codebase Tools`, `Role Drill-Down`, `Execution Policy`
+  - Visibility-only analyzer catalog for secure coding coverage
+  - `Reset Local State/Cache` in `Execution Policy`
+  - Clears local app state/history cache
   - Role drill-down guidance (Admin, Security Analyst, Developer, Auditor)
-  - Runtime scanner auto-integration:
-    - `nuclei` via GitHub binary bootstrap
-    - `bandit` via pip / `python -m bandit` fallback
-    - `nikto`, `nmap`, `zap-baseline` via Docker runtime adapters when Docker is present
-  - Startup auto-warmup:
-    - Integrated toolchain profile bootstraps automatically in background on app launch
-    - New users get plug-and-play startup without manual bootstrap steps
-  - Installer seed cache:
-    - Build pipeline packages a pre-seeded `.toolchain` snapshot into app resources
-    - First launch hydrates a writable cache under scanner root (`<UniversalSecurityScanner>\\.toolchain`) for faster startup on fresh systems
-    - Legacy `%APPDATA%\\Electron\\.toolchain` is auto-used as migration seed when present
-    - Default packaging path is fast (`seed copy`) if local `.toolchain` already exists
-    - Full bundled-toolchain rebuild is opt-in for slower, fresh artifact hydration
+  - Desktop policy:
+    - App-managed external binaries are disabled by policy
+    - Desktop startup runs in native codebase mode only
+    - Packaged builds do not bundle or seed a `.toolchain` cache
   - Catalog visibility:
-    - Global catalog tools are shown as ready profile entries for enterprise coverage mapping
-    - Direct one-click execution remains enabled for integrated runners
+    - Global analyzer families are shown as catalog-only reference entries
+    - Direct one-click execution is disabled in the desktop app
 - Embedded standalone report preview inside the app (HTML dashboard iframe)
 - PDF exports rendered from the same HTML dashboard (mirrors layout, charts, and code blocks)
 - Scan history and audit logs
@@ -93,11 +95,7 @@ npm install
 npm run dev
 ```
 
-In the app target field, you can provide either:
-
-- Local project folder path
-- IP/URL (`http://host`, `https://host`, `10.0.0.8:8080`)
-- SSH URI (`ssh://user@host:22/path/to/codebase`)
+In the app target field, provide a local project folder path only.
 
 ## Build EXE
 
@@ -124,19 +122,7 @@ If scanner root is not auto-detected, set:
 $env:CODESENTINELX_SCANNER_ROOT = "C:\Users\sanketa\Documents\UniversalSecurityScanner"
 ```
 
-If you want to package with a specific pre-seeded cache location:
-
-```powershell
-$env:CODESENTINELX_TOOLCHAIN_SEED = "C:\Path\To\Seeded\.toolchain"
-npm run build
-```
-
-To force a fresh bundled toolchain rebuild (slower, downloads binaries):
-
-```powershell
-$env:CODESENTINELX_REBUILD_BUNDLED_TOOLCHAIN = "1"
-npm run build
-```
+App-managed `.toolchain` packaging has been removed. `npm run build` now produces a native-only desktop package.
 
 If Python path is custom:
 
@@ -144,54 +130,75 @@ If Python path is custom:
 $env:CODESENTINELX_PYTHON = "C:\Path\To\python.exe"
 ```
 
-To customize active scanner sets:
+Desktop runtime now clears app-managed external-tool selectors automatically. `USS_MAX_FINDINGS` still applies.
+
+Codebase scan tuning (optional overrides):
 
 ```powershell
-$env:USS_CODEBASE_TOOLS = "semgrep,trivy,gitleaks,codeql,bandit"
-$env:USS_RUNTIME_TOOLS = "runtime_http_probe,nuclei,nikto,nmap,zap-baseline"
-$env:USS_MAX_FINDINGS = "0"
+$env:USS_FILE_SCAN_WORKERS = "8"
+$env:USS_EXTERNAL_TOOL_WORKERS = "4"
+```
+
+Threat-intel enrichment tuning:
+
+```powershell
+# Optional: path to local CISA KEV JSON/CSV/text containing CVE IDs.
+$env:USS_KEV_CVE_PATH = "C:\security-feeds\known_exploited_vulnerabilities.json"
+```
+
+Enterprise gate enforcement (CLI runs):
+
+```powershell
+$env:USS_ENFORCE_ENTERPRISE_GATE = "1"
+python -m universal_security_scanner.cli scan --path "C:\projects\app" --format json --enforce-enterprise-gate
 ```
 
 For authenticated runtime crawl (logged-in APIs behind auth/session):
 
-```powershell
-$env:USS_RUNTIME_AUTH_TOKEN = "<bearer-token-without-prefix>"
-$env:USS_RUNTIME_AUTH_COOKIE = "sessionid=abc123; csrftoken=xyz789"
-$env:USS_RUNTIME_AUTH_HEADER_NAME = "X-API-Key"
-$env:USS_RUNTIME_AUTH_HEADER_VALUE = "<api-key-value>"
-```
+No runtime authentication settings are used in the desktop app. CodeSentinelX only scans local codebase folders.
 
-Notes:
-- UI has matching fields in runtime mode (`Target Folder / IP / SSH` set to URL/IP/localhost).
-- Values are used for live crawl/tool execution and are not written into report payloads as raw secrets.
-
-Per-tool bootstrap/check from CLI:
+For owner-only Analyzer Catalog access (single email, SMTP-free TOTP-only mode):
 
 ```powershell
-python -m universal_security_scanner.cli bootstrap-tools --path "C:\Users\sanketa\Documents\UniversalSecurityScanner" --tools semgrep
-python -m universal_security_scanner.cli bootstrap-tools --path "C:\Users\sanketa\Documents\UniversalSecurityScanner" --tools semgrep --target-mode codebase
+$env:CODESENTINELX_TOOLMANAGER_ALLOWED_EMAIL = "your.email@company.com"
+$env:CODESENTINELX_TOOLMANAGER_AUTH_MODE = "totp_only"
+$env:CODESENTINELX_TOOLMANAGER_MFA_SECRET = "<TOTP-SECRET-BASE32-OR-STRING>"
 ```
 
-If runtime tools use container-runtime mode, ensure Docker Desktop is installed and running:
+Optional SMTP mode (legacy): 
 
 ```powershell
-docker --version
+$env:CODESENTINELX_TOOLMANAGER_AUTH_MODE = "smtp_otp_mfa"
+$env:CODESENTINELX_SMTP_HOST = "smtp.company.com"
+$env:CODESENTINELX_SMTP_PORT = "587"
+$env:CODESENTINELX_SMTP_SECURE = "false"
+$env:CODESENTINELX_SMTP_USER = "smtp-user"
+$env:CODESENTINELX_SMTP_PASS = "smtp-password"
+$env:CODESENTINELX_SMTP_FROM = "CodeSentinelX <no-reply@company.com>"
 ```
+
+Optional Analyzer Catalog auth tuning:
+
+```powershell
+$env:CODESENTINELX_TOOLMANAGER_OTP_TTL_SECONDS = "300"
+$env:CODESENTINELX_TOOLMANAGER_SESSION_TTL_SECONDS = "3600"
+$env:CODESENTINELX_TOOLMANAGER_MAX_OTP_ATTEMPTS = "5"
+$env:CODESENTINELX_TOOLMANAGER_MFA_WINDOW = "1"
+```
+
+Authenticity guardrails:
+
+- App-managed external binaries are disabled in the desktop app.
+- Codebase analysis runs through the native scanner bridge only.
+- Strict authentic mode is enabled by default (`USS_STRICT_AUTHENTIC_RESULTS_ONLY=1`).
+- Embedded compatibility wrappers are disabled by default (`USS_ALLOW_EMBEDDED_COMPAT_WRAPPERS=0`).
 
 ## Role Behavior
 
-- `Admin`: full access, including scan start, finding review, tool execution, and provisioning.
-- `Security Analyst`: full operational access like Admin for triage/provisioning workflows.
-- `Developer`: scan + remediation views; read-only Tool Manager and no provisioning.
-- `Auditor`: read-only operational posture (history, audits, exports), no scan start/review/provisioning.
-
-For SSH target scans, pass credentials in URI query params or environment variables:
-
-```powershell
-$env:USS_REMOTE_SSH_USER = "scanner"
-$env:USS_REMOTE_SSH_PASSWORD = "your-password"
-$env:USS_REMOTE_SSH_PORT = "22"
-```
+- `Admin`: full access, including scan start, finding review, analyzer catalog policy, and reset.
+- `Security Analyst`: full operational access like Admin for triage workflows.
+- `Developer`: scan + remediation views; read-only Analyzer Catalog and no reset.
+- `Auditor`: read-only operational posture (history, audits, exports), no scan start/review/reset.
 
 ## Security Defaults
 

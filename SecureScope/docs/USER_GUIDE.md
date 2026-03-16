@@ -6,10 +6,9 @@ This guide explains how to install, run, scan, review, export, manage tools, and
 
 CodeSentinelX is a desktop security scanner for:
 
-- Source codebase scanning (local folders, repositories, SSH codebase targets)
-- Runtime/web target scanning (HTTP/HTTPS URLs, localhost, IP:port targets)
-- Unified enterprise reporting (Existing Security, Vulnerability, and Fix reports)
-- Toolchain management (check/install/run/bootstrap scanner tools)
+- Source codebase scanning (local folders and repositories)
+- Unified enterprise reporting (Secure Coding Controls, Code Findings, and Fix reports)
+- Analyzer catalog visibility (coverage mapping and policy status)
 
 ## 2. Prerequisites
 
@@ -18,8 +17,6 @@ For development mode:
 1. Node.js 20+ (`node -v`)
 2. npm 10+ (`npm -v`)
 3. Python 3.10+ (`python --version`)
-4. Optional for runtime tools: Docker Desktop (for Nikto/Nmap/ZAP container mode)
-
 For packaged EXE usage:
 
 - No frontend build tooling is needed.
@@ -30,12 +27,11 @@ For packaged EXE usage:
 Default local state paths on Windows:
 
 - App state store: `%APPDATA%\\Electron\\codesentinelx-store.json`
-- Tool cache: `C:\\Users\\sanketa\\Documents\\UniversalSecurityScanner\\.toolchain` (or `<scanner-root>\\.toolchain`)
+- App-managed tool cache: disabled by policy (no `.toolchain` cache is required)
 - Tool run outputs: `%USERPROFILE%\\Documents\\CodeSentinelX\\tool-runs`
 - Report exports: `%USERPROFILE%\\Documents\\CodeSentinelX\\exports`
 
 These are automatically managed by the app.
-If a legacy `%APPDATA%\\Electron\\.toolchain` exists, first launch can seed from it into `<scanner-root>\\.toolchain`.
 
 ## 4. Start the App (Development)
 
@@ -64,13 +60,7 @@ Output:
 
 - `SecureScope/release/CodeSentinelX-<version>-portable.exe`
 
-Build includes pre-seeded toolchain resources when available.
-
-Build speed notes:
-
-- Default: fast seed copy from existing `.toolchain` cache (recommended).
-- Slow mode (fresh bundle rebuild): downloads/prepares bundled tools again.
-  - `CODESENTINELX_REBUILD_BUNDLED_TOOLCHAIN=1`
+Build is native-only and does not package app-managed external tool caches or seeded binaries.
 
 ## 6. First Launch Checklist
 
@@ -80,10 +70,8 @@ Build speed notes:
    - Security Analyst
    - Developer
    - Auditor
-3. Enter target in `Target Folder / IP / SSH`.
-4. Verify mode text changes correctly:
-   - `Codebase Security Scan` for local folders
-   - `Runtime/Remote Target Scan` for URL/IP targets
+3. Enter target in `Codebase Folder`.
+4. Confirm the header mode reads `Codebase Secure Analysis`.
 
 ## 7. Supported Target Formats
 
@@ -93,16 +81,6 @@ Build speed notes:
   - `C:\projects\my-app`
 - Relative path:
   - `..\\my-app`
-- SSH codebase target:
-  - `ssh://user@10.0.0.10:22/opt/app`
-
-### 7.2 Runtime/Web Targets
-
-- URL:
-  - `https://example.com`
-  - `http://localhost:8080`
-- IP/port:
-  - `10.0.0.12:8080`
 
 ## 8. Run a Scan
 
@@ -114,12 +92,26 @@ Build speed notes:
    - Live log stream
 4. On success, dashboard loads automatically.
 
-By default, every scan automatically enables the full integrated tool profiles:
+Desktop runtime is locked to native codebase analysis. App-managed external tool binaries are disabled by policy; Analyzer Catalog shows code-analysis families for visibility/governance only.
 
-- Codebase/SSH:
-  `bandit, brakeman, checkov, clair, codeql, cppcheck, eslint-security, findsecbugs, flawfinder, gitleaks, gosec, govulncheck, grype, hadolint, infer, npm-audit, osv-scanner, owasp-dependency-check, pip-audit, safety, semgrep, snyk, sonarqube, spotbugs, tfsec, trivy`
-- Runtime URL/IP/localhost:
-  `runtime_http_probe, amass, ffuf, kube-bench, kube-hunter, nikto, nmap, nuclei, sqlmap, wapiti, zap-baseline`
+Risk intelligence and prioritization:
+
+- Findings are enriched with CVE IDs (when available), CVSS score, exploit maturity, and release-gate action.
+- Severity action policy:
+  - Critical => Block release
+  - High => Fix before prod
+  - Medium => Scheduled fix
+  - Low/Info => Track
+- Optional KEV feed override (local file with CVE IDs):
+  - `USS_KEV_CVE_PATH=C:\security-feeds\known_exploited_vulnerabilities.json`
+- Mandatory enterprise coverage enforced in scanner rules/reporting:
+  - OWASP Top 10 (2021): A01..A10 mapped in findings and compliance views
+  - OWASP API Security Top 10 (2023), ASVS 5.0, WSTG 4.2 profile mapping
+  - Critical code risks: RCE, SQLi, command injection, path traversal, deserialization, buffer overflow, unsafe upload
+  - Auth/token risks: JWT signature/expiry issues, missing MFA, weak/default credentials, session fixation
+  - Crypto/transport risks: weak hashing, insecure randomness, weak TLS configuration, hardcoded secrets
+  - Misconfiguration quick wins: CSP, HSTS, X-Frame-Options, X-Content-Type-Options, cookie flags
+  - Supply-chain risk context: CVSS >= 7 prioritization + CISA KEV tagging + release-gate classification
 
 If scan fails, error appears in status line and logs.
 
@@ -131,7 +123,17 @@ If scan fails, error appears in status line and logs.
 - OWASP category breakdown
 - Affected modules
 - Action plan
+- Enterprise readiness verdict:
+  - Status (`READY` / `WARNING` / `BLOCKED`)
+  - Readiness score
+  - Required tool coverage (%)
+  - Tool success rate (%)
+  - Blockers and recommendation
 - Toolchain status and coverage matrix
+- Tool execution telemetry:
+  - Execution status per tool (`success`, `failed`, `unavailable`, `skipped_*`)
+  - Per-tool duration and findings count
+  - Failure table for triage
 - Affected files/folders views
 
 ### 9.2 Existing Security Report
@@ -166,46 +168,58 @@ Shows implemented controls only:
 - Re-open previous scan results
 - Audit log timeline
 
-### 9.6 Tool Manager
+### 9.6 Analyzer Catalog
 
 Sub-tabs:
 
 - Codebase Tools
-- Website Tools
-- IP Tools
 - Role Drill-Down
-- Provisioning
+- Execution Policy
 
 Actions:
 
-- `Check` tool availability
-- `Install` tool
-- `Run` single tool against current target
-- `Install Core Profile` / `Install Full Profile`
+- Direct tool execution and provisioning are disabled by policy
+- The desktop app does not download, bootstrap, or run external binaries
+
+Owner access lock:
+
+- Analyzer Catalog can be configured as owner-only access.
+- Only one configured email is allowed.
+- Default access flow is SMTP-free TOTP-only (owner email + authenticator code).
+- Without valid owner session, tool list/actions are locked.
+- Configure with:
+  - `CODESENTINELX_TOOLMANAGER_ALLOWED_EMAIL`
+  - `CODESENTINELX_TOOLMANAGER_AUTH_MODE=totp_only`
+  - `CODESENTINELX_TOOLMANAGER_MFA_SECRET`
+
+Optional SMTP mode (legacy):
+
+- `CODESENTINELX_TOOLMANAGER_AUTH_MODE=smtp_otp_mfa`
+- `CODESENTINELX_SMTP_HOST`, `CODESENTINELX_SMTP_PORT`, `CODESENTINELX_SMTP_SECURE`, `CODESENTINELX_SMTP_USER`, `CODESENTINELX_SMTP_PASS`, `CODESENTINELX_SMTP_FROM`
 
 Compliance note:
 
-- By default, CodeSentinelX uses local `.toolchain` bootstrap only.
-- Host installers (`winget`, `npm -g`, `gem`, `go install`) are blocked unless explicitly enabled.
-- For enforced enterprise local-only tools, CodeSentinelX resolves from `.toolchain` only (downloaded binaries/venv tools or embedded compatibility wrappers), not host PATH.
+- App-managed external tool binaries are disabled by policy in the desktop runtime.
+- Host installers (`winget`, `npm -g`, `gem`, `go install`) are blocked unless explicitly enabled outside the desktop runtime.
 - Finding-cap is disabled by default (`USS_MAX_FINDINGS=0`), so scans do not stop at 5000 findings.
-- To allow host installers in a controlled environment, start app/CLI with:
-  - `USS_ALLOW_HOST_INSTALLERS=1`
+- Runtime compatibility fallback findings are disabled by default (`USS_ENABLE_BUILTIN_RUNTIME_COMPAT=0`) to avoid synthetic tool output.
+- Strict authentic results mode is enabled by default (`USS_STRICT_AUTHENTIC_RESULTS_ONLY=1`).
+- Embedded compatibility wrapper bootstrap is disabled by default (`USS_ALLOW_EMBEDDED_COMPAT_WRAPPERS=0`).
+- Git diff-based vulnerability context is automatically added for local git repositories (changed file/line tracking).
 
 ## 10. New Feature: Reset Local State/Cache (One Click)
 
 Location:
 
-- `Tool Manager` -> `Provisioning`
+- `Analyzer Catalog` -> `Execution Policy`
 - Button: `Reset Local State/Cache`
 
 What it does:
 
 1. Clears local app state store (history/audit/review state).
 2. Clears local tool-run cache.
-3. Clears and re-seeds local `.toolchain` cache.
-4. Re-initializes scanner/tool manager runtime state.
-5. Runs core toolchain warmup.
+3. Clears local preview/export cache and resets in-memory runtime state.
+4. Re-initializes scanner and UI state.
 
 When to use:
 
@@ -237,11 +251,11 @@ Use `Open Last Export` to open the latest generated file.
 
 ## 14. Recommended Operational Workflow
 
-1. Provision tools (`Tool Manager` -> `Provisioning` -> Core profile).
+1. Open `Analyzer Catalog` to confirm desktop policy is still codebase-only.
 2. Run codebase scan on target repo.
-3. Triage Critical/High findings first in Vulnerability detail.
-4. Export Vulnerability HTML/PDF for review board.
-5. Export Existing report for control-compliance evidence.
+3. Triage Critical/High findings first in the findings detail view.
+4. Export Findings HTML/PDF for review board.
+5. Export Controls report for control-compliance evidence.
 6. Track reviewed findings and audit logs.
 
 ## 15. Troubleshooting
@@ -252,18 +266,17 @@ Use `Open Last Export` to open the latest generated file.
 - Check Python availability and scanner root environment.
 - Check live log panel for exact failure stage.
 
-### 15.2 Runtime tool not available
+### 15.2 Analyzer catalog is locked
 
-- Use Tool Manager `Check` and `Install`.
-- For container runtime adapters, ensure Docker Desktop is running.
-- If policy blocks host installers, only local-cache/bootstrap-capable tools are installable.
+- Verify your role allows Analyzer Catalog access.
+- Complete owner access authentication if owner lock is enabled.
+- The desktop app intentionally blocks direct installs and external tool execution.
 
 ### 15.3 Store/caching issues
 
-- Use `Reset Local State/Cache` in Tool Manager.
+- Use `Reset Local State/Cache` in Analyzer Catalog.
 - If still needed, inspect:
   - `%APPDATA%\\Electron\\codesentinelx-store.json`
-  - `<scanner-root>\\.toolchain`
 
 ### 15.4 Renderer/Electron dev session exits unexpectedly
 
@@ -280,27 +293,19 @@ Use `Open Last Export` to open the latest generated file.
 
 ## 17. Advanced Environment Variables
 
-Optional runtime controls:
+Optional desktop controls:
 
 - `CODESENTINELX_SCANNER_ROOT`
 - `CODESENTINELX_PYTHON`
-- `CODESENTINELX_TOOLCHAIN_SEED`
-- `USS_CODEBASE_TOOLS`
-- `USS_RUNTIME_TOOLS`
-- `USS_TOOLS_DIR`
 - `USS_MAX_FINDINGS` (`0` = unlimited)
-- `USS_RUNTIME_AUTH_TOKEN` (Bearer token without `Bearer ` prefix)
-- `USS_RUNTIME_AUTH_COOKIE` (raw `Cookie` header value)
-- `USS_RUNTIME_AUTH_HEADER_NAME` + `USS_RUNTIME_AUTH_HEADER_VALUE` (custom auth header pair)
 
-Use these when customizing deployment paths or toolchains.
+Use these when customizing deployment paths and scanner behavior.
 
 ## 18. Quick Start (5 Steps)
 
 1. Launch app.
 2. Set role to `Security Analyst`.
-3. Enter target path or URL.
-4. For runtime URL/IP targets, optionally fill `Authenticated Crawl` fields (token/cookie/custom header).
-5. Click `Run Scan`.
-6. Review Vulnerability detail and export HTML/PDF.
+3. Enter a local codebase folder path.
+4. Click `Run Scan`.
+5. Review secure coding findings and export HTML/PDF.
 

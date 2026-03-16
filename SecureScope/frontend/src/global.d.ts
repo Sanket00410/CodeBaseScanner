@@ -1,16 +1,17 @@
 import {
   AuditLogEntry,
+  PortfolioSummary,
+  ScmDiffContext,
   ScanHistoryItem,
   ScanProgress,
   ScanView,
-  ToolActionResult,
-  ToolBootstrapResult,
   ToolCatalogItem,
-  ToolBootstrapMode,
   ResetLocalStateCacheResult,
-  RuntimeAuthProfile,
   ScanControlActionResult,
-  ToolScanProfile,
+  ToolManagerAuthConfig,
+  ToolManagerOtpResult,
+  ToolManagerVerifyResult,
+  ScanPreset,
   UserRole,
 } from "./types";
 
@@ -18,28 +19,40 @@ declare global {
   interface Window {
     codeSentinelX: {
       pickProjectFolder: () => Promise<string | null>;
-      startScan: (request: { projectPath: string; requestedBy?: string; role?: UserRole; runtimeAuth?: RuntimeAuthProfile }) => Promise<ScanView>;
+      startScan: (request: {
+        projectPath: string;
+        requestedBy?: string;
+        role?: UserRole;
+        scanPreset?: ScanPreset;
+        scmContext?: ScmDiffContext;
+      }) => Promise<ScanView>;
       pauseScan: (scanId: string) => Promise<ScanControlActionResult>;
       resumeScan: (scanId: string) => Promise<ScanControlActionResult>;
       stopScan: (scanId: string) => Promise<ScanControlActionResult>;
       getScanHistory: () => Promise<ScanHistoryItem[]>;
+      getPortfolioSummary: () => Promise<PortfolioSummary>;
       getScanById: (scanId: string) => Promise<ScanView | null>;
       markReviewed: (payload: { scanId: string; findingId: string; actor: string; role: UserRole }) => Promise<ScanView | null>;
       generatePatch: (payload: { scanId: string; findingId: string }) => Promise<string | null>;
       exportReport: (request: {
         scanId: string;
-        reportType: "existing" | "vulnerability" | "fixes" | "combined";
-        format: "json" | "html" | "pdf" | "sarif" | "csv" | "patch";
+        reportType: "existing" | "vulnerability" | "fixes" | "finding_details" | "combined";
+        format: "json" | "xml" | "html" | "pdf" | "sarif" | "csv" | "patch";
+        reportStyle?: "classic" | "modern";
       }) => Promise<string>;
-      renderReportHtml: (payload: { scanId: string; reportType: "existing" | "vulnerability" | "fixes" | "combined" }) => Promise<string>;
+      renderReportHtml: (payload: {
+        scanId: string;
+        reportType: "existing" | "vulnerability" | "fixes" | "finding_details" | "combined";
+        reportStyle?: "classic" | "modern";
+      }) => Promise<string>;
       openPath: (targetPath: string) => Promise<string>;
       listAuditLogs: (scanId?: string) => Promise<AuditLogEntry[]>;
-      listTools: () => Promise<ToolCatalogItem[]>;
-      checkTool: (payload: { tool: string }) => Promise<ToolActionResult>;
-      installTool: (payload: { tool: string }) => Promise<ToolActionResult>;
-      bootstrapTools: (payload: { profile: ToolScanProfile | "all"; mode: ToolBootstrapMode }) => Promise<ToolBootstrapResult>;
-      runTool: (payload: { tool: string; target: string }) => Promise<ToolActionResult>;
-      resetLocalStateCache: () => Promise<ResetLocalStateCacheResult>;
+      getToolAccessConfig: (payload?: { authToken?: string }) => Promise<ToolManagerAuthConfig>;
+      requestToolAccessOtp: (payload: { email: string }) => Promise<ToolManagerOtpResult>;
+      verifyToolAccess: (payload: { email: string; otp: string; mfaCode?: string }) => Promise<ToolManagerVerifyResult>;
+      logoutToolAccess: (payload: { authToken?: string }) => Promise<{ success: boolean; message: string }>;
+      listTools: (payload?: { authToken?: string }) => Promise<ToolCatalogItem[]>;
+      resetLocalStateCache: (payload?: { authToken?: string }) => Promise<ResetLocalStateCacheResult>;
       onScanProgress: (callback: (progress: ScanProgress) => void) => () => void;
     };
   }
