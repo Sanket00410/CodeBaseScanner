@@ -1057,6 +1057,11 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     }
     writeWrapped(doc, `Impact: ${lead.business_impact || "N/A"}`, 8);
     writeWrapped(doc, `Recommendation: ${lead.recommendation || "N/A"}`, 8);
+    const leadDependencySummary = dependencyAuthenticitySummary(lead);
+    if (leadDependencySummary) {
+      writeWrapped(doc, `Dependency Authenticity: ${leadDependencySummary}`, 8);
+      writeWrapped(doc, `Dependency Detail: ${singleLine(dependencyAuthenticityDetail(lead))}`, 8);
+    }
     writeWrapped(doc, `Attack Scenario: ${singleLine(lead.attack_scenario || "N/A")}`, 8);
     writeWrapped(doc, `Exploitation Path: ${singleLine(lead.exploitation_example || "N/A")}`, 8);
     writeWrapped(doc, "PoC Validation:", 8);
@@ -1149,6 +1154,8 @@ function writeFixesPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     { label: "Verified Fixed", value: String(fixVerificationSummary.verified_fixed), tone: "info" },
     { label: "Verification Failed", value: String(fixVerificationSummary.verification_failed), tone: "critical" },
     { label: "Inconclusive", value: String(fixVerificationSummary.inconclusive), tone: "medium" },
+    { label: "Build Passed", value: String(fixVerificationSummary.build_verified), tone: "info" },
+    { label: "Tests Passed", value: String(fixVerificationSummary.test_verified), tone: "info" },
   ]);
   if (Number(fixVerificationSummary.performed || 0) > 0) {
     writePdfKeyValueTable(doc, [
@@ -1156,6 +1163,10 @@ function writeFixesPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
       { key: "Verified Fixed", value: String(fixVerificationSummary.verified_fixed) },
       { key: "Verification Failed", value: String(fixVerificationSummary.verification_failed) },
       { key: "Inconclusive", value: String(fixVerificationSummary.inconclusive) },
+      { key: "Workspace Build Passed", value: String(fixVerificationSummary.build_verified) },
+      { key: "Workspace Build Failed", value: String(fixVerificationSummary.build_failed) },
+      { key: "Workspace Tests Passed", value: String(fixVerificationSummary.test_verified) },
+      { key: "Workspace Tests Failed", value: String(fixVerificationSummary.test_failed) },
       { key: "Not Applicable", value: String(fixVerificationSummary.not_applicable) },
       { key: "Skipped", value: String(fixVerificationSummary.skipped) },
       { key: "Enterprise Status", value: String((enterprise?.status || "blocked").toUpperCase()) },
@@ -1264,6 +1275,11 @@ function writeFixesPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
       writeWrapped(doc, `CVE / Advisory IDs: ${advisoryIds.join(", ")}`, 8);
     }
     writeWrapped(doc, `Recommendation: ${finding.recommendation || "N/A"}`, 8);
+    const dependencySummary = dependencyAuthenticitySummary(finding);
+    if (dependencySummary) {
+      writeWrapped(doc, `Dependency Authenticity: ${dependencySummary}`, 8);
+      writeWrapped(doc, `Dependency Detail: ${singleLine(dependencyAuthenticityDetail(finding))}`, 8);
+    }
     if (finding.attack_scenario) {
       writeWrapped(doc, `Attack Scenario: ${singleLine(finding.attack_scenario)}`, 8);
     }
@@ -1302,6 +1318,24 @@ function writeFixesPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     writeWrapped(doc, "Post-Fix Verification Output:", 8);
     for (const line of codeSnippetLines(String(finding.fix_verification?.post_fix_execution?.output || "No post-fix verification output was captured for this finding in this scan."), 12, 180)) {
       writeWrapped(doc, `  ${line}`, 8);
+    }
+    if (finding.fix_verification?.build_verification) {
+      writeWrapped(doc, "Workspace Build Verification:", 8);
+      for (const line of codeSnippetLines(String(finding.fix_verification.build_verification.command || "N/A"), 10, 180)) {
+        writeWrapped(doc, `  ${line}`, 8);
+      }
+      for (const line of codeSnippetLines(String(finding.fix_verification.build_verification.output || "No build output captured."), 12, 180)) {
+        writeWrapped(doc, `  ${line}`, 8);
+      }
+    }
+    if (finding.fix_verification?.test_verification) {
+      writeWrapped(doc, "Workspace Test Verification:", 8);
+      for (const line of codeSnippetLines(String(finding.fix_verification.test_verification.command || "N/A"), 10, 180)) {
+        writeWrapped(doc, `  ${line}`, 8);
+      }
+      for (const line of codeSnippetLines(String(finding.fix_verification.test_verification.output || "No test output captured."), 12, 180)) {
+        writeWrapped(doc, `  ${line}`, 8);
+      }
     }
     writeWrapped(doc, "Original Code:", 8);
     for (const line of codeSnippetLines(finding.original_code || "Snippet unavailable.", 12, 180)) {
@@ -1930,6 +1964,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       <tr><th>CVEs</th><td>${renderCveLinks(cveList)}</td></tr>
       <tr><th>Exploitability Context</th><td>${escapeHtml(leadExtended.exploitability_context || "N/A")}</td></tr>
       <tr><th>Recommendation</th><td>${escapeHtml(lead.recommendation || "N/A")}</td></tr>
+      ${dependencyAuthenticitySummary(lead) ? `<tr><th>Dependency Authenticity</th><td>${escapeHtml(dependencyAuthenticitySummary(lead))}<br><span class="muted">${escapeHtml(dependencyAuthenticityDetail(lead))}</span></td></tr>` : ""}
       <tr><th>Attack Scenario</th><td>${escapeHtml(lead.attack_scenario || "N/A")}</td></tr>
       <tr><th>Exploitation Path</th><td>${escapeHtml(lead.exploitation_example || "N/A")}</td></tr>
       <tr><th>Source Tool</th><td>${escapeHtml(leadExtended.tool || "scanner")}</td></tr>
@@ -2949,6 +2984,10 @@ function renderFixesHtml(scan: ScanView): string {
       { label: "Verified Fixed", value: Number(fixVerificationSummary.verified_fixed || 0), tone: "info" },
       { label: "Verification Failed", value: Number(fixVerificationSummary.verification_failed || 0), tone: "critical" },
       { label: "Inconclusive", value: Number(fixVerificationSummary.inconclusive || 0), tone: "medium" },
+      { label: "Build Passed", value: Number(fixVerificationSummary.build_verified || 0), tone: "info" },
+      { label: "Build Failed", value: Number(fixVerificationSummary.build_failed || 0), tone: "critical" },
+      { label: "Tests Passed", value: Number(fixVerificationSummary.test_verified || 0), tone: "info" },
+      { label: "Tests Failed", value: Number(fixVerificationSummary.test_failed || 0), tone: "critical" },
       { label: "Not Applicable", value: Number(fixVerificationSummary.not_applicable || 0), tone: "low" },
       { label: "Skipped", value: Number(fixVerificationSummary.skipped || 0), tone: "low" },
     ],
@@ -2967,6 +3006,10 @@ function renderFixesHtml(scan: ScanView): string {
                 <tr><td>Verified Fixed</td><td align="center">${fixVerificationSummary.verified_fixed}</td></tr>
                 <tr><td>Verification Failed</td><td align="center">${fixVerificationSummary.verification_failed}</td></tr>
                 <tr><td>Inconclusive</td><td align="center">${fixVerificationSummary.inconclusive}</td></tr>
+                <tr><td>Workspace Build Passed</td><td align="center">${fixVerificationSummary.build_verified}</td></tr>
+                <tr><td>Workspace Build Failed</td><td align="center">${fixVerificationSummary.build_failed}</td></tr>
+                <tr><td>Workspace Tests Passed</td><td align="center">${fixVerificationSummary.test_verified}</td></tr>
+                <tr><td>Workspace Tests Failed</td><td align="center">${fixVerificationSummary.test_failed}</td></tr>
                 <tr><td>Not Applicable</td><td align="center">${fixVerificationSummary.not_applicable}</td></tr>
                 <tr><td>Skipped</td><td align="center">${fixVerificationSummary.skipped}</td></tr>
                 </tbody>
@@ -3005,6 +3048,7 @@ function renderFixesHtml(scan: ScanView): string {
     <p><strong>CWE:</strong> ${renderCweLink(finding.cwe_id || "N/A")} | <strong>OWASP:</strong> ${escapeHtml(finding.owasp_mapping || "N/A")} | <strong>CVSS:</strong> ${renderCvssLink(finding.cvss_score)}</p>
     ${advisoryLinks ? `<p><strong>CVE / Advisory IDs:</strong> ${advisoryLinks}</p>` : ""}
     <p><strong>Recommendation:</strong> ${escapeHtml(finding.recommendation || "N/A")}</p>
+    ${dependencyAuthenticitySummary(finding) ? `<p><strong>Dependency Authenticity:</strong> ${escapeHtml(dependencyAuthenticitySummary(finding))}<br><span class="muted">${escapeHtml(dependencyAuthenticityDetail(finding))}</span></p>` : ""}
     <p><strong>Attack Scenario:</strong> ${escapeHtml(finding.attack_scenario || "N/A")}</p>
     <p><strong>Exploitation Path:</strong> ${escapeHtml(finding.exploitation_example || "N/A")}</p>
     <h4>PoC Validation</h4>
@@ -3019,6 +3063,18 @@ function renderFixesHtml(scan: ScanView): string {
     <p><strong>Post-Fix Command:</strong> <code>${escapeHtml(String(finding.fix_verification?.post_fix_execution?.command || "No post-fix verification command was executed for this finding in this scan."))}</code></p>
     <h4>Post-Fix Output</h4>
     <pre>${escapeHtml(truncateForReport(String(finding.fix_verification?.post_fix_execution?.output || "No post-fix verification output was captured for this finding in this scan."), 1600))}</pre>
+    ${
+      finding.fix_verification?.build_verification
+        ? `<p><strong>Workspace Build Command:</strong> <code>${escapeHtml(String(finding.fix_verification.build_verification.command || "N/A"))}</code></p>
+    <pre>${escapeHtml(truncateForReport(String(finding.fix_verification.build_verification.output || "No build output captured."), 1200))}</pre>`
+        : ""
+    }
+    ${
+      finding.fix_verification?.test_verification
+        ? `<p><strong>Workspace Test Command:</strong> <code>${escapeHtml(String(finding.fix_verification.test_verification.command || "N/A"))}</code></p>
+    <pre>${escapeHtml(truncateForReport(String(finding.fix_verification.test_verification.output || "No test output captured."), 1200))}</pre>`
+        : ""
+    }
     <div class="code-grid">
       <div>
         <h4>Original Code</h4>
@@ -3861,6 +3917,10 @@ function normalizedFixVerificationSummary(
         inconclusive?: number;
         not_applicable?: number;
         skipped?: number;
+        build_verified?: number;
+        build_failed?: number;
+        test_verified?: number;
+        test_failed?: number;
       }
     | null
     | undefined,
@@ -3872,6 +3932,10 @@ function normalizedFixVerificationSummary(
   inconclusive: number;
   not_applicable: number;
   skipped: number;
+  build_verified: number;
+  build_failed: number;
+  test_verified: number;
+  test_failed: number;
 } {
   const normalized = {
     performed: Number(summary?.performed || 0),
@@ -3880,6 +3944,10 @@ function normalizedFixVerificationSummary(
     inconclusive: Number(summary?.inconclusive || 0),
     not_applicable: Number(summary?.not_applicable || 0),
     skipped: Number(summary?.skipped || 0),
+    build_verified: Number(summary?.build_verified || 0),
+    build_failed: Number(summary?.build_failed || 0),
+    test_verified: Number(summary?.test_verified || 0),
+    test_failed: Number(summary?.test_failed || 0),
   };
   const anySummaryValue = Object.values(normalized).some((value) => Number(value || 0) > 0);
   if (anySummaryValue || !Array.isArray(findings) || findings.length === 0) {
@@ -3893,6 +3961,10 @@ function normalizedFixVerificationSummary(
     inconclusive: 0,
     not_applicable: 0,
     skipped: 0,
+    build_verified: 0,
+    build_failed: 0,
+    test_verified: 0,
+    test_failed: 0,
   };
   for (const finding of findings) {
     const verification = finding.fix_verification;
@@ -3913,6 +3985,18 @@ function normalizedFixVerificationSummary(
       rebuilt.skipped += 1;
     } else if (result) {
       rebuilt.inconclusive += 1;
+    }
+    const buildVerification = verification.build_verification;
+    if (String(buildVerification?.status || "").toLowerCase() === "success") {
+      rebuilt.build_verified += 1;
+    } else if (buildVerification) {
+      rebuilt.build_failed += 1;
+    }
+    const testVerification = verification.test_verification;
+    if (String(testVerification?.status || "").toLowerCase() === "success") {
+      rebuilt.test_verified += 1;
+    } else if (testVerification) {
+      rebuilt.test_failed += 1;
     }
   }
   return rebuilt;
@@ -4080,6 +4164,71 @@ function aiGroundingStatus(value: { ai_fix_grounded?: boolean }): string {
 
 function aiGroundingNotes(value: { ai_grounding_notes?: string }): string {
   return String(value.ai_grounding_notes || "").trim() || "Grounded on the finding evidence, code context, and safe validation data available in this scan.";
+}
+
+function dependencyAuthenticitySummary(
+  finding: {
+    dependency_reachability?: {
+      status?: string;
+      manifest_present?: boolean;
+      lockfile_present?: boolean;
+      manifest_paths?: string[];
+      lockfile_paths?: string[];
+      import_evidence?: string[];
+      declared_versions?: string[];
+      locked_versions?: string[];
+      advisory_ids?: string[];
+      advisory_verified?: boolean;
+      reasoning?: string;
+    };
+  },
+): string {
+  const reachability = finding.dependency_reachability;
+  if (!reachability) {
+    return "";
+  }
+  const parts = [
+    `status=${String(reachability.status || "unknown")}`,
+    `manifest=${reachability.manifest_present ? "yes" : "no"}`,
+    `lockfile=${reachability.lockfile_present ? "yes" : "no"}`,
+    `advisory_verified=${reachability.advisory_verified === false ? "no" : "yes"}`,
+  ];
+  const declared = (reachability.declared_versions || []).slice(0, 2).join(", ");
+  const locked = (reachability.locked_versions || []).slice(0, 2).join(", ");
+  const imports = (reachability.import_evidence || []).slice(0, 2).join(", ");
+  if (declared) {
+    parts.push(`declared=${declared}`);
+  }
+  if (locked) {
+    parts.push(`locked=${locked}`);
+  }
+  if (imports) {
+    parts.push(`imports=${imports}`);
+  }
+  return parts.join(" | ");
+}
+
+function dependencyAuthenticityDetail(
+  finding: {
+    dependency_reachability?: {
+      manifest_paths?: string[];
+      lockfile_paths?: string[];
+      advisory_ids?: string[];
+      reasoning?: string;
+    };
+  },
+): string {
+  const reachability = finding.dependency_reachability;
+  if (!reachability) {
+    return "";
+  }
+  const notes = [
+    (reachability.manifest_paths || []).length ? `Manifest paths: ${(reachability.manifest_paths || []).slice(0, 3).join(", ")}` : "",
+    (reachability.lockfile_paths || []).length ? `Lockfile paths: ${(reachability.lockfile_paths || []).slice(0, 3).join(", ")}` : "",
+    (reachability.advisory_ids || []).length ? `Advisories: ${(reachability.advisory_ids || []).slice(0, 4).join(", ")}` : "",
+    String(reachability.reasoning || "").trim(),
+  ].filter(Boolean);
+  return notes.join(" | ");
 }
 
 function renderFixWindowValue(value: unknown, findingByUid?: Map<string, VulnerabilityFinding>): string {

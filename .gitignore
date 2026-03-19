@@ -41,3 +41,7 @@ electron/
 
 # Other generated/export folders
 exports-smoke/
+exports/
+
+# Root npm lock artifact without a matching root package.json
+/package-lock.json

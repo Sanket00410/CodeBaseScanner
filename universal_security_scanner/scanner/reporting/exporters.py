@@ -168,6 +168,82 @@ def _alert_groups(findings: list[dict]) -> list[dict]:
     return rows
 
 
+def _fix_verification_summary(findings: list[dict]) -> dict[str, int]:
+    summary = {
+        "performed": 0,
+        "verified_fixed": 0,
+        "verification_failed": 0,
+        "inconclusive": 0,
+        "not_applicable": 0,
+        "skipped": 0,
+        "build_verified": 0,
+        "build_failed": 0,
+        "test_verified": 0,
+        "test_failed": 0,
+    }
+    for item in findings:
+        verification = item.get("fix_verification") or {}
+        if verification.get("performed"):
+            summary["performed"] += 1
+        result = str(verification.get("result") or "").strip().lower()
+        if result == "verified_fixed":
+            summary["verified_fixed"] += 1
+        elif result in {"verification_failed", "still_vulnerable"}:
+            summary["verification_failed"] += 1
+        elif result in {"manual_review_required", "inconclusive"}:
+            summary["inconclusive"] += 1
+        elif result == "skipped":
+            summary["skipped"] += 1
+        else:
+            summary["not_applicable"] += 1
+        build_verification = verification.get("build_verification") or {}
+        if str(build_verification.get("status") or "").lower() == "success":
+            summary["build_verified"] += 1
+        elif build_verification:
+            summary["build_failed"] += 1
+        test_verification = verification.get("test_verification") or {}
+        if str(test_verification.get("status") or "").lower() == "success":
+            summary["test_verified"] += 1
+        elif test_verification:
+            summary["test_failed"] += 1
+    return summary
+
+
+def _dependency_auth_summary(item: dict) -> str:
+    reachability = item.get("dependency_reachability") or {}
+    if not reachability:
+        return ""
+    parts = [
+        f"status={reachability.get('status', 'unknown')}",
+        f"manifest={'yes' if reachability.get('manifest_present') else 'no'}",
+        f"lockfile={'yes' if reachability.get('lockfile_present') else 'no'}",
+        f"advisory_verified={'yes' if reachability.get('advisory_verified', True) else 'no'}",
+    ]
+    declared = ", ".join((reachability.get("declared_versions") or [])[:2])
+    locked = ", ".join((reachability.get("locked_versions") or [])[:2])
+    imports = ", ".join((reachability.get("import_evidence") or [])[:2])
+    if declared:
+        parts.append(f"declared={declared}")
+    if locked:
+        parts.append(f"locked={locked}")
+    if imports:
+        parts.append(f"imports={imports}")
+    return " | ".join(parts)
+
+
+def _dependency_auth_detail(item: dict) -> str:
+    reachability = item.get("dependency_reachability") or {}
+    if not reachability:
+        return ""
+    parts = [
+        f"Manifest paths: {', '.join((reachability.get('manifest_paths') or [])[:3])}" if reachability.get("manifest_paths") else "",
+        f"Lockfile paths: {', '.join((reachability.get('lockfile_paths') or [])[:3])}" if reachability.get("lockfile_paths") else "",
+        f"Advisories: {', '.join((reachability.get('advisory_ids') or [])[:4])}" if reachability.get("advisory_ids") else "",
+        str(reachability.get("reasoning") or "").strip(),
+    ]
+    return " | ".join(part for part in parts if part)
+
+
 def _slugify(value: str) -> str:
     parts: list[str] = []
     for char in value.lower():
@@ -298,10 +374,14 @@ class ReportExporter:
         if report_kind == "fixes":
             vuln = report.get("vulnerability_fixed_code_report", {})
             findings = _sorted_findings(report)
+            verification = _fix_verification_summary(findings)
             write_line("CodeSentinelX Original and Suggested Fix Report", font="Helvetica-Bold", size=13, gap=16)
             write_line(f"Target: {vuln.get('target_path', summary.get('target_path', 'N/A'))}")
             write_line(f"Generated: {vuln.get('generated_at', summary.get('generated_at', 'N/A'))}")
             write_line(f"Total findings: {len(findings)}", gap=14)
+            write_line("Verification Summary", font="Helvetica-Bold", size=11)
+            for key, value in verification.items():
+                write_line(f"- {key.replace('_', ' ').title()}: {value}", size=8)
             for item in findings[:220]:
                 write_line(
                     f"[{item.get('severity', 'Info')}] {item.get('vulnerability_title', item.get('vulnerability_type', 'Issue'))}",
@@ -318,10 +398,27 @@ class ReportExporter:
                 )
                 write_line("Recommendation:", size=8)
                 write_block(str(item.get("recommendation", "N/A")), size=8)
+                dependency_summary = _dependency_auth_summary(item)
+                if dependency_summary:
+                    write_line(f"Dependency Authenticity: {dependency_summary}", size=8)
+                    write_block(_dependency_auth_detail(item), size=8)
+                if item.get("fix_verification"):
+                    write_line(
+                        f"Fix Verification: {item.get('fix_verification', {}).get('result', 'not_applicable')} | {item.get('fix_verification', {}).get('reason', '')}",
+                        size=8,
+                    )
+                    build_info = (item.get("fix_verification") or {}).get("build_verification") or {}
+                    if build_info:
+                        write_line(f"Workspace Build: {build_info.get('status', 'unknown')} | {build_info.get('command', '')}", size=8)
+                        write_block(str(build_info.get("output", "")), size=8)
+                    test_info = (item.get("fix_verification") or {}).get("test_verification") or {}
+                    if test_info:
+                        write_line(f"Workspace Test: {test_info.get('status', 'unknown')} | {test_info.get('command', '')}", size=8)
+                        write_block(str(test_info.get("output", "")), size=8)
                 write_line("Original Code:", size=8)
                 write_block(str(item.get("original_code", "Snippet unavailable.")), font="Courier", size=8)
                 write_line("Suggested Fix:", size=8)
-                write_block(str(item.get("fixed_code", "No direct fix available.")), font="Courier", size=8)
+                write_block(str(item.get("ai_suggested_fix") or item.get("fixed_code", "No direct fix available.")), font="Courier", size=8)
                 write_line("", gap=4)
             if len(findings) > 220:
                 write_line(f"Truncated after 220 entries. Additional findings: {len(findings) - 220}", size=8)
@@ -951,7 +1048,12 @@ class ReportExporter:
             f"<tr><th>Description</th><td>{html.escape(str(lead.get('description', 'N/A')))}</td></tr>"
             f"<tr><th>Business Impact</th><td>{html.escape(str(lead.get('business_impact', 'N/A')))}</td></tr>"
             f"<tr><th>Recommendation</th><td>{html.escape(str(lead.get('recommendation', 'N/A')))}</td></tr>"
-            f"<tr><th>Source Tool</th><td>{html.escape(str(lead.get('tool', 'scanner')))}</td></tr>"
+            + (
+                f"<tr><th>Dependency Authenticity</th><td>{html.escape(_dependency_auth_summary(lead))}<br><span class='muted'>{html.escape(_dependency_auth_detail(lead))}</span></td></tr>"
+                if _dependency_auth_summary(lead)
+                else ""
+            )
+            + f"<tr><th>Source Tool</th><td>{html.escape(str(lead.get('tool', 'scanner')))}</td></tr>"
             + "</table>"
             "<h4>Instances</h4>"
             "<table>"
@@ -978,6 +1080,23 @@ class ReportExporter:
             for severity in ["Critical", "High", "Medium", "Low", "Info"]
         )
 
+        verification_summary = _fix_verification_summary(findings)
+        verification_rows = "".join(
+            f"<tr><td>{html.escape(label)}</td><td align='center'>{value}</td></tr>"
+            for label, value in [
+                ("Performed", verification_summary["performed"]),
+                ("Verified Fixed", verification_summary["verified_fixed"]),
+                ("Verification Failed", verification_summary["verification_failed"]),
+                ("Inconclusive", verification_summary["inconclusive"]),
+                ("Workspace Build Passed", verification_summary["build_verified"]),
+                ("Workspace Build Failed", verification_summary["build_failed"]),
+                ("Workspace Tests Passed", verification_summary["test_verified"]),
+                ("Workspace Tests Failed", verification_summary["test_failed"]),
+                ("Not Applicable", verification_summary["not_applicable"]),
+                ("Skipped", verification_summary["skipped"]),
+            ]
+        )
+
         queue_rows = "".join(
             (
                 "<tr>"
@@ -1001,11 +1120,31 @@ class ReportExporter:
                 f"<p><strong>CWE:</strong> {html.escape(str(item.get('cwe_id') or item.get('cwe') or 'N/A'))} | "
                 f"<strong>OWASP:</strong> {html.escape(str(item.get('owasp_mapping') or item.get('owasp_category') or 'N/A'))}</p>"
                 f"<p><strong>Recommendation:</strong> {html.escape(str(item.get('recommendation', 'N/A')))}</p>"
-                "<div class='code-grid'>"
+                + (
+                    f"<p><strong>Dependency Authenticity:</strong> {html.escape(_dependency_auth_summary(item))}<br><span class='meta'>{html.escape(_dependency_auth_detail(item))}</span></p>"
+                    if _dependency_auth_summary(item)
+                    else ""
+                )
+                + (
+                    f"<p><strong>Fix Verification:</strong> {html.escape(str((item.get('fix_verification') or {}).get('result', 'not_applicable')))} | {html.escape(str((item.get('fix_verification') or {}).get('reason', '')))}</p>"
+                    if item.get("fix_verification")
+                    else ""
+                )
+                + (
+                    f"<p><strong>Workspace Build:</strong> {html.escape(str(((item.get('fix_verification') or {}).get('build_verification') or {}).get('status', 'unknown')))} | <code>{html.escape(str(((item.get('fix_verification') or {}).get('build_verification') or {}).get('command', '')))}</code></p><pre>{html.escape(str(((item.get('fix_verification') or {}).get('build_verification') or {}).get('output', '')))}</pre>"
+                    if (item.get("fix_verification") or {}).get("build_verification")
+                    else ""
+                )
+                + (
+                    f"<p><strong>Workspace Test:</strong> {html.escape(str(((item.get('fix_verification') or {}).get('test_verification') or {}).get('status', 'unknown')))} | <code>{html.escape(str(((item.get('fix_verification') or {}).get('test_verification') or {}).get('command', '')))}</code></p><pre>{html.escape(str(((item.get('fix_verification') or {}).get('test_verification') or {}).get('output', '')))}</pre>"
+                    if (item.get("fix_verification") or {}).get("test_verification")
+                    else ""
+                )
+                + "<div class='code-grid'>"
                 "<div><h4>Original Code</h4>"
                 f"<pre>{html.escape(str(item.get('original_code', 'Snippet unavailable.')))}</pre></div>"
                 "<div><h4>Suggested Fix</h4>"
-                f"<pre>{html.escape(str(item.get('fixed_code', 'No direct fix available.')))}</pre></div>"
+                f"<pre>{html.escape(str(item.get('ai_suggested_fix') or item.get('fixed_code', 'No direct fix available.')))}</pre></div>"
                 "</div>"
                 f"<h4>Patch Preview</h4><pre>{html.escape(str(item.get('patch_preview', 'No patch preview available.')))}</pre>"
                 "</section>"
@@ -1057,6 +1196,13 @@ class ReportExporter:
     <table class='summary'>
       <thead><tr><th>Severity</th><th>Count</th></tr></thead>
       <tbody>{severity_rows}</tbody>
+    </table>
+  </section>
+  <section class='panel'>
+    <h2>Fix Verification Summary</h2>
+    <table class='summary'>
+      <thead><tr><th>Metric</th><th>Count</th></tr></thead>
+      <tbody>{verification_rows}</tbody>
     </table>
   </section>
   <section class='panel'>

@@ -558,6 +558,7 @@ function compactFinding(input: unknown, aggressive = false): VulnerabilityFindin
     exploitability_context: asOptionalString(truncateText(asString(raw.exploitability_context, ""), textLimit)),
     release_gate_action: asOptionalString(truncateText(asString(raw.release_gate_action, ""), 80)),
     active_poc: normalizeActivePoc(raw.active_poc, pocLimit),
+    fix_verification: normalizeFixVerification(raw.fix_verification, pocLimit),
     evidence_replay_pack: normalizeEvidenceReplayPack(raw.evidence_replay_pack, textLimit),
     rule_id: asString(raw.rule_id, "rule"),
     fix_artifact_kind:
@@ -953,6 +954,46 @@ function normalizeActivePoc(input: unknown, maxLength: number): VulnerabilityFin
   };
 }
 
+function normalizeCommandExecution(
+  input: unknown,
+  maxLength: number,
+):
+  | {
+      command?: string;
+      status?: string;
+      exit_code?: number | null;
+      output?: string;
+    }
+  | undefined {
+  const raw = asRecord(input);
+  if (!Object.keys(raw).length) {
+    return undefined;
+  }
+  return {
+    command: asOptionalString(truncateText(asString(raw.command, ""), maxLength)),
+    status: asOptionalString(asString(raw.status, "")),
+    exit_code: raw.exit_code === null || raw.exit_code === undefined ? undefined : asNumber(raw.exit_code, 0),
+    output: asOptionalString(truncateText(asString(raw.output, ""), maxLength)),
+  };
+}
+
+function normalizeFixVerification(input: unknown, maxLength: number): VulnerabilityFinding["fix_verification"] | undefined {
+  const raw = asRecord(input);
+  if (!Object.keys(raw).length) {
+    return undefined;
+  }
+  return {
+    performed: raw.performed === undefined ? undefined : Boolean(raw.performed),
+    result: asOptionalString(asString(raw.result, "")),
+    reason: asOptionalString(truncateText(asString(raw.reason, ""), maxLength)),
+    pre_fix_status: asOptionalString(asString(raw.pre_fix_status, "")),
+    post_fix_status: asOptionalString(asString(raw.post_fix_status, "")),
+    post_fix_execution: normalizeCommandExecution(raw.post_fix_execution, maxLength),
+    build_verification: normalizeCommandExecution(raw.build_verification, maxLength),
+    test_verification: normalizeCommandExecution(raw.test_verification, maxLength),
+  };
+}
+
 function normalizeActivePocSummary(input: unknown): { executed: number; passed: number; failed: number; skipped: number } | undefined {
   const raw = asRecord(input);
   if (!Object.keys(raw).length) {
@@ -1203,6 +1244,12 @@ function normalizeDependencyReachability(input: unknown):
       import_evidence?: string[];
       manifest_present?: boolean;
       lockfile_present?: boolean;
+      manifest_paths?: string[];
+      lockfile_paths?: string[];
+      declared_versions?: string[];
+      locked_versions?: string[];
+      advisory_ids?: string[];
+      advisory_verified?: boolean;
       reasoning?: string;
     }
   | undefined {
@@ -1218,6 +1265,12 @@ function normalizeDependencyReachability(input: unknown):
     import_evidence: asArray(raw.import_evidence).map((item) => asString(item)).filter(Boolean).slice(0, 8),
     manifest_present: raw.manifest_present === undefined ? undefined : Boolean(raw.manifest_present),
     lockfile_present: raw.lockfile_present === undefined ? undefined : Boolean(raw.lockfile_present),
+    manifest_paths: asArray(raw.manifest_paths).map((item) => asString(item)).filter(Boolean).slice(0, 8),
+    lockfile_paths: asArray(raw.lockfile_paths).map((item) => asString(item)).filter(Boolean).slice(0, 8),
+    declared_versions: asArray(raw.declared_versions).map((item) => asString(item)).filter(Boolean).slice(0, 8),
+    locked_versions: asArray(raw.locked_versions).map((item) => asString(item)).filter(Boolean).slice(0, 8),
+    advisory_ids: asArray(raw.advisory_ids).map((item) => asString(item).toUpperCase()).filter(Boolean).slice(0, 12),
+    advisory_verified: raw.advisory_verified === undefined ? undefined : Boolean(raw.advisory_verified),
     reasoning: asOptionalString(truncateText(asString(raw.reasoning, ""), 600)),
   };
 }

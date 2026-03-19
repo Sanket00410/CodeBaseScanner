@@ -165,6 +165,12 @@ export interface VulnerabilityFinding {
     import_evidence?: string[];
     manifest_present?: boolean;
     lockfile_present?: boolean;
+    manifest_paths?: string[];
+    lockfile_paths?: string[];
+    declared_versions?: string[];
+    locked_versions?: string[];
+    advisory_ids?: string[];
+    advisory_verified?: boolean;
     reasoning?: string;
   };
   attack_scenario?: string;
@@ -199,6 +205,18 @@ export interface VulnerabilityFinding {
     pre_fix_status?: string;
     post_fix_status?: string;
     post_fix_execution?: {
+      command?: string;
+      status?: string;
+      exit_code?: number | null;
+      output?: string;
+    };
+    build_verification?: {
+      command?: string;
+      status?: string;
+      exit_code?: number | null;
+      output?: string;
+    };
+    test_verification?: {
       command?: string;
       status?: string;
       exit_code?: number | null;
