@@ -1,5 +1,7 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
+import BrandMark from "./components/BrandMark";
+import GlobeBackdrop from "./components/GlobeBackdrop";
 import {
   AuditLogEntry,
   EnterpriseAssuranceSummary,
@@ -126,6 +128,34 @@ const ROLE_CAPABILITIES: Record<UserRole, RoleCapabilities> = {
     canProvisionTools: false,
   },
 };
+
+const LANDING_HIGHLIGHTS = [
+  "Codebase-only secure analysis designed to stay office-safe and audit-friendly.",
+  "Parser, dataflow, dependency, and evidence-backed findings instead of loose pattern spam.",
+  "Grounded remediation and report exports built for developers, security teams, and leadership.",
+];
+
+const LANDING_FEATURES: Array<{ title: string; body: string }> = [
+  {
+    title: "What It Does",
+    body: "Scans source code, dependencies, secrets, and secure coding controls across a repo, then organizes the evidence into vulnerability, control, and fixes reports.",
+  },
+  {
+    title: "Why Teams Use It",
+    body: "It keeps the workflow grounded in real code context: file, line, evidence, validation basis, ownership, and release impact instead of shallow scanner output.",
+  },
+  {
+    title: "What Makes It Different",
+    body: "The platform is codebase-only by design, with deterministic evidence replay, fix verification hooks, portfolio history, and optional grounded AI assistance layered on top.",
+  },
+];
+
+const LANDING_ADVANTAGES: Array<{ label: string; value: string }> = [
+  { label: "Code Trust", value: "AST + flow-backed review" },
+  { label: "Developer Fit", value: "Actionable fixes and exports" },
+  { label: "Leadership View", value: "Readable board and control reporting" },
+  { label: "Authenticity", value: "Evidence chain, replay, and verification" },
+];
 
 function sortFindings(items: VulnerabilityFinding[]): VulnerabilityFinding[] {
   return [...items].sort((a, b) => {
@@ -368,6 +398,9 @@ function resolveToolchainExecution(scan: ScanView | null): ToolchainExecutionSum
 }
 
 export default function App(): React.JSX.Element {
+  const landingTransitionTimerRef = useRef<number | null>(null);
+  const [showLanding, setShowLanding] = useState<boolean>(true);
+  const [landingTransition, setLandingTransition] = useState<"idle" | "to-app" | "to-landing">("idle");
   const [tab, setTab] = useState<AppTab>("dashboard");
   const [projectPath, setProjectPath] = useState("");
   const [scanPreset, setScanPreset] = useState<ScanPreset>("standard");
@@ -666,6 +699,39 @@ export default function App(): React.JSX.Element {
     return Math.min(99.4, Math.max(95, progress) + pulse);
   }, [isFinalizingPhase, progress, progressHeartbeatTs]);
 
+  const clearLandingTimer = () => {
+    if (landingTransitionTimerRef.current) {
+      window.clearTimeout(landingTransitionTimerRef.current);
+      landingTransitionTimerRef.current = null;
+    }
+  };
+
+  const openPlatform = () => {
+    if (landingTransition !== "idle") {
+      return;
+    }
+    clearLandingTimer();
+    setLandingTransition("to-app");
+    landingTransitionTimerRef.current = window.setTimeout(() => {
+      setShowLanding(false);
+      setLandingTransition("idle");
+      landingTransitionTimerRef.current = null;
+    }, 820);
+  };
+
+  const reopenLanding = () => {
+    if (landingTransition !== "idle") {
+      return;
+    }
+    clearLandingTimer();
+    setShowLanding(true);
+    setLandingTransition("to-landing");
+    landingTransitionTimerRef.current = window.setTimeout(() => {
+      setLandingTransition("idle");
+      landingTransitionTimerRef.current = null;
+    }, 820);
+  };
+
   useEffect(() => {
     const dispose = window.codeSentinelX.onScanProgress((payload) => {
       const nowTs = Date.now();
@@ -722,6 +788,10 @@ export default function App(): React.JSX.Element {
   useEffect(() => {
     const timer = window.setInterval(() => setProgressHeartbeatTs(Date.now()), 1000);
     return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    return () => clearLandingTimer();
   }, []);
 
   useEffect(() => {
@@ -2700,22 +2770,34 @@ export default function App(): React.JSX.Element {
     );
   };
 
+  const globeMode = showLanding && landingTransition !== "to-app" ? "landing" : "platform";
+
   return (
-    <div className="app-shell">
+    <div
+      className={`scene-shell ${showLanding ? "scene-shell-landing" : "scene-shell-platform"} ${
+        landingTransition !== "idle" ? `scene-shell-${landingTransition}` : ""
+      }`}
+    >
+      <GlobeBackdrop mode={globeMode} />
+      <div className="scene-noise" aria-hidden="true" />
+      <section
+        className={`landing-layer ${showLanding ? "is-active" : ""} ${
+          landingTransition === "to-app" ? "is-exiting" : ""
+        } ${landingTransition === "to-landing" ? "is-entering" : ""}`}
+      >
+        <LandingPage onEnter={openPlatform} />
+      </section>
+      <section
+        className={`app-layer ${!showLanding ? "is-active" : ""} ${
+          landingTransition === "to-app" ? "is-entering" : ""
+        } ${landingTransition === "to-landing" ? "is-exiting" : ""}`}
+      >
+        <div className="app-shell app-stage">
       <aside className="sidebar">
         <div className="brand panel">
           <div className="brand-header">
             <div className="brand-mark" aria-hidden="true">
-              <svg viewBox="0 0 120 120" role="img">
-                <defs>
-                  <linearGradient id="csxGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#20d1ff" />
-                    <stop offset="100%" stopColor="#0f6ea6" />
-                  </linearGradient>
-                </defs>
-                <path d="M60 8 106 33v54L60 112 14 87V33z" fill="none" stroke="url(#csxGradient)" strokeWidth="8" />
-                <path d="M35 50c5-12 13-18 25-18 9 0 16 3 22 10l-11 10c-3-4-7-6-12-6-6 0-10 3-13 9-3 7-3 14 0 21 3 6 7 9 13 9 5 0 9-2 12-6l11 10c-6 7-13 10-22 10-12 0-20-6-25-18-5-13-5-27 0-41z" fill="url(#csxGradient)" />
-              </svg>
+              <BrandMark className="brand-mark-svg" />
             </div>
             <div>
               <p className="brand-eyebrow">CODESENTINEL X</p>
@@ -2723,6 +2805,11 @@ export default function App(): React.JSX.Element {
             </div>
           </div>
           <p>Inspect every file. Prioritize real code risk.</p>
+          <div className="button-row brand-actions">
+            <button type="button" onClick={reopenLanding}>
+              Welcome Screen
+            </button>
+          </div>
         </div>
 
         <nav className="panel nav">
@@ -2816,14 +2903,14 @@ export default function App(): React.JSX.Element {
                 className={vulnerabilityReportStyle === "classic" ? "active" : ""}
                 onClick={() => setVulnerabilityReportStyle("classic")}
               >
-                Classic (Old)
+                Classic
               </button>
               <button
                 type="button"
                 className={vulnerabilityReportStyle === "modern" ? "active" : ""}
                 onClick={() => setVulnerabilityReportStyle("modern")}
               >
-                Modern (New)
+                Modern (Beta)
               </button>
             </div>
           </div>
@@ -3096,6 +3183,109 @@ export default function App(): React.JSX.Element {
         {tab === "history" && renderHistory()}
         {tab === "tools" && renderToolManager()}
       </main>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function LandingPage(props: { onEnter: () => void }): React.JSX.Element {
+  const scrollToOverview = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    document.getElementById("landing-overview")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  return (
+    <div className="landing-screen">
+      <header className="landing-topbar">
+        <div className="landing-brand">
+          <div className="landing-brand-mark">
+            <BrandMark className="landing-brand-svg" />
+          </div>
+          <div>
+            <p className="landing-brand-tag">CodeSentinelX</p>
+            <p className="landing-brand-subtitle">Enterprise Secure Code Analysis</p>
+          </div>
+        </div>
+      </header>
+
+      <section className="landing-hero">
+        <div className="landing-hero-copy">
+          <p className="landing-overline">Welcome to</p>
+          <h1>
+            <span>CodeSentinelX</span>
+            <strong>Secure Code Analysis</strong>
+          </h1>
+          <p className="landing-hero-note">Grounded code intelligence for engineering, AppSec, and leadership teams.</p>
+          <div className="landing-cta-row">
+            <button type="button" className="landing-primary-cta" onClick={props.onEnter}>
+              Launch Workspace
+            </button>
+            <a href="#landing-overview" className="landing-secondary-link" onClick={scrollToOverview}>
+              Know more
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <section className="landing-highlight-stack">
+        {LANDING_HIGHLIGHTS.map((item) => (
+          <p key={item} className="landing-highlight-line">
+            {item}
+          </p>
+        ))}
+      </section>
+
+      <section id="landing-overview" className="landing-section">
+        <div className="landing-section-head">
+          <p className="landing-section-tag">Overview</p>
+          <h2>Know more about what the platform actually does</h2>
+        </div>
+        <div className="landing-feature-grid">
+          {LANDING_FEATURES.map((item) => (
+            <article key={item.title} className="landing-feature-card">
+              <h3>{item.title}</h3>
+              <p>{item.body}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="landing-section">
+        <div className="landing-section-head">
+          <p className="landing-section-tag">Advantages</p>
+          <h2>Built to be useful across engineering, AppSec, and leadership</h2>
+        </div>
+        <div className="landing-advantage-grid">
+          {LANDING_ADVANTAGES.map((item) => (
+            <article key={item.label} className="landing-advantage-card">
+              <p>{item.label}</p>
+              <h3>{item.value}</h3>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="landing-section landing-story-grid">
+        <article className="landing-story-card">
+          <p className="landing-section-tag">Feature importance</p>
+          <h3>Why this matters in real use</h3>
+          <ul className="landing-story-list">
+            <li>Developers get file, line, evidence, and fix direction without hunting through raw scanner logs.</li>
+            <li>Security analysts can work from code-context findings instead of generic risk labels.</li>
+            <li>Leadership gets export-ready reporting that explains risk in a cleaner, more operational way.</li>
+          </ul>
+        </article>
+        <article className="landing-story-card">
+          <p className="landing-section-tag">Uniqueness</p>
+          <h3>What stands out from generic tools</h3>
+          <ul className="landing-story-list">
+            <li>Codebase-only focus keeps the product aligned to secure coding and internal review workflows.</li>
+            <li>Evidence replay, integrity reporting, and fix verification hooks help prove authenticity.</li>
+            <li>Optional grounded AI is layered on top of source evidence instead of replacing it.</li>
+          </ul>
+        </article>
+      </section>
     </div>
   );
 }
