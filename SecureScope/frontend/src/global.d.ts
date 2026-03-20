@@ -18,6 +18,9 @@ import {
 declare global {
   interface Window {
     codeSentinelX: {
+      minimizeWindow: () => Promise<void>;
+      toggleMaximizeWindow: () => Promise<boolean>;
+      closeWindow: () => Promise<void>;
       pickProjectFolder: () => Promise<string | null>;
       startScan: (request: {
         projectPath: string;

@@ -53,6 +53,7 @@
       "package.json"
     ],
     "win": {
+      "icon": "build/icon.png",
       "signAndEditExecutable": false,
       "verifyUpdateCodeSignature": false,
       "executableName": "CodeSentinelX",

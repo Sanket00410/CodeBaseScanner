@@ -37,6 +37,7 @@ type HistorySection = "scans" | "audits";
 type ToolManagerSection = "codebase" | "roles" | "policy";
 type FindingScope = "all" | "new" | "changed";
 type FindingGroupMode = "none" | "module" | "owner";
+type WindowMenuKey = "file" | "edit" | "view" | "window" | "help";
 type RoleCapabilities = {
   canRunScan: boolean;
   canReviewFindings: boolean;
@@ -52,6 +53,14 @@ const TABS: Array<{ key: AppTab; label: string; icon: string }> = [
   { key: "compliance", label: "Compliance", icon: "CP" },
   { key: "history", label: "Scan History", icon: "HS" },
   { key: "tools", label: "Analyzer Catalog", icon: "TM" },
+];
+
+const WINDOW_MENU_ITEMS: Array<{ key: WindowMenuKey; label: string }> = [
+  { key: "file", label: "File" },
+  { key: "edit", label: "Edit" },
+  { key: "view", label: "View" },
+  { key: "window", label: "Window" },
+  { key: "help", label: "Help" },
 ];
 
 const ROLES: UserRole[] = ["Admin", "Security Analyst", "Developer", "Auditor"];
@@ -397,8 +406,20 @@ function resolveToolchainExecution(scan: ScanView | null): ToolchainExecutionSum
   );
 }
 
+function AppBrandIcon(props: {
+  fallbackClassName: string;
+  wrapperClassName?: string;
+}): React.JSX.Element {
+  return (
+    <span className={props.wrapperClassName} aria-hidden="true">
+      <BrandMark className={props.fallbackClassName} />
+    </span>
+  );
+}
+
 export default function App(): React.JSX.Element {
   const landingTransitionTimerRef = useRef<number | null>(null);
+  const windowMenuRef = useRef<HTMLDivElement | null>(null);
   const [showLanding, setShowLanding] = useState<boolean>(true);
   const [landingTransition, setLandingTransition] = useState<"idle" | "to-app" | "to-landing">("idle");
   const [tab, setTab] = useState<AppTab>("dashboard");
@@ -451,6 +472,7 @@ export default function App(): React.JSX.Element {
   const [toolAuthBusy, setToolAuthBusy] = useState(false);
   const [toolOtpRequested, setToolOtpRequested] = useState(false);
   const [showOwnerAccessPanel, setShowOwnerAccessPanel] = useState(false);
+  const [activeWindowMenu, setActiveWindowMenu] = useState<WindowMenuKey | null>(null);
   const roleCaps = useMemo(() => ROLE_CAPABILITIES[role], [role]);
   const toolAuthEnabled = Boolean(toolAuthConfig?.enabled);
   const toolSessionValid = !toolAuthEnabled || Boolean(toolAuthToken);
@@ -793,6 +815,28 @@ export default function App(): React.JSX.Element {
   useEffect(() => {
     return () => clearLandingTimer();
   }, []);
+
+  useEffect(() => {
+    if (!activeWindowMenu) {
+      return;
+    }
+    const onPointerDown = (event: MouseEvent): void => {
+      if (!windowMenuRef.current?.contains(event.target as Node)) {
+        setActiveWindowMenu(null);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        setActiveWindowMenu(null);
+      }
+    };
+    window.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [activeWindowMenu]);
 
   useEffect(() => {
     loadHistory().catch((error) => setStatusText(`History load failed: ${String(error)}`));
@@ -1295,6 +1339,14 @@ export default function App(): React.JSX.Element {
     setIsPreviewLoading(false);
   };
 
+  const closeWindowMenu = (): void => {
+    setActiveWindowMenu(null);
+  };
+
+  const toggleWindowMenu = (menuKey: WindowMenuKey): void => {
+    setActiveWindowMenu((current) => (current === menuKey ? null : menuKey));
+  };
+
   const openLastExport = async (): Promise<void> => {
     if (!lastExport) {
       setStatusText("No export path available yet.");
@@ -1307,6 +1359,107 @@ export default function App(): React.JSX.Element {
     }
     setStatusText("Opened exported report.");
   };
+
+  const openLastExportFolder = async (): Promise<void> => {
+    if (!lastExport) {
+      setStatusText("No export path available yet.");
+      return;
+    }
+    const folderPath = lastExport.replace(/[\\/][^\\/]+$/, "");
+    const result = await window.codeSentinelX.openPath(folderPath);
+    if (result && result.trim().length > 0) {
+      setStatusText(`Could not open export folder: ${result}`);
+      return;
+    }
+    setStatusText("Opened export folder.");
+  };
+
+  const copyProjectFolderPath = async (): Promise<void> => {
+    if (!projectPath.trim()) {
+      setStatusText("No project folder selected yet.");
+      return;
+    }
+    await navigator.clipboard.writeText(projectPath.trim());
+    setStatusText("Project folder copied to clipboard.");
+  };
+
+  const resetFindingFilters = (): void => {
+    setSearchText("");
+    setSeverityFilter("All");
+    setFindingScope("all");
+    setFindingGroupMode("none");
+    setStatusText("Finding filters cleared.");
+  };
+
+  const openPrimaryDashboardView = (): void => {
+    setTab("dashboard");
+    setDashboardSection("overview");
+    setStatusText("Opened Code Risk Overview.");
+  };
+
+  const openPrimaryFindingView = (): void => {
+    setTab("vulnerabilities");
+    setVulnerabilitySection("queue");
+    setStatusText("Opened Code Findings.");
+  };
+
+  const openPolicyView = (): void => {
+    setTab("tools");
+    setToolSection("policy");
+    setStatusText("Opened analyzer execution policy.");
+  };
+
+  const showShortcutHelp = (): void => {
+    setStatusText("Shortcuts: Alt+1..6 switch tabs. Number keys switch visible sub-sections.");
+  };
+
+  const windowMenuActions = useMemo<
+    Record<WindowMenuKey, Array<{ label: string; disabled?: boolean; onSelect: () => void | Promise<void> }>>
+  >(
+    () => ({
+      file: [
+        { label: "Browse Project Folder", onSelect: browseProject },
+        { label: "Run Scan", disabled: !projectPath.trim() || !roleCaps.canRunScan, onSelect: runScan },
+        { label: "Open Last Export", disabled: !lastExport, onSelect: openLastExport },
+        { label: "Open Export Folder", disabled: !lastExport, onSelect: openLastExportFolder },
+      ],
+      edit: [
+        { label: "Copy Project Folder", disabled: !projectPath.trim(), onSelect: copyProjectFolderPath },
+        { label: "Clear Search", disabled: !searchText.trim(), onSelect: () => setSearchText("") },
+        { label: "Reset Finding Filters", onSelect: resetFindingFilters },
+      ],
+      view: [
+        { label: "Code Risk Overview", onSelect: openPrimaryDashboardView },
+        { label: "Code Findings", onSelect: openPrimaryFindingView },
+        { label: "Secure Coding Controls", onSelect: () => { setTab("existing"); setExistingSection("summary"); setStatusText("Opened Secure Coding Controls."); } },
+        { label: "Compliance", onSelect: () => { setTab("compliance"); setComplianceSection("profile"); setStatusText("Opened Compliance."); } },
+        { label: "Scan History", onSelect: () => { setTab("history"); setHistorySection("scans"); setStatusText("Opened Scan History."); } },
+      ],
+      window: [
+        { label: "Minimize", onSelect: () => window.codeSentinelX.minimizeWindow() },
+        { label: "Maximize / Restore", onSelect: async () => { await window.codeSentinelX.toggleMaximizeWindow(); } },
+        { label: "Close Window", onSelect: () => window.codeSentinelX.closeWindow() },
+      ],
+      help: [
+        { label: "Show Keyboard Shortcuts", onSelect: showShortcutHelp },
+        { label: "Preview Vulnerability Report", disabled: !scan, onSelect: () => previewReport("vulnerability") },
+        { label: "Analyzer Policy", onSelect: openPolicyView },
+        { label: "Welcome Screen", onSelect: reopenLanding },
+      ],
+    }),
+    [
+      lastExport,
+      openLastExport,
+      openLastExportFolder,
+      previewReport,
+      projectPath,
+      reopenLanding,
+      roleCaps.canRunScan,
+      runScan,
+      scan,
+      searchText,
+    ],
+  );
 
   const requestToolManagerOtp = async (): Promise<void> => {
     if (!toolAuthConfig?.enabled) {
@@ -2780,6 +2933,64 @@ export default function App(): React.JSX.Element {
     >
       <GlobeBackdrop mode={globeMode} />
       <div className="scene-noise" aria-hidden="true" />
+      <header className="window-chrome">
+        <div className="window-chrome-brand">
+          <AppBrandIcon
+            wrapperClassName="window-chrome-mark"
+            fallbackClassName="window-chrome-mark-svg"
+          />
+          <div className="window-chrome-copy">
+            <strong>CodeSentinelX</strong>
+            {!showLanding && (
+              <div className="window-chrome-menu" aria-label="Application menu" ref={windowMenuRef}>
+                {WINDOW_MENU_ITEMS.map((item) => (
+                  <div key={item.key} className={`window-menu-item ${activeWindowMenu === item.key ? "is-open" : ""}`}>
+                    <button
+                      type="button"
+                      className="window-menu-button"
+                      onClick={() => toggleWindowMenu(item.key)}
+                      aria-haspopup="menu"
+                      aria-expanded={activeWindowMenu === item.key}
+                    >
+                      {item.label}
+                    </button>
+                    {activeWindowMenu === item.key && (
+                      <div className="window-menu-dropdown" role="menu" aria-label={`${item.label} menu`}>
+                        {windowMenuActions[item.key].map((action) => (
+                          <button
+                            key={action.label}
+                            type="button"
+                            className="window-menu-dropdown-item"
+                            disabled={action.disabled}
+                            onClick={async () => {
+                              closeWindowMenu();
+                              await action.onSelect();
+                            }}
+                          >
+                            {action.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="window-drag-region" aria-hidden="true" />
+        <div className="window-controls">
+          <button type="button" className="window-control window-control-minimize" onClick={() => void window.codeSentinelX.minimizeWindow()} aria-label="Minimize window">
+            <span />
+          </button>
+          <button type="button" className="window-control window-control-maximize" onClick={() => void window.codeSentinelX.toggleMaximizeWindow()} aria-label="Maximize or restore window">
+            <span />
+          </button>
+          <button type="button" className="window-control window-control-close" onClick={() => void window.codeSentinelX.closeWindow()} aria-label="Close window">
+            <span />
+          </button>
+        </div>
+      </header>
       <section
         className={`landing-layer ${showLanding ? "is-active" : ""} ${
           landingTransition === "to-app" ? "is-exiting" : ""
@@ -2796,9 +3007,10 @@ export default function App(): React.JSX.Element {
       <aside className="sidebar">
         <div className="brand panel">
           <div className="brand-header">
-            <div className="brand-mark" aria-hidden="true">
-              <BrandMark className="brand-mark-svg" />
-            </div>
+            <AppBrandIcon
+              wrapperClassName="brand-mark"
+              fallbackClassName="brand-mark-svg"
+            />
             <div>
               <p className="brand-eyebrow">CODESENTINEL X</p>
               <h1>Secure Code Analysis</h1>
@@ -3199,9 +3411,10 @@ function LandingPage(props: { onEnter: () => void }): React.JSX.Element {
     <div className="landing-screen">
       <header className="landing-topbar">
         <div className="landing-brand">
-          <div className="landing-brand-mark">
-            <BrandMark className="landing-brand-svg" />
-          </div>
+          <AppBrandIcon
+            wrapperClassName="landing-brand-mark"
+            fallbackClassName="landing-brand-svg"
+          />
           <div>
             <p className="landing-brand-tag">CodeSentinelX</p>
             <p className="landing-brand-subtitle">Enterprise Secure Code Analysis</p>

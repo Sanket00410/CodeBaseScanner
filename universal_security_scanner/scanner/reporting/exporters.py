@@ -1,8 +1,10 @@
 ﻿from __future__ import annotations
 
+import base64
 import html
 import json
 from pathlib import Path
+import re
 import textwrap
 
 
@@ -13,6 +15,145 @@ SEVERITY_ORDER = {
     "Low": 3,
     "Info": 4,
 }
+
+_REPORT_GLOBE_TEXTURE_CACHE: str | None = None
+
+
+def _report_globe_texture_data_uri() -> str:
+    global _REPORT_GLOBE_TEXTURE_CACHE
+    if _REPORT_GLOBE_TEXTURE_CACHE is not None:
+        return _REPORT_GLOBE_TEXTURE_CACHE
+    asset_path = Path(__file__).resolve().parents[3] / "SecureScope" / "frontend" / "public" / "earth-night-texture.jpg"
+    if not asset_path.exists():
+        _REPORT_GLOBE_TEXTURE_CACHE = ""
+        return _REPORT_GLOBE_TEXTURE_CACHE
+    try:
+        _REPORT_GLOBE_TEXTURE_CACHE = (
+            "data:image/jpeg;base64," + base64.b64encode(asset_path.read_bytes()).decode("ascii")
+        )
+    except OSError:
+        _REPORT_GLOBE_TEXTURE_CACHE = ""
+    return _REPORT_GLOBE_TEXTURE_CACHE
+
+
+def _report_globe_css() -> str:
+    texture = _report_globe_texture_data_uri()
+    globe_background = (
+        f'url("{texture}")'
+        if texture
+        else "radial-gradient(circle at 35% 35%, rgba(164, 224, 255, 0.18), rgba(14, 33, 54, 0.88) 58%, rgba(2, 8, 14, 1) 100%)"
+    )
+    return f"""
+    body {{
+      position: relative;
+      overflow-x: hidden;
+    }}
+    body::before {{
+      content: "";
+      position: fixed;
+      right: -7vw;
+      top: -4vh;
+      width: min(58vw, 840px);
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background-image: {globe_background};
+      background-repeat: repeat-x;
+      background-size: auto 100%;
+      background-position: 36% 50%;
+      box-shadow: inset -58px -30px 118px rgba(0,0,0,0.62), inset 22px 18px 30px rgba(92,209,255,0.06), 0 28px 84px rgba(0,0,0,0.42);
+      border: 1px solid rgba(110,226,255,0.22);
+      opacity: 0.44;
+      filter: saturate(1.16) contrast(1.22) brightness(1.06);
+      animation: reportGlobeSpin 88s linear infinite;
+      pointer-events: none;
+      z-index: 0;
+    }}
+    body::after {{
+      content: "";
+      position: fixed;
+      right: -3vw;
+      top: 6vh;
+      width: min(49vw, 700px);
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: radial-gradient(circle at 36% 34%, rgba(154,224,255,0.16), transparent 34%), radial-gradient(circle at center, rgba(14,31,52,0.2), transparent 68%);
+      box-shadow: 0 0 48px rgba(53,209,255,0.14), inset 0 0 22px rgba(105,214,255,0.08);
+      opacity: 0.5;
+      pointer-events: none;
+      z-index: 0;
+    }}
+    body > * {{
+      position: relative;
+      z-index: 1;
+    }}
+    @keyframes reportGlobeSpin {{
+      from {{ background-position: 36% 50%; }}
+      to {{ background-position: -164% 50%; }}
+    }}
+    @media print {{
+      body {{
+        background: #ecf3fb;
+        color: #172838;
+      }}
+      body::before {{
+        animation: none;
+        right: -16px;
+        top: 6px;
+        width: 390px;
+        opacity: 0.18;
+        border-color: #d4dee8;
+        filter: grayscale(1) contrast(1.15) brightness(1.03);
+      }}
+      body::after {{
+        right: 18px;
+        top: 34px;
+        width: 320px;
+        opacity: 0.12;
+      }}
+    }}
+    """
+
+
+def _sanitize_export_token(value: str, fallback: str) -> str:
+    normalized = str(value or "").strip().replace("\\", "/")
+    normalized = re.sub(r"^[A-Za-z]:", "", normalized).strip("/")
+    token = re.sub(r"[^A-Za-z0-9._-]+", "-", normalized)
+    token = re.sub(r"-+", "-", token).strip("-_.")
+    return token or fallback
+
+
+def _extract_export_target_name(report: dict) -> str:
+    candidates = [
+        report.get("vulnerability_fixed_code_report", {}).get("target_path"),
+        report.get("existing_implementation_report", {}).get("target_path"),
+        report.get("executive_summary", {}).get("target_path"),
+    ]
+    for raw in candidates:
+        candidate = str(raw or "").strip()
+        if not candidate:
+            continue
+        normalized = candidate.replace("\\", "/")
+        if normalized.startswith(("http://", "https://", "ssh://")):
+            without_scheme = normalized.split("://", 1)[1]
+            host, _, path_part = without_scheme.partition("/")
+            segments = [segment for segment in path_part.split("/") if segment]
+            return _sanitize_export_token(segments[-1] if segments else host, "target")
+        segments = [segment for segment in normalized.split("/") if segment]
+        if segments:
+            return _sanitize_export_token(segments[-1], "target")
+    return "target"
+
+
+def _extract_export_date_time(value: str) -> tuple[str, str]:
+    raw = str(value or "").strip()
+    match = re.search(r"(\d{4}-\d{2}-\d{2}).*?(\d{2})[:\-](\d{2})[:\-](\d{2})(?:[.\-:](\d{1,3}))?", raw)
+    if match:
+        date_part = match.group(1)
+        time_part = "-".join(part for part in match.groups()[1:] if part)
+        return date_part, time_part
+    safe = raw.replace(":", "-").replace(".", "-").replace("T", "_")
+    date_raw, _, time_raw = safe.partition("_")
+    return _sanitize_export_token(date_raw or "date", "date"), _sanitize_export_token(time_raw or "time", "time")
 
 
 def _severity_rank(value: str) -> int:
@@ -553,9 +694,16 @@ class ReportExporter:
             raise ValueError(f"Unsupported report type: {report_type}")
 
         if output_path is None:
-            scan_stamp = report["executive_summary"]["generated_at"].replace(":", "-")
-            suffix = "" if normalized_report == "combined" else f"_{normalized_report}"
-            output_path = export_root / f"security_report_{scan_stamp}{suffix}.{normalized_fmt}"
+            timestamp_source = (
+                report.get("vulnerability_fixed_code_report", {}).get("generated_at")
+                or report.get("existing_implementation_report", {}).get("generated_at")
+                or report.get("executive_summary", {}).get("generated_at")
+                or ""
+            )
+            date_part, time_part = _extract_export_date_time(str(timestamp_source))
+            target_token = _extract_export_target_name(report)
+            extension = "sairf" if normalized_fmt == "sarif" else normalized_fmt
+            output_path = export_root / f"{date_part}_{time_part}_{normalized_report}_{target_token}.{extension}"
 
         if normalized_fmt == "json":
             return self.export_json(report, output_path, report_type=normalized_report)
@@ -622,14 +770,16 @@ class ReportExporter:
   <meta name='viewport' content='width=device-width,initial-scale=1'>
   <title>CodeSentinelX Existing Security Report</title>
   <style>
-    body {{ font-family: Arial, Helvetica, sans-serif; font-size: 13px; background:#f5f6f8; margin:0; padding:14px; color:#0f1720; }}
-    h1 {{ font-size: 30px; margin: 8px 0; }}
-    h2 {{ font-size: 21px; margin: 16px 0 8px; }}
-    table {{ width:100%; border-collapse: collapse; }}
-    th,td {{ border:1px solid #c6ccd3; padding:6px; text-align:left; vertical-align:top; }}
-    th {{ background:#5d6773; color:#fff; }}
-    td {{ background:#fff; }}
-    .meta {{ margin:4px 0; }}
+    body {{ font-family: "Segoe UI Variable Text", "Segoe UI", "Trebuchet MS", Arial, Helvetica, sans-serif; font-size: 13.5px; line-height: 1.58; letter-spacing: .01em; background:radial-gradient(circle at 20% -20%, #1c3a60, #071321 45%); margin:0; padding:18px; color:#dce9f7; }}
+    h1 {{ font-size: 34px; line-height: 1.06; letter-spacing: -.03em; margin: 10px 0 6px; }}
+    h2 {{ font-size: 22px; line-height: 1.14; letter-spacing: -.02em; margin: 20px 0 12px; }}
+    table {{ width:100%; border-collapse: collapse; line-height: 1.52; }}
+    th,td {{ border:1px solid #294a6c; padding:10px 12px; text-align:left; vertical-align:top; }}
+    th {{ background:rgba(16,37,63,.32); color:#c6d9ec; }}
+    td {{ background:rgba(11,26,45,.14); }}
+    .meta {{ margin:5px 0; color:#95afc8; font-size:12.5px; }}
+    table {{ border-radius:16px; overflow:hidden; }}
+    {_report_globe_css()}
   </style>
 </head>
 <body>
@@ -760,16 +910,16 @@ class ReportExporter:
   <meta name='viewport' content='width=device-width,initial-scale=1'>
   <title>CodeSentinelX Vulnerability Report (ZAP-Style)</title>
   <style>
-    body {{ font-family: "Segoe UI", Arial, Helvetica, sans-serif; font-size: 13px; background:radial-gradient(circle at 20% -20%, #1c3a60, #071321 45%); margin:0; padding:12px; color:#dce9f7; }}
-    h1 {{ text-align:center; font-size:31px; margin:8px 0; }}
-    h2 {{ font-size:22px; margin:18px 0 8px; }}
-    h3 {{ font-size:17px; margin:14px 0 6px; }}
-    h4 {{ font-size:14px; margin:10px 0 6px; }}
-    table {{ width:100%; border-collapse:collapse; margin-bottom:12px; }}
-    th, td {{ border:1px solid #c1c8ce; padding:6px 7px; vertical-align:top; }}
-    th {{ background:#10253f; color:#c6d9ec; text-align:left; cursor:pointer; }}
-    td {{ background:#0b1a2d; border-color:#294a6c; }}
-    .meta {{ margin:3px 0; color:#95afc8; }}
+    body {{ font-family: "Segoe UI Variable Text", "Segoe UI", "Trebuchet MS", Arial, Helvetica, sans-serif; font-size: 13.5px; line-height: 1.58; letter-spacing: .01em; background:radial-gradient(circle at 20% -20%, #1c3a60, #071321 45%); margin:0; padding:18px; color:#dce9f7; }}
+    h1 {{ text-align:center; font-size:35px; line-height:1.05; letter-spacing:-.03em; margin:10px 0; }}
+    h2 {{ font-size:23px; line-height:1.14; letter-spacing:-.02em; margin:22px 0 12px; }}
+    h3 {{ font-size:17px; line-height:1.22; margin:16px 0 8px; }}
+    h4 {{ font-size:14px; line-height:1.32; margin:12px 0 8px; }}
+    table {{ width:100%; border-collapse:collapse; margin-bottom:14px; line-height:1.52; }}
+    th, td {{ border:1px solid #c1c8ce; padding:10px 12px; vertical-align:top; }}
+    th {{ background:rgba(16,37,63,.32); color:#c6d9ec; text-align:left; cursor:pointer; }}
+    td {{ background:rgba(11,26,45,.14); border-color:#294a6c; }}
+    .meta {{ margin:4px 0; color:#95afc8; font-size:12.5px; }}
     .summary {{ max-width:460px; }}
     .risk-critical {{ background:#b91c1c; color:#fff; font-weight:bold; }}
     .risk-high {{ background:#ea580c; color:#fff; font-weight:bold; }}
@@ -777,21 +927,22 @@ class ReportExporter:
     .risk-low {{ background:#2563eb; color:#fff; font-weight:bold; }}
     .risk-info {{ background:#16a34a; color:#fff; font-weight:bold; }}
     .two-col {{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }}
-    .toolbar {{ display:flex; gap:8px; align-items:center; margin:6px 0 10px; flex-wrap:wrap; }}
-    .toolbar input {{ background:#071424; border:1px solid #294a6c; border-radius:8px; color:#dce9f7; padding:7px 10px; min-width:240px; }}
+    .toolbar {{ display:flex; gap:8px; align-items:center; margin:8px 0 12px; flex-wrap:wrap; }}
+    .toolbar input {{ background:rgba(7,20,36,.24); border:1px solid #294a6c; border-radius:10px; color:#dce9f7; padding:9px 12px; min-width:240px; }}
     .alert-block {{ margin-top:16px; padding-top:8px; border-top:2px solid #355376; }}
     .hidden-section {{ display:none; }}
     .alert-link {{ background:none; border:none; color:#35c7ff; text-decoration:underline; cursor:pointer; font:inherit; padding:0; }}
-    .code {{ font-family:Consolas, monospace; white-space:pre-wrap; background:#071321; border:1px solid #294a6c; padding:8px; color:#dce9f7; }}
+    .code {{ font-family:Consolas, monospace; white-space:pre-wrap; background:rgba(7,19,33,.16); border:1px solid rgba(120,168,205,.24); border-radius:14px; padding:12px; color:#dce9f7; line-height:1.55; }}
     .chart-wrap {{ display:grid; grid-template-columns:320px 1fr; gap:12px; align-items:center; }}
     .legend-item {{ display:flex; gap:8px; align-items:center; margin:4px 0; color:#95afc8; }}
     .dot {{ width:10px; height:10px; border-radius:50%; }}
     .bars {{ display:grid; gap:8px; }}
-    .bar-row {{ display:grid; grid-template-columns:220px 1fr auto; gap:8px; align-items:center; }}
+    .bar-row {{ display:grid; grid-template-columns:220px 1fr auto; gap:10px; align-items:center; }}
     .bar-track {{ height:12px; border:1px solid #294a6c; border-radius:999px; overflow:hidden; background:#071424; }}
     .bar-fill {{ height:100%; background:linear-gradient(90deg,#1f88ff,#35c7ff); }}
     .bar-label {{ color:#95afc8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
     @media (max-width: 980px) {{ .two-col {{ grid-template-columns:1fr; }} }}
+    {_report_globe_css()}
   </style>
 </head>
 <body>
@@ -1166,22 +1317,23 @@ class ReportExporter:
   <meta name='viewport' content='width=device-width,initial-scale=1'>
   <title>CodeSentinelX Original and Suggested Fix Report</title>
   <style>
-    body {{ font-family: "Segoe UI", Arial, Helvetica, sans-serif; font-size: 13px; background:radial-gradient(circle at 20% -20%, #1c3a60, #071321 45%); margin:0; padding:12px; color:#dce9f7; }}
-    h1 {{ font-size:31px; margin:8px 0; }}
-    h2 {{ font-size:22px; margin:18px 0 8px; }}
-    h3 {{ font-size:17px; margin:14px 0 6px; }}
-    h4 {{ font-size:14px; margin:10px 0 6px; }}
-    table {{ width:100%; border-collapse:collapse; margin-bottom:12px; }}
-    th, td {{ border:1px solid #294a6c; padding:6px 7px; vertical-align:top; }}
-    th {{ background:#10253f; color:#c6d9ec; text-align:left; }}
-    td {{ background:#0b1a2d; }}
-    .meta {{ margin:3px 0; color:#95afc8; }}
+    body {{ font-family: "Segoe UI Variable Text", "Segoe UI", "Trebuchet MS", Arial, Helvetica, sans-serif; font-size: 13.5px; line-height: 1.58; letter-spacing: .01em; background:radial-gradient(circle at 20% -20%, #1c3a60, #071321 45%); margin:0; padding:18px; color:#dce9f7; }}
+    h1 {{ font-size:35px; line-height:1.05; letter-spacing:-.03em; margin:10px 0; }}
+    h2 {{ font-size:23px; line-height:1.14; letter-spacing:-.02em; margin:22px 0 12px; }}
+    h3 {{ font-size:17px; line-height:1.22; margin:16px 0 8px; }}
+    h4 {{ font-size:14px; line-height:1.32; margin:12px 0 8px; }}
+    table {{ width:100%; border-collapse:collapse; margin-bottom:14px; line-height:1.52; }}
+    th, td {{ border:1px solid #294a6c; padding:10px 12px; vertical-align:top; }}
+    th {{ background:rgba(16,37,63,.6); color:#c6d9ec; text-align:left; }}
+    td {{ background:rgba(11,26,45,.34); }}
+    .meta {{ margin:4px 0; color:#95afc8; font-size:12.5px; }}
     .panel {{ margin-bottom:14px; }}
     .summary {{ max-width:460px; }}
-    .fix-card {{ margin-top:12px; padding:10px; border:1px solid #355376; border-radius:10px; background:#0b1a2d; }}
-    .code-grid {{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }}
-    pre {{ margin:0; white-space:pre-wrap; word-break:break-word; font-family:Consolas, monospace; background:#071321; border:1px solid #294a6c; padding:8px; color:#dce9f7; }}
+    .fix-card {{ margin-top:14px; padding:14px; border:1px solid rgba(120,168,205,.28); border-radius:14px; background:rgba(11,26,45,.14); }}
+    .code-grid {{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }}
+    pre {{ margin:0; white-space:pre-wrap; word-break:break-word; font-family:Consolas, monospace; background:rgba(7,19,33,.16); border:1px solid rgba(120,168,205,.24); border-radius:14px; padding:12px; color:#dce9f7; line-height:1.55; }}
     @media (max-width: 980px) {{ .code-grid {{ grid-template-columns:1fr; }} }}
+    {_report_globe_css()}
   </style>
 </head>
 <body>

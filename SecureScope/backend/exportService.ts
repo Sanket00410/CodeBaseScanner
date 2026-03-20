@@ -58,6 +58,106 @@ interface ToolTimingRow {
   avgMsPerFinding: number | null;
 }
 
+function sanitizeExportToken(value: string, fallback: string): string {
+  const normalized = String(value || "")
+    .trim()
+    .replaceAll("\\", "/")
+    .replace(/^[A-Za-z]:/, "")
+    .replace(/^\/+|\/+$/g, "");
+  const token = normalized
+    .replace(/[^A-Za-z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[-_.]+|[-_.]+$/g, "");
+  return token || fallback;
+}
+
+function extractExportTargetName(scan: ScanView): string {
+  const candidates = [
+    scan.report.vulnerability_fixed_code_report.target_path,
+    scan.report.existing_implementation_report.target_path,
+    scan.report.executive_summary.target_path,
+  ]
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+
+  for (const candidate of candidates) {
+    const normalized = candidate.replaceAll("\\", "/");
+    if (/^https?:\/\//i.test(normalized)) {
+      try {
+        const url = new URL(normalized);
+        const segments = url.pathname.split("/").filter(Boolean);
+        return sanitizeExportToken(segments.at(-1) || url.hostname, "target");
+      } catch {
+        return sanitizeExportToken(normalized.split("/").filter(Boolean).at(-1) || normalized, "target");
+      }
+    }
+    const segments = normalized.split("/").filter(Boolean);
+    if (segments.length > 0) {
+      return sanitizeExportToken(segments.at(-1) || normalized, "target");
+    }
+  }
+
+  return "target";
+}
+
+function extractExportDateTimeParts(value: string): { datePart: string; timePart: string } {
+  const raw = String(value || "").trim();
+  const match = raw.match(/(\d{4}-\d{2}-\d{2}).*?(\d{2})[:\-](\d{2})[:\-](\d{2})(?:[.\-:](\d{1,3}))?/);
+  if (match) {
+    const datePart = match[1];
+    const timePart = [match[2], match[3], match[4], match[5]].filter(Boolean).join("-");
+    return { datePart, timePart };
+  }
+  const safe = raw.replaceAll(":", "-").replaceAll(".", "-").replace("T", "_");
+  const [datePartRaw, timePartRaw] = safe.split("_");
+  return {
+    datePart: sanitizeExportToken(datePartRaw || "date", "date"),
+    timePart: sanitizeExportToken(timePartRaw || "time", "time"),
+  };
+}
+
+function exportReportTypeToken(
+  reportType: ExportRequest["reportType"],
+  reportStyle?: ExportRequest["reportStyle"],
+): string {
+  if (reportType === "vulnerability" && reportStyle) {
+    return `vulnerability_${reportStyle}`;
+  }
+  return reportType;
+}
+
+function exportFormatExtension(format: ExportRequest["format"]): string {
+  return format === "sarif" ? "sairf" : format;
+}
+
+function resolveReportGlobeTexturePath(): string | null {
+  const candidates = [
+    path.resolve(__dirname, "..", "..", "frontend", "public", "earth-night-texture.jpg"),
+    path.resolve(process.cwd(), "frontend", "public", "earth-night-texture.jpg"),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function loadReportGlobeTextureDataUri(): string {
+  const texturePath = resolveReportGlobeTexturePath();
+  if (!texturePath) {
+    return "";
+  }
+  try {
+    return `data:image/jpeg;base64,${readFileSync(texturePath).toString("base64")}`;
+  } catch {
+    return "";
+  }
+}
+
+const REPORT_GLOBE_TEXTURE_PATH = resolveReportGlobeTexturePath();
+const REPORT_GLOBE_TEXTURE_DATA_URI = loadReportGlobeTextureDataUri();
+
 function resolveEnterpriseAssurance(
   scan: ScanView,
   summary: VulnerabilityFixedCodeReport["summary"],
@@ -195,10 +295,17 @@ export class ExportService {
     format: ExportRequest["format"],
     reportStyle?: ExportRequest["reportStyle"],
   ): string {
-    const stamp = scan.completedAt.replaceAll(":", "-").replaceAll(".", "-");
-    const styleSuffix =
-      reportType === "vulnerability" && reportStyle ? `_${reportStyle}` : "";
-    const fileName = `codesentinelx_${reportType}${styleSuffix}_${scan.scanId}_${stamp}.${format}`;
+    const timestampSource =
+      scan.completedAt ||
+      scan.report.vulnerability_fixed_code_report.generated_at ||
+      scan.report.existing_implementation_report.generated_at ||
+      scan.report.executive_summary.generated_at ||
+      "";
+    const { datePart, timePart } = extractExportDateTimeParts(timestampSource);
+    const typeToken = sanitizeExportToken(exportReportTypeToken(reportType, reportStyle), "report");
+    const targetToken = extractExportTargetName(scan);
+    const extension = exportFormatExtension(format);
+    const fileName = `${datePart}_${timePart}_${typeToken}_${targetToken}.${extension}`;
     return path.join(this.outputDir, fileName);
   }
 
@@ -533,6 +640,11 @@ export class ExportService {
       stream.on("finish", resolve);
       stream.on("error", reject);
       doc.on("error", reject);
+      const applyBackdrop = () => {
+        drawPdfReportBackdrop(doc);
+      };
+      doc.on("pageAdded", applyBackdrop);
+      applyBackdrop();
 
       if (reportType === "existing") {
         writeExistingPdf(doc, scan);
@@ -1405,11 +1517,55 @@ function writeFindingDetailsPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
   }
 }
 
+function drawPdfReportBackdrop(doc: PDFKit.PDFDocument): void {
+  const pageWidth = doc.page.width;
+  const pageHeight = doc.page.height;
+  const globeSize = Math.min(pageWidth * 1.02, 470);
+  const globeX = pageWidth - globeSize * 0.42;
+  const globeY = -10;
+
+  doc.save();
+  doc.fillColor("#edf4fb").rect(0, 0, pageWidth, pageHeight).fill();
+  doc.opacity(0.35).fillColor("#f8fbff").rect(0, 0, pageWidth, pageHeight * 0.22).fill();
+  doc.restore();
+
+  doc.save();
+  doc.circle(globeX, globeY + globeSize / 2, globeSize / 2).clip();
+  doc.opacity(0.2);
+  if (REPORT_GLOBE_TEXTURE_PATH) {
+    doc.image(REPORT_GLOBE_TEXTURE_PATH, globeX - globeSize / 2, globeY, {
+      width: globeSize,
+      height: globeSize,
+    });
+  } else {
+    doc.fillColor("#dbe7f3").circle(globeX, globeY + globeSize / 2, globeSize / 2).fill();
+  }
+  doc.restore();
+
+  doc.save();
+  doc.opacity(0.26);
+  doc.lineWidth(1);
+  doc.strokeColor("#c5d9ee").circle(globeX, globeY + globeSize / 2, globeSize / 2).stroke();
+  doc.opacity(0.16);
+  doc.strokeColor("#7dcfff").circle(globeX, globeY + globeSize / 2, globeSize / 2 + 10).stroke();
+  doc.restore();
+
+  doc.save();
+  doc.opacity(0.12);
+  doc.strokeColor("#7dcfff").lineWidth(0.8);
+  doc.moveTo(globeX - globeSize * 0.42, globeY + globeSize * 0.48)
+    .lineTo(globeX + globeSize * 0.42, globeY + globeSize * 0.48)
+    .stroke();
+  doc.restore();
+
+  doc.fillColor("#0f1720");
+}
+
 function writeWrapped(doc: PDFKit.PDFDocument, text: string, fontSize: number): void {
   if (doc.y > doc.page.height - 52) {
     doc.addPage();
   }
-  doc.fontSize(fontSize).text(text, { width: doc.page.width - 64 });
+  doc.fontSize(fontSize).text(text, { width: doc.page.width - 64, lineGap: 1.5 });
 }
 
 function ensurePdfSpace(doc: PDFKit.PDFDocument, height: number): void {
@@ -1422,14 +1578,16 @@ function writePdfHero(doc: PDFKit.PDFDocument, title: string, meta: string[]): v
   const x = doc.page.margins.left;
   const y = doc.y;
   const width = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-  const height = 56 + meta.length * 14;
+  const height = 62 + meta.length * 15;
   ensurePdfSpace(doc, height + 8);
   doc.save();
-  doc.roundedRect(x, y, width, height, 10).fillAndStroke("#0f2139", "#294a6c");
-  doc.fillColor("#f5fbff").font("Helvetica-Bold").fontSize(17).text(title, x + 14, y + 12, { width: width - 28 });
-  doc.font("Helvetica").fontSize(9).fillColor("#a9c0d8");
+  doc.fillOpacity(0.64);
+  doc.roundedRect(x, y, width, height, 10).fillAndStroke("#f8fbff", "#bfd4e7");
+  doc.fillOpacity(1);
+  doc.fillColor("#12304c").font("Helvetica-Bold").fontSize(19).text(title, x + 16, y + 12, { width: width - 32 });
+  doc.font("Helvetica").fontSize(9.5).fillColor("#5d7286");
   meta.forEach((line, index) => {
-    doc.text(line, x + 14, y + 34 + index * 12, { width: width - 28 });
+    doc.text(line, x + 16, y + 38 + index * 13, { width: width - 32 });
   });
   doc.restore();
   doc.fillColor("#0f1720");
@@ -1440,10 +1598,10 @@ function writePdfSectionHeader(doc: PDFKit.PDFDocument, title: string): void {
   ensurePdfSpace(doc, 26);
   const x = doc.page.margins.left;
   const width = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-  doc.font("Helvetica-Bold").fontSize(12).fillColor("#12304c").text(title, x, doc.y);
-  const lineY = doc.y + 2;
+  doc.font("Helvetica-Bold").fontSize(13).fillColor("#12304c").text(title, x, doc.y);
+  const lineY = doc.y + 4;
   doc.moveTo(x, lineY).lineTo(x + width, lineY).strokeColor("#b8c7d8").lineWidth(0.7).stroke();
-  doc.moveDown(0.45);
+  doc.moveDown(0.55);
   doc.fillColor("#0f1720").font("Helvetica");
 }
 
@@ -1456,7 +1614,7 @@ function writePdfKeyValueTable(
     return;
   }
   const keyWidthRatio = Math.max(0.2, Math.min(0.7, Number(options?.keyWidthRatio || 0.48)));
-  const rowHeight = Math.max(16, Number(options?.rowHeight || 18));
+  const rowHeight = Math.max(18, Number(options?.rowHeight || 20));
   const x = doc.page.margins.left;
   const width = doc.page.width - doc.page.margins.left - doc.page.margins.right;
   const keyWidth = Math.floor(width * keyWidthRatio);
@@ -1468,26 +1626,28 @@ function writePdfKeyValueTable(
   let cursorY = doc.y;
   const startY = cursorY;
   doc.save();
-  doc.roundedRect(x, cursorY, width, totalRows * rowHeight, 8).fillAndStroke("#0f2139", "#294a6c");
+  doc.fillOpacity(0.58);
+  doc.roundedRect(x, cursorY, width, totalRows * rowHeight, 8).fillAndStroke("#f9fcff", "#c5d8e8");
+  doc.fillOpacity(1);
   doc
-    .fillColor("#d9e8f7")
+    .fillColor("#35506a")
     .font("Helvetica-Bold")
-    .fontSize(8)
-    .text("Metric", x + 8, cursorY + 5, { width: keyWidth - 12, ellipsis: true })
-    .text("Value", x + keyWidth + 8, cursorY + 5, { width: valueWidth - 12, ellipsis: true });
+    .fontSize(8.5)
+    .text("Metric", x + 10, cursorY + 6, { width: keyWidth - 16, ellipsis: true })
+    .text("Value", x + keyWidth + 10, cursorY + 6, { width: valueWidth - 16, ellipsis: true });
   cursorY += rowHeight;
-  doc.moveTo(x + keyWidth, startY).lineTo(x + keyWidth, startY + totalRows * rowHeight).strokeColor("#294a6c").lineWidth(0.8).stroke();
+  doc.moveTo(x + keyWidth, startY).lineTo(x + keyWidth, startY + totalRows * rowHeight).strokeColor("#cadbeb").lineWidth(0.8).stroke();
   for (let i = 0; i < rows.length; i += 1) {
     const row = rows[i];
-    const shade = i % 2 === 0 ? "#0a1b2e" : "#081728";
-    doc.rect(x, cursorY, width, rowHeight).fillAndStroke(shade, "#294a6c");
+    const shade = i % 2 === 0 ? "#f9fcff" : "#f1f7fc";
+    doc.rect(x, cursorY, width, rowHeight).fillAndStroke(shade, "#d9e5f0");
     doc
-      .fillColor("#c7d9ec")
+      .fillColor("#4f6477")
       .font("Helvetica")
-      .fontSize(8)
-      .text(row.key, x + 8, cursorY + 5, { width: keyWidth - 12, ellipsis: true })
-      .fillColor("#f3f8fe")
-      .text(row.value, x + keyWidth + 8, cursorY + 5, { width: valueWidth - 12, ellipsis: true });
+      .fontSize(8.5)
+      .text(row.key, x + 10, cursorY + 6, { width: keyWidth - 16, ellipsis: true })
+      .fillColor("#10253f")
+      .text(row.value, x + keyWidth + 10, cursorY + 6, { width: valueWidth - 16, ellipsis: true });
     cursorY += rowHeight;
   }
   doc.restore();
@@ -1503,19 +1663,19 @@ function writePdfMetricStrip(
     return;
   }
   const colors: Record<string, string> = {
-    critical: "#5a1525",
-    high: "#5e3314",
-    medium: "#5f5110",
-    low: "#173f63",
-    info: "#15483a",
-    accent: "#12364d",
+    critical: "#f8dbe2",
+    high: "#f9e2d0",
+    medium: "#f8efc8",
+    low: "#d8e7f6",
+    info: "#d7f0e7",
+    accent: "#dcebfb",
   };
   const x = doc.page.margins.left;
   const width = doc.page.width - doc.page.margins.left - doc.page.margins.right;
   const gap = 8;
   const columns = Math.max(1, Math.min(3, metrics.length));
   const cardWidth = (width - gap * (columns - 1)) / columns;
-  const rowHeight = 44;
+  const rowHeight = 48;
   const rows = Math.ceil(metrics.length / columns);
   ensurePdfSpace(doc, rows * (rowHeight + gap));
   const startY = doc.y;
@@ -1525,11 +1685,13 @@ function writePdfMetricStrip(
     const cardX = x + col * (cardWidth + gap);
     const cardY = startY + row * (rowHeight + gap);
     doc.save();
-    doc.roundedRect(cardX, cardY, cardWidth, rowHeight, 8).fillAndStroke(colors[metric.tone || "accent"] || colors.accent, "#294a6c");
-    doc.fillColor("#a9c0d8").font("Helvetica").fontSize(7).text(metric.label.toUpperCase(), cardX + 8, cardY + 8, {
+    doc.fillOpacity(0.64);
+    doc.roundedRect(cardX, cardY, cardWidth, rowHeight, 8).fillAndStroke(colors[metric.tone || "accent"] || colors.accent, "#bed4e6");
+    doc.fillOpacity(1);
+    doc.fillColor("#587086").font("Helvetica").fontSize(7.5).text(metric.label.toUpperCase(), cardX + 10, cardY + 9, {
       width: cardWidth - 16,
     });
-    doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(14).text(metric.value, cardX + 8, cardY + 20, {
+    doc.fillColor("#12304c").font("Helvetica-Bold").fontSize(15).text(metric.value, cardX + 10, cardY + 23, {
       width: cardWidth - 16,
     });
     doc.restore();
@@ -2330,24 +2492,24 @@ function renderVulnerabilityHtml(scan: ScanView): string {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CodeSentinelX Vulnerability Report</title>
   <style>${exportThemeCss(`
-    .panel{background:linear-gradient(165deg,rgba(17,37,63,0.96),rgba(10,27,46,0.98));border:1px solid var(--line);border-radius:16px;box-shadow:0 18px 50px rgba(0,0,0,0.22);padding:18px;margin-bottom:14px}
+    .panel{background:linear-gradient(165deg,rgba(17,37,63,0.38),rgba(10,27,46,0.24));border:1px solid rgba(120,168,205,0.32);border-radius:16px;box-shadow:0 12px 28px rgba(0,0,0,0.1);padding:18px;margin-bottom:14px}
     .layout{display:grid;grid-template-columns:1fr 1fr;gap:12px}
     .summary{max-width:620px}
     .results th{width:18%}
     .toolbar{display:flex;gap:8px;align-items:center;margin:6px 0 10px;flex-wrap:wrap}
-    input{background:#071424;border:1px solid var(--line);border-radius:8px;color:var(--text);padding:7px 10px;min-width:240px}
+    input{background:rgba(7,20,36,0.14);border:1px solid rgba(120,168,205,0.28);border-radius:8px;color:var(--text);padding:7px 10px;min-width:240px}
     .chart-wrap{display:grid;grid-template-columns:320px 1fr;gap:12px;align-items:center}
     .legend-item{display:flex;align-items:center;gap:8px;color:var(--muted);margin:6px 0}
     .dot{width:10px;height:10px;border-radius:50%}
     .bars{display:grid;gap:8px}
     .bar-row{display:grid;grid-template-columns:220px 1fr auto;gap:8px;align-items:center}
-    .bar-track{height:12px;border:1px solid var(--line);border-radius:999px;background:#071424;overflow:hidden}
+    .bar-track{height:12px;border:1px solid rgba(120,168,205,0.28);border-radius:999px;background:rgba(7,20,36,0.14);overflow:hidden}
     .bar-fill{height:100%;background:linear-gradient(90deg,#1f88ff,var(--accent))}
     .bar-label{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .hidden-section{display:none}
     .alert-link,.drill-link{background:none;border:none;color:var(--accent);cursor:pointer;text-decoration:underline;font:inherit;padding:0}
     .drill-state{margin-bottom:8px;color:var(--muted)}
-    .evidence-block{border:1px solid var(--line);border-radius:12px;padding:10px;background:rgba(6,17,29,0.7);margin-bottom:10px}
+    .evidence-block{border:1px solid rgba(120,168,205,0.24);border-radius:12px;padding:10px;background:rgba(6,17,29,0.14);margin-bottom:10px}
     .evidence-block summary{cursor:pointer;font-weight:700}
     .cmd-cell{max-width:580px;white-space:normal;word-break:break-all}
     .ai-fix-item{padding:8px 0;border-bottom:1px dashed var(--line)}
@@ -3191,7 +3353,7 @@ function renderFixesHtml(scan: ScanView): string {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CodeSentinelX Original and Suggested Fix Report</title>
-  <style>${exportThemeCss(".fix-link{color:var(--accent);text-decoration:underline}.toolbar{display:flex;gap:8px;align-items:center;margin:6px 0 10px;flex-wrap:wrap}input{background:#071424;border:1px solid var(--line);border-radius:8px;color:var(--text);padding:7px 10px;min-width:300px}.fix-detail{border:1px solid var(--line-soft);border-radius:14px;background:rgba(8,21,36,.88);padding:14px;margin-bottom:12px}.fix-detail h3{margin-bottom:10px}")}</style>
+  <style>${exportThemeCss(".fix-link{color:var(--accent);text-decoration:underline}.toolbar{display:flex;gap:8px;align-items:center;margin:6px 0 10px;flex-wrap:wrap}input{background:rgba(7,20,36,.14);border:1px solid rgba(120,168,205,.28);border-radius:8px;color:var(--text);padding:7px 10px;min-width:300px}.fix-detail{border:1px solid rgba(120,168,205,.24);border-radius:14px;background:rgba(8,21,36,.14);padding:14px;margin-bottom:12px}.fix-detail h3{margin-bottom:10px}")}</style>
 </head>
 <body>
   <main class="report-shell">
@@ -4467,62 +4629,74 @@ function renderComplianceMatrixRows(items: Array<{ standard: string; control_cou
 }
 
 function exportThemeCss(extra = ""): string {
+  const globeTextureCss = REPORT_GLOBE_TEXTURE_DATA_URI
+    ? `url("${REPORT_GLOBE_TEXTURE_DATA_URI}")`
+    : "radial-gradient(circle at 35% 35%, rgba(164, 224, 255, 0.18), rgba(14, 33, 54, 0.88) 58%, rgba(2, 8, 14, 1) 100%)";
   return `
     :root{--bg:#06111d;--bg2:#0a1c31;--panel:#0d1d33;--panel2:#10253f;--line:#28486b;--line-soft:#1b3550;--text:#dce9f7;--muted:#94b0ca;--accent:#38c9ff;--critical:#ff5b77;--high:#ff9b4b;--medium:#ffd65e;--low:#67b8ff;--info:#70d5ab;--ok:#6de2b4}
     *{box-sizing:border-box}
     html,body{margin:0;padding:0}
-    body{font-family:"Segoe UI",Tahoma,sans-serif;font-size:13px;line-height:1.45;color:var(--text);background:
+    body{position:relative;overflow-x:hidden;font-family:"Segoe UI Variable Text","Segoe UI","Trebuchet MS",Tahoma,sans-serif;font-size:13.5px;line-height:1.58;letter-spacing:.01em;color:var(--text);background:
       radial-gradient(circle at 0% 0%, rgba(56,201,255,0.08), transparent 34%),
       radial-gradient(circle at 100% 0%, rgba(103,184,255,0.08), transparent 28%),
       linear-gradient(180deg,var(--bg2),var(--bg) 46%, #040b12 100%);padding:18px}
+    body::before{content:"";position:fixed;right:-7vw;top:-4vh;width:min(58vw,840px);aspect-ratio:1;border-radius:50%;
+      background-image:${globeTextureCss};background-repeat:repeat-x;background-size:auto 100%;background-position:36% 50%;
+      box-shadow:inset -58px -30px 118px rgba(0,0,0,0.62),inset 22px 18px 30px rgba(92,209,255,0.06),0 28px 84px rgba(0,0,0,0.42);
+      border:1px solid rgba(110,226,255,0.22);opacity:.44;filter:saturate(1.16) contrast(1.22) brightness(1.06);
+      animation:reportGlobeSpin 88s linear infinite;pointer-events:none;z-index:0}
+    body::after{content:"";position:fixed;right:-3vw;top:6vh;width:min(49vw,700px);aspect-ratio:1;border-radius:50%;
+      background:radial-gradient(circle at 36% 34%, rgba(154,224,255,0.16), transparent 34%),radial-gradient(circle at center, rgba(14,31,52,0.2), transparent 68%);
+      box-shadow:0 0 48px rgba(53,209,255,0.14), inset 0 0 22px rgba(105,214,255,0.08);opacity:.5;pointer-events:none;z-index:0}
+    @keyframes reportGlobeSpin{from{background-position:36% 50%}to{background-position:-164% 50%}}
     h1,h2,h3,h4{margin:0;color:#f5fbff}
-    h1{font-size:32px;line-height:1.15}
-    h2{font-size:20px;margin-bottom:10px}
-    h3{font-size:15px;margin-bottom:8px}
-    h4{font-size:13px;margin:0 0 6px}
-    p{margin:0 0 8px}
+    h1{font-size:36px;line-height:1.04;letter-spacing:-.035em}
+    h2{font-size:22px;line-height:1.14;letter-spacing:-.02em;margin-bottom:12px}
+    h3{font-size:16px;line-height:1.22;letter-spacing:-.012em;margin-bottom:10px}
+    h4{font-size:13px;line-height:1.35;letter-spacing:.01em;margin:0 0 8px}
+    p{margin:0 0 10px}
     ul,ol{margin:0;padding-left:20px}
-    .report-shell{max-width:1500px;margin:0 auto}
-    .hero,.section{background:linear-gradient(165deg,rgba(17,37,63,0.96),rgba(10,27,46,0.98));border:1px solid var(--line);border-radius:16px;box-shadow:0 18px 50px rgba(0,0,0,0.22);padding:18px;margin-bottom:14px}
-    .hero{padding:20px}
-    .hero-meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}
-    .meta-pill{border:1px solid var(--line-soft);border-radius:999px;background:rgba(4,14,24,0.46);padding:8px 12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .hero-grid,.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:14px}
-    .stat-card{border:1px solid var(--line-soft);border-radius:14px;background:linear-gradient(180deg,rgba(6,17,29,0.82),rgba(8,21,36,0.96));padding:12px 14px;min-height:88px}
-    .stat-card .label{display:block;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
-    .stat-card .value{display:block;font-size:28px;font-weight:700;line-height:1.1}
-    .stat-card .sub{display:block;color:var(--muted);font-size:11px;margin-top:6px}
+    .report-shell{max-width:1520px;margin:0 auto;position:relative;z-index:1}
+    .hero,.section{background:linear-gradient(165deg,rgba(17,37,63,0.42),rgba(10,27,46,0.28));border:1px solid rgba(120,168,205,0.34);border-radius:18px;box-shadow:0 14px 34px rgba(0,0,0,0.1);padding:22px;margin-bottom:16px}
+    .hero{padding:24px}
+    .hero-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:16px}
+    .meta-pill{border:1px solid rgba(120,168,205,0.28);border-radius:999px;background:rgba(4,14,24,0.1);padding:10px 14px;color:var(--muted);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .hero-grid,.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-top:16px}
+    .stat-card{border:1px solid rgba(120,168,205,0.26);border-radius:16px;background:linear-gradient(180deg,rgba(6,17,29,0.22),rgba(8,21,36,0.18));padding:14px 16px;min-height:96px}
+    .stat-card .label{display:block;color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.11em;margin-bottom:8px}
+    .stat-card .value{display:block;font-size:30px;font-weight:700;line-height:1.06;letter-spacing:-.025em}
+    .stat-card .sub{display:block;color:var(--muted);font-size:11px;margin-top:8px}
     .tone-critical .value{color:var(--critical)}
     .tone-high .value{color:var(--high)}
     .tone-medium .value{color:var(--medium)}
     .tone-low .value{color:var(--low)}
     .tone-info .value{color:var(--info)}
     .tone-accent .value{color:var(--accent)}
-    .section-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:12px}
-    .stack{display:grid;gap:12px}
-    .table-frame{border:1px solid var(--line-soft);border-radius:14px;overflow:hidden;background:rgba(6,17,29,0.7)}
+    .section-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:14px}
+    .stack{display:grid;gap:14px}
+    .table-frame{border:1px solid rgba(120,168,205,0.24);border-radius:16px;overflow:hidden;background:rgba(6,17,29,0.14)}
     .table-scroll{overflow:auto;max-width:100%}
-    table{width:100%;border-collapse:collapse;table-layout:fixed}
-    th,td{border:1px solid var(--line-soft);padding:8px 10px;vertical-align:top}
-    th{background:#10253f;color:#c6d9ec;text-align:left}
+    table{width:100%;border-collapse:collapse;table-layout:fixed;line-height:1.52}
+    th,td{border:1px solid var(--line-soft);padding:10px 12px;vertical-align:top}
+    th{background:rgba(16,37,63,0.32);color:#c6d9ec;text-align:left;font-size:12px;letter-spacing:.04em;text-transform:uppercase}
     .table-scroll thead th{position:sticky;top:0;z-index:1}
-    td{background:rgba(8,21,36,0.94)}
-    tr:nth-child(even) td{background:rgba(10,26,43,0.94)}
+    td{background:rgba(8,21,36,0.14)}
+    tr:nth-child(even) td{background:rgba(10,26,43,0.08)}
     th,td{word-break:break-word}
     .muted{color:var(--muted)}
-    .meta{color:var(--muted)}
-    .code,pre{margin:0;white-space:pre-wrap;word-break:break-word;font-family:Consolas,monospace;border:1px solid var(--line-soft);border-radius:12px;background:#05101a;color:var(--text);padding:10px}
-    .code-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-    .callout{border-left:4px solid var(--accent);padding:10px 12px;border-radius:10px;background:rgba(6,17,29,0.58)}
+    .meta{color:var(--muted);font-size:12.5px}
+    .code,pre{margin:0;white-space:pre-wrap;word-break:break-word;font-family:Consolas,monospace;border:1px solid rgba(120,168,205,0.24);border-radius:14px;background:rgba(5,16,26,0.16);color:var(--text);padding:12px;font-size:12px;line-height:1.55}
+    .code-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+    .callout{border-left:4px solid var(--accent);padding:12px 14px;border-radius:12px;background:rgba(6,17,29,0.14)}
     .sev{display:inline-flex;align-items:center;border-radius:999px;padding:3px 8px;font-size:11px;font-weight:700;border:1px solid var(--line-soft)}
     .sev-Critical,.sev-critical{background:rgba(255,91,119,0.12);color:#ffdbe3}
     .sev-High,.sev-high{background:rgba(255,155,75,0.12);color:#ffe3cc}
     .sev-Medium,.sev-medium{background:rgba(255,214,94,0.14);color:#fff5c8}
     .sev-Low,.sev-low{background:rgba(103,184,255,0.14);color:#ddecff}
     .sev-Info,.sev-info{background:rgba(112,213,171,0.14);color:#dffaf0}
-    .table-note{margin-top:8px;color:var(--muted);font-size:12px}
+    .table-note{margin-top:10px;color:var(--muted);font-size:12px;line-height:1.55}
     .kpi-bars{display:grid;gap:8px}
-    .kpi-row{display:grid;grid-template-columns:minmax(160px,32%) 1fr auto;gap:10px;align-items:center}
+    .kpi-row{display:grid;grid-template-columns:minmax(180px,32%) 1fr auto;gap:12px;align-items:center}
     .kpi-label{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .kpi-track{height:12px;border:1px solid var(--line);border-radius:999px;background:#071424;overflow:hidden}
     .kpi-fill{height:100%;background:linear-gradient(90deg,#1f88ff,var(--accent));min-width:2px}
@@ -4537,12 +4711,14 @@ function exportThemeCss(extra = ""): string {
     a{color:var(--accent)}
     @media (max-width:1100px){.section-grid,.code-grid,.hero-meta{grid-template-columns:1fr}}
     @media print{
-      body{background:#fff;color:#111;padding:0}
+      body{background:#ecf3fb;color:#172838;padding:8px}
+      body::before{animation:none;right:-16px;top:6px;width:390px;opacity:.18;border-color:#c7d6e4;filter:grayscale(1) contrast(1.15) brightness(1.03)}
+      body::after{right:18px;top:34px;width:320px;opacity:.12}
       .report-shell{max-width:none}
-      .hero,.section,.stat-card,.table-frame,.code,pre{box-shadow:none;background:#fff;color:#111}
-      .hero,.section,.table-frame,.code,pre,.stat-card{border-color:#b6c2cf}
-      th{background:#eef3f8;color:#111}
-      td{background:#fff;color:#111}
+      .hero,.section,.stat-card,.table-frame,.code,pre{box-shadow:none;background:rgba(255,255,255,.76);color:#172838}
+      .hero,.section,.table-frame,.code,pre,.stat-card{border-color:#b9c8d6}
+      th{background:rgba(231,239,247,.82);color:#172838}
+      td{background:rgba(255,255,255,.62);color:#172838}
       .muted,.meta,.meta-pill{color:#445465}
       .table-scroll thead th{position:static}
       .avoid-break{break-inside:avoid-page;page-break-inside:avoid}

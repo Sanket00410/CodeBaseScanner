@@ -19,7 +19,7 @@ if (!runtime.app || !runtime.BrowserWindow || !runtime.dialog || !runtime.ipcMai
   process.exit(1);
 }
 
-const { app, BrowserWindow, dialog, ipcMain } = runtime as typeof import("electron");
+const { app, BrowserWindow, dialog, ipcMain, Menu } = runtime as typeof import("electron");
 
 log.initialize();
 
@@ -35,6 +35,7 @@ let toolRunDirPath = "";
 
 function createWindow(): void {
   const preloadPath = path.join(__dirname, "preload.js");
+  const windowIconPath = path.join(app.getAppPath(), "build", "icon.png");
   mainWindow = new BrowserWindow({
     width: 1560,
     height: 980,
@@ -43,6 +44,11 @@ function createWindow(): void {
     backgroundColor: "#070d17",
     show: false,
     title: "CodeSentinelX",
+    icon: windowIconPath,
+    frame: false,
+    autoHideMenuBar: true,
+    titleBarStyle: "hidden",
+    trafficLightPosition: { x: 12, y: 12 },
     webPreferences: {
       preload: preloadPath,
       contextIsolation: true,
@@ -51,6 +57,8 @@ function createWindow(): void {
       devTools: true,
     },
   });
+  mainWindow.setMenuBarVisibility(false);
+  mainWindow.removeMenu();
 
   const devUrl = process.env.ELECTRON_START_URL;
   if (devUrl) {
@@ -72,6 +80,7 @@ function emitProgress(payload: ScanProgressPayload): void {
 
 app.whenReady().then(async () => {
   try {
+    Menu.setApplicationMenu(null);
     const logicalCores = Math.max(2, Math.min(8, os.cpus().length || 4));
     const toolWorkers = Math.max(2, Math.min(6, logicalCores));
     if (!process.env.CODESENTINELX_DISABLE_APP_TOOLCHAIN) {
@@ -170,6 +179,26 @@ ipcMain.handle("dialog:pickFolder", async () => {
     properties: ["openDirectory"],
   });
   return result.canceled ? null : result.filePaths[0] || null;
+});
+
+ipcMain.handle("window:minimize", () => {
+  mainWindow?.minimize();
+});
+
+ipcMain.handle("window:toggleMaximize", () => {
+  if (!mainWindow) {
+    return false;
+  }
+  if (mainWindow.isMaximized()) {
+    mainWindow.unmaximize();
+    return false;
+  }
+  mainWindow.maximize();
+  return true;
+});
+
+ipcMain.handle("window:close", () => {
+  mainWindow?.close();
 });
 
 ipcMain.handle("scan:start", async (_event, request: ScanRequest) => {

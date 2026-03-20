@@ -3,6 +3,9 @@ import { contextBridge, ipcRenderer } from "electron";
 import { ExportRequest, ScanRequest, UserRole } from "../backend/types";
 
 const api = {
+  minimizeWindow: async (): Promise<void> => ipcRenderer.invoke("window:minimize"),
+  toggleMaximizeWindow: async (): Promise<boolean> => ipcRenderer.invoke("window:toggleMaximize"),
+  closeWindow: async (): Promise<void> => ipcRenderer.invoke("window:close"),
   pickProjectFolder: async (): Promise<string | null> => ipcRenderer.invoke("dialog:pickFolder"),
   startScan: async (request: ScanRequest) => ipcRenderer.invoke("scan:start", request),
   pauseScan: async (scanId: string) => ipcRenderer.invoke("scan:pause", scanId),
