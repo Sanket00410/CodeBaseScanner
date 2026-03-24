@@ -134,6 +134,10 @@ function formatDisplayTimestamp(value: string): string {
   return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")} ${String(parsed.getHours()).padStart(2, "0")}:${String(parsed.getMinutes()).padStart(2, "0")}:${String(parsed.getSeconds()).padStart(2, "0")}.${String(parsed.getMilliseconds()).padStart(3, "0")}`;
 }
 
+function currentExportTimestamp(): string {
+  return new Date().toISOString();
+}
+
 function exportReportTypeToken(
   reportType: ExportRequest["reportType"],
   reportStyle?: ExportRequest["reportStyle"],
@@ -476,12 +480,7 @@ export class ExportService {
     format: ExportRequest["format"],
     reportStyle?: ExportRequest["reportStyle"],
   ): string {
-    const timestampSource =
-      scan.completedAt ||
-      scan.report.vulnerability_fixed_code_report.generated_at ||
-      scan.report.existing_implementation_report.generated_at ||
-      scan.report.executive_summary.generated_at ||
-      "";
+    const timestampSource = new Date().toISOString();
     const { datePart, timePart } = extractExportDateTimeParts(timestampSource);
     const typeToken = sanitizeExportToken(exportReportTypeToken(reportType, reportStyle), "report");
     const targetToken = extractExportTargetName(scan);
@@ -848,9 +847,10 @@ function writeExistingPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
   const report = scan.report.existing_implementation_report;
   const summary = report.summary;
   const profileCompliance = report.profile_compliance || scan.report.profile_compliance;
+  const exportedAt = formatDisplayTimestamp(currentExportTimestamp());
   writePdfHero(doc, "CodeSentinelX Existing Security Implementation Report", [
     `Target: ${report.target_path}`,
-    `Generated: ${formatDisplayTimestamp(report.generated_at)}`,
+    `Generated: ${exportedAt}`,
     `Profile: ${profileCompliance?.scan_profile_label || "Codebase"}`,
   ]);
   writePdfMetricStrip(doc, [
@@ -950,10 +950,12 @@ function writeExistingPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
 function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
   const report = scan.report.vulnerability_fixed_code_report;
   const findings = sortedFindings(report.findings || []);
+  const exportedAt = formatDisplayTimestamp(currentExportTimestamp());
+  const severityDistribution = buildSeverityDistribution(findings);
   const groups = groupByAlert(findings);
   const fileAgg = aggregateFiles(findings);
-  const moduleAgg = report.summary.affected_modules || [];
-  const owaspAgg = report.summary.top_owasp_categories || [];
+  const moduleAgg = aggregateModules(findings);
+  const owaspAgg = aggregateOwasp(findings);
   const actionPlan = scan.report.executive_summary.recommended_action_plan || [];
   const enterprise = resolveEnterpriseAssurance(scan, report.summary);
   const toolchainExecution = resolveToolchainExecution(scan, report.summary);
@@ -1033,11 +1035,14 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
   );
   const hasCtoData = Boolean(urgentRisks.length || aiExecutiveSummary.length || ctoFinancialText !== "N/A" || ctoDowntimeText !== "N/A");
   const aiSolutionEngine = (advanced.ai_solution_engine as Record<string, unknown>) || {};
+  const findingByUid = new Map(findings.map((finding) => [String(finding.finding_uid || ""), finding]));
   const fixWindowPlan =
     Object.keys((advanced.what_should_i_fix_first_ai as Record<string, unknown>) || {}).length > 0
       ? ((advanced.what_should_i_fix_first_ai as Record<string, unknown>) || {})
       : buildFallbackFixWindowPlan(findings);
-  const hasMeaningfulFixPlan = Object.values(fixWindowPlan).some((value) => Array.isArray(value) && value.length > 0);
+  const hasMeaningfulFixPlan = Object.values(fixWindowPlan).some(
+    (value) => Array.isArray(value) && value.some((entry) => hasUsableFixWindowEntry(entry, findingByUid)),
+  );
   const maturityMetrics = (advanced.security_maturity_scoring as Record<string, unknown>) || {};
   const hasMaturityData = Object.values(maturityMetrics).some((value) => Number(value) > 0);
   const hasAdvancedData = Boolean(hasMaturityData || hasMeaningfulFixPlan);
@@ -1049,17 +1054,17 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
 
   writePdfHero(doc, "CodeSentinelX Vulnerability Report", [
     `Target: ${report.target_path}`,
-    `Generated: ${formatDisplayTimestamp(report.generated_at)}`,
+    `Generated: ${exportedAt}`,
     `Risk Score: ${report.summary.risk_score} (${report.summary.risk_rating})`,
   ]);
   writePdfMetricStrip(doc, [
-    { label: "Total Findings", value: String(report.summary.total_findings || findings.length), tone: "accent" },
-    { label: "Critical", value: String(report.summary.severity_distribution?.Critical || 0), tone: "critical" },
-    { label: "High", value: String(report.summary.severity_distribution?.High || 0), tone: "high" },
+    { label: "Total Findings", value: String(findings.length), tone: "accent" },
+    { label: "Critical", value: String(severityDistribution.Critical || 0), tone: "critical" },
+    { label: "High", value: String(severityDistribution.High || 0), tone: "high" },
   ]);
   writePdfSectionHeader(doc, "Summary of Alerts");
   for (const severity of SEVERITY_ORDER) {
-    const count = report.summary.severity_distribution?.[severity] || 0;
+    const count = severityDistribution[severity] || 0;
     writeWrapped(doc, `- ${severity}: ${count}`, 10);
   }
 
@@ -1098,7 +1103,7 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     writePdfKeyValueTable(doc, [
       { key: "Findings with CVE", value: String(riskIntel ? riskIntel.findings_with_cve : 0) },
       { key: "Findings with CVSS >= 7.0", value: String(riskIntel ? riskIntel.findings_cvss_ge_7 : 0) },
-      { key: "Known Exploited Findings (CISA KEV)", value: String(riskIntel ? riskIntel.known_exploited_findings : 0) },
+      { key: "Known Exploited Findings (CISA KEV)", value: knownExploitedMetricText(riskIntel) },
       { key: "Release Gate: Block release", value: String(Number(releaseGateDistribution["Block release"] || 0)) },
       { key: "Release Gate: Fix before prod", value: String(Number(releaseGateDistribution["Fix before prod"] || 0)) },
       { key: "Release Gate: Scheduled fix", value: String(Number(releaseGateDistribution["Scheduled fix"] || 0)) },
@@ -1418,6 +1423,7 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
 function writeFixesPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
   const report = scan.report.vulnerability_fixed_code_report;
   const findings = sortedFindings(report.findings || []);
+  const exportedAt = formatDisplayTimestamp(currentExportTimestamp());
   const fixPdfLimit = Math.max(80, Number(process.env.USS_FIX_REPORT_PDF_DETAIL_LIMIT || 180));
   const enterprise = resolveEnterpriseAssurance(scan, report.summary);
   const toolchainExecution = resolveToolchainExecution(scan, report.summary);
@@ -1445,8 +1451,8 @@ function writeFixesPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
 
   writePdfHero(doc, "CodeSentinelX Original and Suggested Fix Report", [
     `Target: ${report.target_path}`,
-    `Generated: ${formatDisplayTimestamp(report.generated_at)}`,
-    `Total Findings: ${report.summary.total_findings}`,
+    `Generated: ${exportedAt}`,
+    `Total Findings: ${findings.length}`,
   ]);
   const fixVerificationSummary = normalizedFixVerificationSummary(report.summary.fix_verification, findings);
   writePdfMetricStrip(doc, [
@@ -1498,10 +1504,8 @@ function writeFixesPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     { key: "Unknown OWASP", value: String(dataQuality.unknown_owasp_count ?? 0) },
     { key: "Taxonomy Gaps", value: String(dataQuality.unknown_taxonomy_count ?? 0) },
   ]);
-  writePdfSectionHeader(doc, "Deterministic Evidence Replay Pack");
-  if (!hasReplaySummaryData(deterministicReplay)) {
-    writeWrapped(doc, "No deterministic replay evidence metadata was captured for this scan.", 9);
-  } else {
+  if (hasReplaySummaryData(deterministicReplay)) {
+    writePdfSectionHeader(doc, "Deterministic Evidence Replay Pack");
     const replayData = deterministicReplay as NonNullable<typeof deterministicReplay>;
     writePdfKeyValueTable(doc, [
       { key: "Mode", value: String(replayData.mode || "deterministic-evidence-replay") },
@@ -1533,10 +1537,8 @@ function writeFixesPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
       );
     }
   }
-  writePdfSectionHeader(doc, "Tamper-Evident Report Chain");
-  if (!hasIntegrityChainData(reportIntegrity)) {
-    writeWrapped(doc, "No report integrity chain metadata was captured for this scan.", 9);
-  } else {
+  if (hasIntegrityChainData(reportIntegrity)) {
+    writePdfSectionHeader(doc, "Tamper-Evident Report Chain");
     const integrityData = reportIntegrity as NonNullable<typeof reportIntegrity>;
     writePdfKeyValueTable(doc, [
       { key: "Chain Version", value: String(integrityData.chain_version || "1.0") },
@@ -1891,6 +1893,7 @@ function writePdfMetricStrip(
 function renderExistingHtml(scan: ScanView): string {
   const report = scan.report.existing_implementation_report;
   const profileCompliance = report.profile_compliance || scan.report.profile_compliance;
+  const exportedAt = formatDisplayTimestamp(currentExportTimestamp());
   const summaryRows = Object.entries(report.summary).map(
     ([key, value]) => `<tr><td>${escapeHtml(key.replaceAll("_", " "))}</td><td>${renderSummaryValue(value)}</td></tr>`,
   );
@@ -1949,7 +1952,7 @@ function renderExistingHtml(scan: ScanView): string {
             .join("");
           return `<h3>${escapeHtml(framework.label)} (${framework.applicable ? "Applicable" : "Not Applicable"})</h3>
     <p class="meta">Covered: ${framework.summary.covered} | Gap: ${framework.summary.gap} | Not Applicable: ${framework.summary.not_applicable}</p>
-    <table>
+    <table class="profile-coverage-table">
       <thead><tr><th>ID</th><th>Category</th><th>Status</th><th>Findings</th><th>Controls</th><th>Total</th></tr></thead>
       <tbody>${rows || "<tr><td colspan='6'>No mapping rows available.</td></tr>"}</tbody>
     </table>`;
@@ -2015,7 +2018,7 @@ function renderExistingHtml(scan: ScanView): string {
       <h1>CodeSentinelX Existing Security Implementation Report</h1>
       <div class="hero-meta">
         <div class="meta-pill"><strong>Target:</strong> ${escapeHtml(report.target_path)}</div>
-        <div class="meta-pill"><strong>Generated:</strong> ${escapeHtml(formatDisplayTimestamp(report.generated_at))}</div>
+        <div class="meta-pill"><strong>Generated:</strong> ${escapeHtml(exportedAt)}</div>
         <div class="meta-pill"><strong>Profile:</strong> ${escapeHtml(profileCompliance?.scan_profile_label || "Codebase")}</div>
       </div>
       ${existingCards}
@@ -2044,8 +2047,9 @@ function renderExistingHtml(scan: ScanView): string {
           </div>
           <div class="table-frame">
             <h2 style="padding:12px 14px 0">Implemented Controls</h2>
+            <div class="toolbar" style="padding:0 14px 8px"><input id="controlSearch" type="search" placeholder="Search control, category, coverage, or standards" /></div>
             <div class="table-scroll">
-              <table>
+              <table id="implementedControlsTable">
                 <thead><tr><th>Control</th><th>Category</th><th>Coverage</th><th>Standards</th></tr></thead>
                 <tbody>${controlRows.join("") || "<tr><td colspan='4'>No controls detected.</td></tr>"}</tbody>
               </table>
@@ -2053,8 +2057,9 @@ function renderExistingHtml(scan: ScanView): string {
           </div>
           <div class="table-frame">
             <h2 style="padding:12px 14px 0">Control Evidence (File/Line)</h2>
+            <div class="toolbar" style="padding:0 14px 8px"><input id="controlEvidenceSearch" type="search" placeholder="Search control evidence by file, line, or snippet" /></div>
             <div class="table-scroll">
-              <table>
+              <table id="controlEvidenceTable">
                 <thead><tr><th>Control</th><th>File</th><th>Line</th><th>Evidence Snippet</th></tr></thead>
                 <tbody>${controlEvidenceRows || "<tr><td colspan='4'>No control-level evidence captured.</td></tr>"}</tbody>
               </table>
@@ -2064,12 +2069,14 @@ function renderExistingHtml(scan: ScanView): string {
         <div class="stack">
           <div class="table-frame">
             <h2 style="padding:12px 14px 0">Profile-Based Coverage</h2>
+            <div class="toolbar" style="padding:0 14px 8px"><input id="profileSearch" type="search" placeholder="Search profile IDs, categories, statuses, findings, or controls" /></div>
             <div style="padding:0 14px 14px">${profileFrameworks}</div>
           </div>
           <div class="table-frame">
             <h2 style="padding:12px 14px 0">Compliance Matrix</h2>
+            <div class="toolbar" style="padding:0 14px 8px"><input id="complianceSearch" type="search" placeholder="Search standard, control count, or status" /></div>
             <div class="table-scroll">
-              <table>
+              <table id="complianceMatrixTable">
                 <thead><tr><th>Standard</th><th>Control Count</th><th>Status</th></tr></thead>
                 <tbody>${renderComplianceMatrixRows(report.compliance_matrix || []) || "<tr><td colspan='3'>No compliance mapping data.</td></tr>"}</tbody>
               </table>
@@ -2080,6 +2087,26 @@ function renderExistingHtml(scan: ScanView): string {
       <p class="table-note">Design goal: leadership can see coverage posture quickly, while engineers can still drill into control names, mapped standards, and framework gaps in the same export.</p>
     </section>
   </main>
+  <script>
+    (function () {
+      function bindSearch(inputId, selector) {
+        var input = document.getElementById(inputId);
+        if (!input) return;
+        input.addEventListener("input", function () {
+          var query = (input.value || "").toLowerCase();
+          document.querySelectorAll(selector).forEach(function (row) {
+            var text = (row.textContent || "").toLowerCase();
+            row.style.display = !query || text.indexOf(query) >= 0 ? "" : "none";
+          });
+        });
+      }
+
+      bindSearch("controlSearch", "#implementedControlsTable tbody tr");
+      bindSearch("controlEvidenceSearch", "#controlEvidenceTable tbody tr");
+      bindSearch("complianceSearch", "#complianceMatrixTable tbody tr");
+      bindSearch("profileSearch", ".profile-coverage-table tbody tr");
+    })();
+  </script>
 </body>
 </html>`;
 }
@@ -2087,15 +2114,17 @@ function renderExistingHtml(scan: ScanView): string {
 function renderVulnerabilityHtml(scan: ScanView): string {
   const report = scan.report.vulnerability_fixed_code_report;
   const findings = sortedFindings(report.findings || []);
+  const exportedAt = formatDisplayTimestamp(currentExportTimestamp());
   const EXEC_LIMIT = 60;
   const DETAIL_LIMIT = 120;
   const groupedAll = groupByAlert(findings);
   const grouped = groupedAll.slice(0, EXEC_LIMIT);
+  const alertAnchorByGroup = new Map(groupedAll.map((group) => [group.id, stableAnchorId("alert", group.id)]));
   const fileAggAll = aggregateFiles(findings);
   const fileAgg = fileAggAll.slice(0, EXEC_LIMIT);
-  const moduleAggAll = report.summary.affected_modules || [];
+  const moduleAggAll = aggregateModules(findings);
   const moduleAgg = moduleAggAll.slice(0, EXEC_LIMIT);
-  const owaspAggAll = report.summary.top_owasp_categories || [];
+  const owaspAggAll = aggregateOwasp(findings);
   const owaspAgg = owaspAggAll.slice(0, EXEC_LIMIT);
   const actionPlan = scan.report.executive_summary.recommended_action_plan || [];
   const summaryExtras = report.summary as VulnerabilityFixedCodeReport["summary"] & {
@@ -2205,9 +2234,10 @@ function renderVulnerabilityHtml(scan: ScanView): string {
     status: finding.status || "Open",
     tool: finding.tool || "scanner",
   }));
+  const severityDistribution = buildSeverityDistribution(findings);
 
   const summaryRows = SEVERITY_ORDER.map((severity) => {
-    const count = report.summary.severity_distribution?.[severity] || 0;
+    const count = severityDistribution[severity] || 0;
     return `<tr><td class="risk-${severity.toLowerCase()}">${severity}</td><td align="center">${count}</td></tr>`;
   }).join("");
 
@@ -2215,7 +2245,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
     .map(
       (group) => `<tr>
     <td class="risk-${group.severity.toLowerCase()}">${escapeHtml(group.severity)}</td>
-    <td><button type="button" class="alert-link" data-alert-id="${escapeHtml(group.id)}">${escapeHtml(group.title)}</button></td>
+    <td><a href="#${escapeHtml(alertAnchorByGroup.get(group.id) || stableAnchorId("alert", group.id))}" class="alert-link" data-alert-id="${escapeHtml(group.id)}" data-target-id="${escapeHtml(alertAnchorByGroup.get(group.id) || stableAnchorId("alert", group.id))}">${escapeHtml(group.title)}</a></td>
     <td align="center">${group.count}</td>
     <td>${renderCweLink(group.cwe)}</td>
     <td>${escapeHtml(group.owasp)}</td>
@@ -2295,7 +2325,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
         )
         .join("");
 
-      return `<section id="${escapeHtml(group.id)}" class="alert-section hidden-section">
+      return `<section id="${escapeHtml(alertAnchorByGroup.get(group.id) || stableAnchorId("alert", group.id))}" class="alert-section hidden-section">
     <h3>[${escapeHtml(group.severity)}] ${escapeHtml(group.title)} (${group.count})</h3>
     <table class="results">
       <tr><th width="20%">CWE</th><td>${renderCweLink(group.cwe)}</td></tr>
@@ -2305,8 +2335,8 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       <tr><th>Business Impact</th><td>${escapeHtml(lead.business_impact || "N/A")}</td></tr>
       <tr><th>Release Gate</th><td>${escapeHtml(leadExtended.release_gate_action || "Track")}</td></tr>
       <tr><th>Exploit Maturity</th><td>${escapeHtml(leadExtended.exploit_maturity || "Unconfirmed")}</td></tr>
-      <tr><th>Known Exploited (CISA KEV)</th><td>${leadExtended.known_exploited ? "Yes" : "No"}</td></tr>
-      <tr><th>CVEs</th><td>${renderCveLinks(cveList)}</td></tr>
+      ${cveList.length ? `<tr><th>Known Exploited (CISA KEV)</th><td>${leadExtended.known_exploited ? "Yes" : "No"}</td></tr>` : ""}
+      ${cveList.length ? `<tr><th>CVEs</th><td>${renderCveLinks(cveList)}</td></tr>` : ""}
       <tr><th>Exploitability Context</th><td>${escapeHtml(leadExtended.exploitability_context || "N/A")}</td></tr>
       <tr><th>Recommendation</th><td>${escapeHtml(lead.recommendation || "N/A")}</td></tr>
       ${dependencyAuthenticitySummary(lead) ? `<tr><th>Dependency Authenticity</th><td>${escapeHtml(dependencyAuthenticitySummary(lead))}<br><span class="muted">${escapeHtml(dependencyAuthenticityDetail(lead))}</span></td></tr>` : ""}
@@ -2364,7 +2394,8 @@ function renderVulnerabilityHtml(scan: ScanView): string {
     })
     .join("");
   const moduleEvidenceOverflow = Math.max(0, moduleSeverityCatalog.length - 220);
-  const hasRiskIntel = Boolean(summaryExtras.risk_intelligence);
+  const hasRiskIntel = hasRiskIntelligenceData(riskIntel, releaseGateDistribution);
+  const hasAdvisoryContext = hasAdvisoryRiskContext(riskIntel);
   const hasReleaseGate = Object.keys(releaseGateDistribution || {}).length > 0;
   const authTypeRows = (authAbuse?.top_vulnerability_types || [])
     .slice(0, 10)
@@ -2455,30 +2486,9 @@ function renderVulnerabilityHtml(scan: ScanView): string {
     Object.keys((advanced.what_should_i_fix_first_ai as Record<string, unknown>) || {}).length > 0
       ? ((advanced.what_should_i_fix_first_ai as Record<string, unknown>) || {})
       : buildFallbackFixWindowPlan(findings);
-  const hasMeaningfulFixPlan = Object.values(fixWindowPlanSource).some((value) => {
-    if (!Array.isArray(value) || value.length === 0) {
-      return false;
-    }
-    return value.some((entry) => {
-      if (typeof entry === "string") {
-        const finding = findingByUid.get(entry);
-        if (!finding) {
-          return false;
-        }
-        const title = normalizedFindingTitle(finding).trim().toLowerCase();
-        return Boolean(String(finding.file_path || "").trim()) && !["", "issue", "unknown", "n/a", "unclassified security finding"].includes(title);
-      }
-      if (!entry || typeof entry !== "object") {
-        return false;
-      }
-      const raw = entry as Record<string, unknown>;
-      const title = String(raw.title || "").trim().toLowerCase();
-      const severity = String(raw.severity || "Info");
-      const filePath = String(raw.file_path || "").trim();
-      const priorityScore = Number(raw.priority_score || 0);
-      return Boolean(filePath) && !["", "issue", "unknown", "n/a", "unclassified security finding"].includes(title) && (priorityScore > 0 || ["Critical", "High", "Medium"].includes(severity));
-    });
-  });
+  const hasMeaningfulFixPlan = Object.values(fixWindowPlanSource).some(
+    (value) => Array.isArray(value) && value.some((entry) => hasUsableFixWindowEntry(entry, findingByUid)),
+  );
   const fixFirstRows = Object.entries(fixWindowPlanSource)
     .map(([window, value]) => {
       return `<tr><td>${escapeHtml(window.replaceAll("_", " "))}</td><td>${renderFixWindowValue(value, findingByUid)}</td></tr>`;
@@ -2544,23 +2554,23 @@ function renderVulnerabilityHtml(scan: ScanView): string {
   const financialText = formatBestLikelyWorst((ctoBoard.financial_exposure_usd as Record<string, unknown>) || {});
   const downtimeText = formatBestLikelyWorst((ctoBoard.downtime_estimate as Record<string, unknown>) || {});
   const heroCards = renderStatGrid([
-    { label: "Total Findings", value: report.summary.total_findings, tone: "accent", sub: "Deduplicated alert inventory" },
-    { label: "Files Impacted", value: report.summary.files_impacted, tone: "low", sub: "Code paths affected in this scan" },
+    { label: "Total Findings", value: findings.length, tone: "accent", sub: "Deduplicated alert inventory" },
+    { label: "Files Impacted", value: fileAggAll.length, tone: "low", sub: "Code paths affected in this scan" },
     {
       label: "Critical",
-      value: report.summary.severity_distribution?.Critical || 0,
+      value: severityDistribution.Critical || 0,
       tone: "critical",
       sub: "Immediate release blockers",
     },
     {
       label: "High",
-      value: report.summary.severity_distribution?.High || 0,
+      value: severityDistribution.High || 0,
       tone: "high",
       sub: "Fix before production",
     },
     {
       label: "Active Risk",
-      value: report.summary.active_risk_findings,
+      value: findings.filter((finding) => finding.severity === "Critical" || finding.severity === "High").length,
       tone: "medium",
       sub: "Critical + High still open",
     },
@@ -2572,9 +2582,9 @@ function renderVulnerabilityHtml(scan: ScanView): string {
     },
     {
       label: "Known Exploited",
-      value: riskIntel.known_exploited_findings,
+      value: knownExploitedMetricText(riskIntel),
       tone: "info",
-      sub: "CISA KEV-backed findings",
+      sub: knownExploitedMetricSubtext(riskIntel),
     },
   ]);
   const hasEnterpriseData = Boolean(
@@ -2620,9 +2630,9 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       <table class="summary">
         <thead><tr><th>Metric</th><th>Value</th></tr></thead>
         <tbody>
-        <tr><td>Findings with CVE</td><td align="center">${hasRiskIntel && riskIntel ? riskIntel.findings_with_cve : "0"}</td></tr>
-        <tr><td>Findings with CVSS &gt;= 7.0</td><td align="center">${hasRiskIntel && riskIntel ? riskIntel.findings_cvss_ge_7 : "0"}</td></tr>
-        <tr><td>Known Exploited Findings (CISA KEV)</td><td align="center">${hasRiskIntel && riskIntel ? riskIntel.known_exploited_findings : "0"}</td></tr>
+        <tr><td>Findings with CVE</td><td align="center">${hasAdvisoryContext ? Number(riskIntel?.findings_with_cve || 0) : "N/A"}</td></tr>
+        <tr><td>Findings with CVSS &gt;= 7.0</td><td align="center">${hasAdvisoryContext ? Number(riskIntel?.findings_cvss_ge_7 || 0) : "N/A"}</td></tr>
+        <tr><td>Known Exploited Findings (CISA KEV)</td><td align="center">${escapeHtml(knownExploitedMetricText(riskIntel))}</td></tr>
         <tr><td>Release Gate: Block release</td><td align="center">${hasReleaseGate ? Number(releaseGateDistribution["Block release"] || 0) : "0"}</td></tr>
         <tr><td>Release Gate: Fix before prod</td><td align="center">${hasReleaseGate ? Number(releaseGateDistribution["Fix before prod"] || 0) : "0"}</td></tr>
         <tr><td>Release Gate: Scheduled fix</td><td align="center">${hasReleaseGate ? Number(releaseGateDistribution["Scheduled fix"] || 0) : "0"}</td></tr>
@@ -2634,7 +2644,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       </table>
     </div>
   </section>`
-    : `<section class="panel"><h2>Risk Intelligence and Release Gates</h2><p class="table-note">No risk-intelligence or release-gate artifacts were captured for this scan.</p></section>`;
+    : "";
   const falsePositiveSection = fpRows
     ? `<section class="panel">
     <h2>False Positive Review</h2>
@@ -2646,11 +2656,12 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       </table>
     </div>
   </section>`
-    : `<section class="panel"><h2>False Positive Review</h2><p class="table-note">No false-positive candidates were identified for this scan.</p></section>`;
+    : "";
   const toolEvidenceSection = evidenceRows
     ? `<section class="panel">
     <h2>Tool Command Evidence (Authenticity)</h2>
     <p class="muted">Real command execution records captured during scan (safe validation commands, exit code, timing, and output hashes).</p>
+    <div class="toolbar"><input id="executionEvidenceSearch" type="search" placeholder="Search tool command evidence by tool, status, command, or hash" /></div>
     <div class="table-scroll">
       <table id="executionEvidenceTable">
         <thead>
@@ -2669,7 +2680,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       </table>
     </div>
   </section>`
-    : `<section class="panel"><h2>Tool Command Evidence (Authenticity)</h2><p class="table-note">No tool command evidence was captured for this scan.</p></section>`;
+    : "";
   const replaySectionHtml = hasReplaySummaryData(deterministicReplay)
     ? `<section class="panel">
     <h2>Deterministic Evidence Replay Pack</h2>
@@ -2702,7 +2713,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       </table>
     </div>
   </section>`
-    : `<section class="panel"><h2>Deterministic Evidence Replay Pack</h2><p class="table-note">No deterministic replay evidence metadata was captured for this scan.</p></section>`;
+    : "";
   const integritySectionHtml = hasIntegrityChainData(reportIntegrity)
     ? `<section class="panel">
     <h2>Tamper-Evident Report Chain</h2>
@@ -2722,7 +2733,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       </table>
     </div>
   </section>`
-    : `<section class="panel"><h2>Tamper-Evident Report Chain</h2><p class="table-note">No report integrity chain metadata was captured for this scan.</p></section>`;
+    : "";
 
   return `<!doctype html>
 <html lang="en">
@@ -2747,6 +2758,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
     .bar-label{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .hidden-section{display:none}
     .alert-link,.drill-link{background:none;border:none;color:var(--accent);cursor:pointer;text-decoration:underline;font:inherit;padding:0}
+    .alert-section.is-active{outline:2px solid rgba(94,234,212,.38);box-shadow:0 0 0 1px rgba(94,234,212,.18),0 18px 32px rgba(15,23,42,.22)}
     .drill-state{margin-bottom:8px;color:var(--muted)}
     .evidence-block{border:1px solid rgba(120,168,205,0.24);border-radius:12px;padding:10px;background:rgba(6,17,29,0.14);margin-bottom:10px}
     .evidence-block summary{cursor:pointer;font-weight:700}
@@ -2772,7 +2784,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
     <h1>CodeSentinelX Vulnerability Dashboard</h1>
     <div class="hero-meta">
       <div class="meta-pill"><strong>Target:</strong> ${escapeHtml(report.target_path)}</div>
-      <div class="meta-pill"><strong>Generated:</strong> ${escapeHtml(formatDisplayTimestamp(report.generated_at))}</div>
+      <div class="meta-pill"><strong>Generated:</strong> ${escapeHtml(exportedAt)}</div>
       <div class="meta-pill"><strong>Risk Score:</strong> ${report.summary.risk_score} (${escapeHtml(report.summary.risk_rating)})</div>
       <div class="meta-pill"><strong>Preset:</strong> ${escapeHtml(String(scan.report.executive_summary.scan_preset_label || scan.report.executive_summary.scan_preset || "Standard"))}</div>
     </div>
@@ -2943,6 +2955,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
   ${hasTimingData ? `<section class="panel">
     <h2>Analyzer Runtime Breakdown</h2>
     <p class="muted">Deterministic per-analyzer timings captured from this scan execution.</p>
+    <div class="toolbar"><input id="timingSearch" type="search" placeholder="Search analyzer, status, or timing details" /></div>
     <div class="table-scroll">
       <table class="summary">
         <thead><tr><th>Metric</th><th>Value</th></tr></thead>
@@ -3007,6 +3020,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       </div>
     </div>
     <h3>Issue-to-File Mapping</h3>
+    <div class="toolbar"><input id="authMappingSearch" type="search" placeholder="Search issue type, file, or folder" /></div>
     <div class="table-scroll">
       <table id="authMappingTable">
         <thead><tr><th data-sort-index="0" data-sort-type="text">Issue Type</th><th data-sort-index="1" data-sort-type="text">File</th><th data-sort-index="2" data-sort-type="text">Folder</th><th data-sort-index="3" data-sort-type="number">Total</th><th data-sort-index="4" data-sort-type="number">Critical</th><th data-sort-index="5" data-sort-type="number">High</th></tr></thead>
@@ -3028,11 +3042,12 @@ function renderVulnerabilityHtml(scan: ScanView): string {
 
   <section class="panel">
     <h2>Alerts by Type</h2>
+    <div class="toolbar"><input id="alertSearch" type="search" placeholder="Search alert, CWE, OWASP, or severity" /></div>
     <table id="alertTable">
       <thead><tr><th data-sort-index="0" data-sort-type="text">Risk</th><th data-sort-index="1" data-sort-type="text">Alert</th><th data-sort-index="2" data-sort-type="number" align="center">Instances</th><th data-sort-index="3" data-sort-type="text">CWE</th><th data-sort-index="4" data-sort-type="text">OWASP</th></tr></thead>
       <tbody>${alertRows || "<tr><td colspan='5' class='muted'>No findings.</td></tr>"}</tbody>
     </table>
-    <p class="muted">Click an alert title to expand/collapse detailed findings.</p>
+    <p class="muted">Click an alert title to jump directly to its detailed finding section below.</p>
   </section>
 
   <section class="panel">
@@ -3068,6 +3083,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
 
   <section class="panel">
     <h2>Detailed Findings</h2>
+    <div class="toolbar"><input id="detailSearch" type="search" placeholder="Search detailed findings by issue, file, CWE, or recommendation" /></div>
     ${details || "<p class='muted'>No findings available.</p>"}
   </section>
 
@@ -3124,10 +3140,44 @@ function renderVulnerabilityHtml(scan: ScanView): string {
         });
       }
 
-      function toggleAlert(id) {
+      function filterDetailSections(query) {
+        var normalized = String(query || "").toLowerCase();
+        document.querySelectorAll(".alert-section").forEach(function (section) {
+          var text = (section.textContent || "").toLowerCase();
+          var matches = !normalized || text.indexOf(normalized) >= 0;
+          if (matches && normalized) {
+            section.classList.remove("hidden-section");
+          } else if (!normalized) {
+            section.classList.add("hidden-section");
+          }
+          section.style.display = matches ? "" : "none";
+        });
+      }
+
+      function focusReportTarget(id) {
         if (!id) return;
         var section = document.getElementById(id);
-        if (section) section.classList.toggle("hidden-section");
+        if (!section) return;
+        section.classList.remove("hidden-section");
+        section.style.display = "";
+        document.querySelectorAll(".alert-section.is-active").forEach(function (item) {
+          item.classList.remove("is-active");
+        });
+        section.classList.add("is-active");
+        if (section.scrollIntoView) {
+          section.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+        window.setTimeout(function () {
+          section.classList.remove("is-active");
+        }, 2400);
+      }
+
+      function openAlertSection(id, updateHash) {
+        if (!id) return;
+        focusReportTarget(id);
+        if (updateHash && window.history && window.history.replaceState) {
+          window.history.replaceState(null, "", "#" + id);
+        }
       }
 
       function renderDrillDown(scope, key, severity) {
@@ -3155,6 +3205,10 @@ function renderVulnerabilityHtml(scan: ScanView): string {
 
         if (state) {
           state.textContent = "Drill-down: " + scope + " = " + normalizedKey + " | severity = " + severity + " | findings = " + selected.length;
+        }
+
+        if (table.scrollIntoView) {
+          table.scrollIntoView({ behavior: "smooth", block: "start" });
         }
 
         if (!selected.length) {
@@ -3265,8 +3319,11 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       }
 
       document.querySelectorAll(".alert-link").forEach(function (btn) {
-        btn.addEventListener("click", function () {
-          toggleAlert(btn.getAttribute("data-alert-id"));
+        btn.addEventListener("click", function (event) {
+          if (event && event.preventDefault) {
+            event.preventDefault();
+          }
+          openAlertSection(btn.getAttribute("data-target-id"), true);
         });
       });
 
@@ -3286,14 +3343,31 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       initTable("severitySummary");
       initTable("owaspTable", "owaspSearch");
       initTable("moduleTable", "moduleSearch");
-      initTable("alertTable");
-      initTable("authMappingTable");
+      initTable("alertTable", "alertSearch");
+      initTable("authMappingTable", "authMappingSearch");
       initTable("fileTable", "fileSearch");
-      initTable("executionEvidenceTable");
-      initTable("timingTable");
+      initTable("executionEvidenceTable", "executionEvidenceSearch");
+      initTable("timingTable", "timingSearch");
       initTable("drillTable");
       drawSeverityChart();
       drawOwaspBars();
+
+      var detailSearch = document.getElementById("detailSearch");
+      if (detailSearch) {
+        detailSearch.addEventListener("input", function () {
+          filterDetailSections(detailSearch.value || "");
+        });
+      }
+
+      function syncHashTarget() {
+        var hash = String(window.location.hash || "").replace(/^#/, "");
+        if (hash) {
+          openAlertSection(hash, false);
+        }
+      }
+
+      window.addEventListener("hashchange", syncHashTarget);
+      syncHashTarget();
     })();
   </script>
 </body>
@@ -3303,9 +3377,16 @@ function renderVulnerabilityHtml(scan: ScanView): string {
 function renderFixesHtml(scan: ScanView): string {
   const report = scan.report.vulnerability_fixed_code_report;
   const findings = sortedFindings(report.findings || []);
+  const exportedAt = formatDisplayTimestamp(currentExportTimestamp());
+  const severityDistribution = buildSeverityDistribution(findings);
   const fixQueueLimit = Math.max(120, Number(process.env.USS_FIX_REPORT_QUEUE_LIMIT || 1200));
   const queueFindings = findings.slice(0, fixQueueLimit);
   const detailFindings = queueFindings;
+  const detailFindingsWithAnchors = detailFindings.map((finding) => ({
+    finding,
+    anchorId: stableAnchorId("fix", String(finding.finding_uid || `${finding.file_path}:${finding.line_number || 1}`)),
+  }));
+  const findingAnchorByUid = new Map(detailFindingsWithAnchors.map((entry) => [String(entry.finding.finding_uid || ""), entry.anchorId]));
   const enterprise = resolveEnterpriseAssurance(scan, report.summary);
   const toolchainExecution = resolveToolchainExecution(scan, report.summary);
   const dataQualityRaw = report.summary.data_quality || scan.report.executive_summary.data_quality || null;
@@ -3343,7 +3424,7 @@ function renderFixesHtml(scan: ScanView): string {
     .join("");
 
   const severityRows = SEVERITY_ORDER.map((severity) => {
-    const count = report.summary.severity_distribution?.[severity] || 0;
+    const count = severityDistribution[severity] || 0;
     return `<tr><td>${severity}</td><td align="center">${count}</td></tr>`;
   }).join("");
   const dataQualityRows = dataQuality
@@ -3365,7 +3446,7 @@ function renderFixesHtml(scan: ScanView): string {
     "Severity Mix",
     SEVERITY_ORDER.map((severity) => ({
       label: severity,
-      value: Number(report.summary.severity_distribution?.[severity] || 0),
+      value: Number(severityDistribution[severity] || 0),
       tone:
         severity === "Critical"
           ? "critical"
@@ -3430,24 +3511,25 @@ function renderFixesHtml(scan: ScanView): string {
     <td>${renderCvssLink(finding.cvss_score)}</td>
     <td>${renderCweLink(finding.cwe_id || "N/A")}</td>
     <td>${escapeHtml(finding.owasp_mapping || "N/A")}</td>
-    <td><a class="fix-link" href="#fix-${escapeHtml(finding.finding_uid)}">Open</a></td>
+    <td><a class="fix-link" href="#${escapeHtml(findingAnchorByUid.get(String(finding.finding_uid || "")) || stableAnchorId("fix", String(finding.finding_uid || `${finding.file_path}:${finding.line_number || 1}`)))}" data-target-id="${escapeHtml(findingAnchorByUid.get(String(finding.finding_uid || "")) || stableAnchorId("fix", String(finding.finding_uid || `${finding.file_path}:${finding.line_number || 1}`)))}">Open</a></td>
   </tr>`,
     )
     .join("");
 
-  const detailSections = detailFindings
-    .map((finding) => {
+  const detailSections = detailFindingsWithAnchors
+    .map(({ finding, anchorId }) => {
       const activeStatus = String(finding.active_poc?.status || "").toLowerCase();
       const advisoryLinks = renderAdvisoryLinks(finding);
+      const hasAdvisories = advisoryValues(finding).length > 0;
       const activeOutput =
         activeStatus && activeStatus !== "skipped"
           ? activePocOutputText(finding.active_poc)
           : "Active PoC output is omitted for skipped/not-executed checks to keep this report compact.";
-      return `<section id="fix-${escapeHtml(finding.finding_uid)}" class="fix-detail avoid-break">
+      return `<section id="${escapeHtml(anchorId)}" class="fix-detail avoid-break">
     <h3>[${escapeHtml(finding.severity)}] ${escapeHtml(normalizedFindingTitle(finding))}</h3>
     <p><strong>Location:</strong> ${escapeHtml(normalizePath(finding.file_path))}:${finding.line_number || 1}</p>
     <p><strong>CWE:</strong> ${renderCweLink(finding.cwe_id || "N/A")} | <strong>OWASP:</strong> ${escapeHtml(finding.owasp_mapping || "N/A")} | <strong>CVSS:</strong> ${renderCvssLink(finding.cvss_score)}</p>
-    ${advisoryLinks ? `<p><strong>CVE / Advisory IDs:</strong> ${advisoryLinks}</p>` : ""}
+    ${hasAdvisories ? `<p><strong>CVE / Advisory IDs:</strong> ${advisoryLinks}</p>` : ""}
     <p><strong>Recommendation:</strong> ${escapeHtml(finding.recommendation || "N/A")}</p>
     ${dependencyAuthenticitySummary(finding) ? `<p><strong>Dependency Authenticity:</strong> ${escapeHtml(dependencyAuthenticitySummary(finding))}<br><span class="muted">${escapeHtml(dependencyAuthenticityDetail(finding))}</span></p>` : ""}
     <p><strong>Attack Scenario:</strong> ${escapeHtml(finding.attack_scenario || "N/A")}</p>
@@ -3509,7 +3591,7 @@ function renderFixesHtml(scan: ScanView): string {
   const fixesCards = renderStatGrid([
     {
       label: "Total Findings",
-      value: Number(report.summary.total_findings || findings.length),
+      value: findings.length,
       tone: "accent",
       sub: "Findings included in remediation review for this export",
     },
@@ -3562,7 +3644,7 @@ function renderFixesHtml(scan: ScanView): string {
         </div>
       </div>
     </section>`
-    : `<section class="section"><div class="table-frame"><h2 style="padding:12px 14px 0">Deterministic Evidence Replay Pack</h2><p class="table-note">No deterministic replay evidence metadata was captured for this scan.</p></div></section>`;
+    : "";
   const integritySection = hasIntegrityChainData(reportIntegrity)
     ? `<section class="section">
       <div class="table-frame">
@@ -3584,7 +3666,7 @@ function renderFixesHtml(scan: ScanView): string {
         </div>
       </div>
     </section>`
-    : `<section class="section"><div class="table-frame"><h2 style="padding:12px 14px 0">Tamper-Evident Report Chain</h2><p class="table-note">No report integrity chain metadata was captured for this scan.</p></div></section>`;
+    : "";
 
   return `<!doctype html>
 <html lang="en">
@@ -3592,7 +3674,7 @@ function renderFixesHtml(scan: ScanView): string {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CodeSentinelX Original and Suggested Fix Report</title>
-  <style>${exportThemeCss(".fix-link{color:var(--accent);text-decoration:underline}.toolbar{display:flex;gap:8px;align-items:center;margin:6px 0 10px;flex-wrap:wrap}input{background:rgba(7,20,36,.14);border:1px solid rgba(120,168,205,.28);border-radius:8px;color:var(--text);padding:7px 10px;min-width:300px}.fix-detail{border:1px solid rgba(120,168,205,.24);border-radius:14px;background:rgba(8,21,36,.14);padding:14px;margin-bottom:12px}.fix-detail h3{margin-bottom:10px}")}</style>
+  <style>${exportThemeCss(".fix-link{color:var(--accent);text-decoration:underline}.toolbar{display:flex;gap:8px;align-items:center;margin:6px 0 10px;flex-wrap:wrap}input{background:rgba(7,20,36,.14);border:1px solid rgba(120,168,205,.28);border-radius:8px;color:var(--text);padding:7px 10px;min-width:300px}.fix-detail{border:1px solid rgba(120,168,205,.24);border-radius:14px;background:rgba(8,21,36,.14);padding:14px;margin-bottom:12px}.fix-detail h3{margin-bottom:10px}.fix-detail.is-active{outline:2px solid rgba(94,234,212,.38);box-shadow:0 0 0 1px rgba(94,234,212,.18),0 18px 32px rgba(15,23,42,.22)}")}</style>
 </head>
 <body>
   <main class="report-shell">
@@ -3600,7 +3682,7 @@ function renderFixesHtml(scan: ScanView): string {
       <h1>CodeSentinelX Original and Suggested Fix Report</h1>
       <div class="hero-meta">
         <div class="meta-pill"><strong>Target:</strong> ${escapeHtml(report.target_path)}</div>
-        <div class="meta-pill"><strong>Generated:</strong> ${escapeHtml(formatDisplayTimestamp(report.generated_at))}</div>
+        <div class="meta-pill"><strong>Generated:</strong> ${escapeHtml(exportedAt)}</div>
         <div class="meta-pill"><strong>Enterprise Status:</strong> ${escapeHtml(String(enterprise?.status || "blocked").toUpperCase())}</div>
       </div>
       ${fixesCards}
@@ -3663,7 +3745,7 @@ function renderFixesHtml(scan: ScanView): string {
     <section class="section">
       <div class="table-frame">
         <h2 style="padding:12px 14px 0">Fix Queue</h2>
-        <div class="toolbar" style="padding:0 14px 8px"><input id="fixSearch" type="search" placeholder="Search by issue, file, CWE, OWASP" /></div>
+        <div class="toolbar" style="padding:0 14px 8px"><input id="fixSearch" type="search" placeholder="Search by issue, file, CWE, OWASP" /><input id="fixSeverityFilter" type="search" placeholder="Optional severity filter (Critical/High/...)" style="min-width:220px" /></div>
       <div class="table-scroll">
           <table id="fixTable">
             <thead><tr><th data-sort-index="0" data-sort-type="number">#</th><th data-sort-index="1" data-sort-type="text">Severity</th><th data-sort-index="2" data-sort-type="text">Issue</th><th data-sort-index="3" data-sort-type="text">File</th><th data-sort-index="4" data-sort-type="number">Line</th><th data-sort-index="5" data-sort-type="number">CVSS</th><th data-sort-index="6" data-sort-type="text">CWE</th><th data-sort-index="7" data-sort-type="text">OWASP</th><th>Details</th></tr></thead>
@@ -3680,6 +3762,7 @@ function renderFixesHtml(scan: ScanView): string {
 
     <section class="section">
       <h2>Original and Suggested Fix Details</h2>
+      <div class="toolbar"><input id="fixDetailSearch" type="search" placeholder="Search detailed fixes by issue, file, CWE, recommendation, or PoC" /></div>
       ${detailSections || "<p>No fix entries found.</p>"}
       ${findings.length > detailFindings.length ? `<p class="table-note">${findings.length - detailFindings.length} additional finding details were omitted for report readability.</p>` : ""}
     </section>
@@ -3724,15 +3807,57 @@ function renderFixesHtml(scan: ScanView): string {
 
       function initSearch() {
         var input = document.getElementById("fixSearch");
+        var severityInput = document.getElementById("fixSeverityFilter");
         var table = document.getElementById("fixTable");
         if (!input || !table) return;
         var tbody = table.querySelector("tbody");
         if (!tbody) return;
-        input.addEventListener("input", function () {
+
+        function applyQueueFilters() {
           var query = (input.value || "").toLowerCase();
+          var severityQuery = (severityInput && severityInput.value ? severityInput.value : "").toLowerCase();
           Array.from(tbody.querySelectorAll("tr")).forEach(function (row) {
             var text = (row.textContent || "").toLowerCase();
-            row.style.display = !query || text.indexOf(query) >= 0 ? "" : "none";
+            var severityText = row.children[1] && row.children[1].textContent ? row.children[1].textContent.toLowerCase() : "";
+            var matchesQuery = !query || text.indexOf(query) >= 0;
+            var matchesSeverity = !severityQuery || severityText.indexOf(severityQuery) >= 0;
+            row.style.display = matchesQuery && matchesSeverity ? "" : "none";
+          });
+        }
+
+        input.addEventListener("input", applyQueueFilters);
+        if (severityInput) {
+          severityInput.addEventListener("input", applyQueueFilters);
+        }
+      }
+
+      function focusFixDetail(id, updateHash) {
+        if (!id) return;
+        var section = document.getElementById(id);
+        if (!section) return;
+        document.querySelectorAll(".fix-detail.is-active").forEach(function (item) {
+          item.classList.remove("is-active");
+        });
+        section.classList.add("is-active");
+        if (section.scrollIntoView) {
+          section.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+        if (updateHash && window.history && window.history.replaceState) {
+          window.history.replaceState(null, "", "#" + id);
+        }
+        window.setTimeout(function () {
+          section.classList.remove("is-active");
+        }, 2400);
+      }
+
+      function initDetailSearch() {
+        var input = document.getElementById("fixDetailSearch");
+        if (!input) return;
+        input.addEventListener("input", function () {
+          var query = (input.value || "").toLowerCase();
+          document.querySelectorAll(".fix-detail").forEach(function (section) {
+            var text = (section.textContent || "").toLowerCase();
+            section.style.display = !query || text.indexOf(query) >= 0 ? "" : "none";
           });
         });
       }
@@ -3740,6 +3865,26 @@ function renderFixesHtml(scan: ScanView): string {
       initSortable("severityTable");
       initSortable("fixTable");
       initSearch();
+      initDetailSearch();
+
+      document.querySelectorAll(".fix-link").forEach(function (link) {
+        link.addEventListener("click", function (event) {
+          if (event && event.preventDefault) {
+            event.preventDefault();
+          }
+          focusFixDetail(link.getAttribute("data-target-id") || String(link.getAttribute("href") || "").replace(/^#/, ""), true);
+        });
+      });
+
+      function syncHashTarget() {
+        var hash = String(window.location.hash || "").replace(/^#/, "");
+        if (hash) {
+          focusFixDetail(hash, false);
+        }
+      }
+
+      window.addEventListener("hashchange", syncHashTarget);
+      syncHashTarget();
     })();
   </script>
 </body>
@@ -3749,6 +3894,7 @@ function renderFixesHtml(scan: ScanView): string {
 function renderFindingDetailsHtml(scan: ScanView): string {
   const findings = sortedFindings(scan.report.vulnerability_fixed_code_report.findings || []);
   const report = scan.report.vulnerability_fixed_code_report;
+  const exportedAt = formatDisplayTimestamp(currentExportTimestamp());
   const rows = findings
     .map(
       (item) => `<tr>
@@ -3774,11 +3920,12 @@ function renderFindingDetailsHtml(scan: ScanView): string {
     <section class="hero">
       <h1>CodeSentinelX Finding Details Report</h1>
       <p class="meta"><strong>Target:</strong> ${escapeHtml(report.target_path)}</p>
-      <p class="meta"><strong>Generated:</strong> ${escapeHtml(formatDisplayTimestamp(report.generated_at))}</p>
+      <p class="meta"><strong>Generated:</strong> ${escapeHtml(exportedAt)}</p>
       <p class="meta"><strong>Total Findings:</strong> ${findings.length}</p>
     </section>
     <section class="section">
       <h2>Finding Details</h2>
+      <div class="toolbar"><input id="findingDetailsSearch" type="search" placeholder="Search finding, severity, location, description, or remediation" /></div>
       <div class="table-frame table-scroll">
         <table id="findingDetailsTable">
           <thead>
@@ -3795,6 +3942,22 @@ function renderFindingDetailsHtml(scan: ScanView): string {
       </div>
     </section>
   </div>
+  <script>
+    (function () {
+      var input = document.getElementById("findingDetailsSearch");
+      var table = document.getElementById("findingDetailsTable");
+      if (!input || !table) return;
+      var tbody = table.querySelector("tbody");
+      if (!tbody) return;
+      input.addEventListener("input", function () {
+        var query = (input.value || "").toLowerCase();
+        Array.from(tbody.querySelectorAll("tr")).forEach(function (row) {
+          var text = (row.textContent || "").toLowerCase();
+          row.style.display = !query || text.indexOf(query) >= 0 ? "" : "none";
+        });
+      });
+    })();
+  </script>
 </body>
 </html>`;
 }
@@ -3822,7 +3985,7 @@ function renderCombinedHtml(scan: ScanView): string {
 }
 
 function sortedFindings(findings: VulnerabilityFinding[]): VulnerabilityFinding[] {
-  const deduped = deduplicatedFindings(findings);
+  const deduped = deduplicatedFindings(findings).filter((finding) => !isNoiseFinding(finding));
   return deduped.sort((a, b) => {
     const severityDiff = SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity);
     if (severityDiff !== 0) {
@@ -3878,20 +4041,39 @@ function deduplicatedFindings(findings: VulnerabilityFinding[]): VulnerabilityFi
 function normalizedFindingTitle(finding: VulnerabilityFinding): string {
   const raw = String(finding.vulnerability_title || finding.vulnerability_type || "").trim();
   const lower = raw.toLowerCase();
-  if (raw && !["security", "security issue", "vulnerability", "issue", "finding"].includes(lower)) {
+  if (
+    raw &&
+    ![
+      "security",
+      "security issue",
+      "security finding",
+      "vulnerability",
+      "issue",
+      "finding",
+      "external analyzer finding",
+      "analyzer finding",
+    ].includes(lower)
+  ) {
     return raw;
   }
 
   const cwe = String(finding.cwe_id || "").toUpperCase();
   const cweMap: Record<string, string> = {
-    "CWE-89": "SQL Injection",
-    "CWE-78": "Command Injection",
-    "CWE-79": "Cross-Site Scripting (XSS)",
+    "CWE-20": "Improper Input Validation",
     "CWE-22": "Path Traversal",
-    "CWE-502": "Insecure Deserialization",
+    "CWE-78": "Command Injection",
+    "CWE-89": "SQL Injection",
+    "CWE-79": "Cross-Site Scripting (XSS)",
+    "CWE-250": "Improper Privilege Management",
+    "CWE-319": "Cleartext Transmission of Sensitive Data",
     "CWE-327": "Weak Cryptography Usage",
+    "CWE-330": "Insufficient Randomness",
+    "CWE-502": "Insecure Deserialization",
+    "CWE-611": "XML External Entity (XXE)",
+    "CWE-704": "Unsafe Type Handling / Conversion",
     "CWE-798": "Hardcoded Secrets / Credentials",
     "CWE-918": "Server-Side Request Forgery (SSRF)",
+    "CWE-1104": "Dependency Vulnerability",
   };
   if (cweMap[cwe]) {
     return cweMap[cwe];
@@ -3919,11 +4101,14 @@ function normalizedFindingTitle(finding: VulnerabilityFinding): string {
     ["deserial", "Insecure Deserialization"],
     ["weak crypto", "Weak Cryptography Usage"],
     ["dependency", "Dependency Vulnerability"],
+    ["input validation", "Improper Input Validation"],
     ["auth", "Authentication / Authorization Flaw"],
     ["authorization", "Authentication / Authorization Flaw"],
     ["session", "Session Security Misconfiguration"],
     ["misconfig", "Security Misconfiguration"],
     ["ssrf", "Server-Side Request Forgery (SSRF)"],
+    ["xxe", "XML External Entity (XXE)"],
+    ["cleartext", "Cleartext Transmission of Sensitive Data"],
     ["eval(", "Unsafe Eval Usage"],
   ];
   for (const [token, label] of hints) {
@@ -3931,7 +4116,7 @@ function normalizedFindingTitle(finding: VulnerabilityFinding): string {
       return label;
     }
   }
-  return "Security Finding";
+  return "Unclassified Security Finding";
 }
 
 function groupByAlert(findings: VulnerabilityFinding[]): AlertGroup[] {
@@ -3986,6 +4171,35 @@ function aggregateFiles(findings: VulnerabilityFinding[]): FileAggregate[] {
   }
 
   return [...map.values()].sort((a, b) => b.total - a.total).slice(0, 120);
+}
+
+function aggregateModules(findings: VulnerabilityFinding[]): Array<{ module: string; count: number; critical: number; high: number }> {
+  const map = new Map<string, { module: string; count: number; critical: number; high: number }>();
+  for (const finding of findings) {
+    const module = moduleFromFinding(finding);
+    const entry = map.get(module) || { module, count: 0, critical: 0, high: 0 };
+    entry.count += 1;
+    if (finding.severity === "Critical") {
+      entry.critical += 1;
+    }
+    if (finding.severity === "High") {
+      entry.high += 1;
+    }
+    map.set(module, entry);
+  }
+  return [...map.values()].sort((a, b) => b.count - a.count || a.module.localeCompare(b.module)).slice(0, 120);
+}
+
+function aggregateOwasp(findings: VulnerabilityFinding[]): Array<{ owasp_category: string; count: number }> {
+  const map = new Map<string, number>();
+  for (const finding of findings) {
+    const category = String(finding.owasp_mapping || "N/A").trim() || "N/A";
+    map.set(category, Number(map.get(category) || 0) + 1);
+  }
+  return [...map.entries()]
+    .map(([owasp_category, count]) => ({ owasp_category, count }))
+    .sort((a, b) => b.count - a.count || a.owasp_category.localeCompare(b.owasp_category))
+    .slice(0, 120);
 }
 
 function moduleFromFinding(finding: VulnerabilityFinding): string {
@@ -4403,6 +4617,82 @@ function normalizedFixVerificationSummary(
   return rebuilt;
 }
 
+const REPORT_NOISE_SEGMENTS = new Set([
+  ".venv",
+  "venv",
+  "env",
+  "virtualenv",
+  "site-packages",
+  "node_modules",
+  "bower_components",
+  "vendor",
+  "third_party",
+  "external",
+  "deps",
+  ".toolchain",
+  "__pycache__",
+  ".pytest_cache",
+  ".ruff_cache",
+  ".mypy_cache",
+  "dist",
+  "build",
+  "coverage",
+  "reports",
+  "artifacts",
+  "tmp",
+  "temp",
+  "logs",
+  "packages",
+]);
+
+function isNoisePath(value: string): boolean {
+  const normalized = normalizePath(value || "").toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  const parts = normalized.split("/").filter(Boolean);
+  if (parts.some((part) => REPORT_NOISE_SEGMENTS.has(part))) {
+    return true;
+  }
+  if (parts.some((part) => ["tests", "test", "spec", "__tests__", "fixtures", "testdata", "mocks", "snapshots"].includes(part))) {
+    return true;
+  }
+  const basename = parts.at(-1) || normalized;
+  return [".min.js", ".min.css", ".bundle.js", ".chunk.js"].some((suffix) => basename.endsWith(suffix));
+}
+
+function isNoiseFinding(finding: VulnerabilityFinding): boolean {
+  return isNoisePath(String(finding.file_path || ""));
+}
+
+function buildSeverityDistribution(findings: VulnerabilityFinding[]): Record<string, number> {
+  const distribution: Record<string, number> = {
+    Critical: 0,
+    High: 0,
+    Medium: 0,
+    Low: 0,
+    Info: 0,
+  };
+  for (const finding of findings) {
+    const severity = String(finding.severity || "Info");
+    if (!(severity in distribution)) {
+      distribution[severity] = 0;
+    }
+    distribution[severity] += 1;
+  }
+  return distribution;
+}
+
+function stableAnchorId(prefix: string, raw: string): string {
+  const base = slugify(raw || "").slice(0, 96) || "item";
+  let hash = 0;
+  const source = String(raw || "");
+  for (let index = 0; index < source.length; index += 1) {
+    hash = (hash * 31 + source.charCodeAt(index)) >>> 0;
+  }
+  return `${prefix}-${base}-${hash.toString(16)}`;
+}
+
 function fixVerificationResultText(
   verification:
     | {
@@ -4493,6 +4783,50 @@ function hasRiskIntelligenceData(
     return false;
   }
   return Object.values(releaseGateDistribution).some((value) => Number(value || 0) > 0);
+}
+
+function hasAdvisoryRiskContext(
+  riskIntel:
+    | {
+        findings_with_cve?: number;
+        findings_cvss_ge_7?: number;
+        known_exploited_findings?: number;
+      }
+    | null
+    | undefined,
+): boolean {
+  if (!riskIntel) {
+    return false;
+  }
+  return Number(riskIntel.findings_with_cve || 0) > 0 || Number(riskIntel.findings_cvss_ge_7 || 0) > 0;
+}
+
+function knownExploitedMetricText(
+  riskIntel:
+    | {
+        findings_with_cve?: number;
+        findings_cvss_ge_7?: number;
+        known_exploited_findings?: number;
+      }
+    | null
+    | undefined,
+): string {
+  return hasAdvisoryRiskContext(riskIntel) ? String(Number(riskIntel?.known_exploited_findings || 0)) : "N/A";
+}
+
+function knownExploitedMetricSubtext(
+  riskIntel:
+    | {
+        findings_with_cve?: number;
+        findings_cvss_ge_7?: number;
+        known_exploited_findings?: number;
+      }
+    | null
+    | undefined,
+): string {
+  return hasAdvisoryRiskContext(riskIntel)
+    ? "CISA KEV-backed findings"
+    : "No advisory-backed KEV correlation in this scan";
 }
 
 function hasFalsePositiveCandidates(falsePositiveReport: unknown): boolean {
@@ -5072,6 +5406,26 @@ function dependencyAuthenticityDetail(
   return notes.join(" | ");
 }
 
+function hasUsableFixWindowEntry(entry: unknown, findingByUid?: Map<string, VulnerabilityFinding>): boolean {
+  if (typeof entry === "string") {
+    const finding = findingByUid?.get(entry);
+    if (!finding) {
+      return false;
+    }
+    const title = normalizedFindingTitle(finding).trim().toLowerCase();
+    return Boolean(String(finding.file_path || "").trim()) && !["", "issue", "unknown", "n/a", "unclassified security finding"].includes(title);
+  }
+  if (!entry || typeof entry !== "object") {
+    return false;
+  }
+  const raw = entry as Record<string, unknown>;
+  const title = String(raw.title || "").trim().toLowerCase();
+  const severity = String(raw.severity || "Info");
+  const filePath = String(raw.file_path || "").trim();
+  const priorityScore = Number(raw.priority_score || 0);
+  return Boolean(filePath) && !["", "issue", "unknown", "n/a", "unclassified security finding"].includes(title) && (priorityScore > 0 || ["Critical", "High", "Medium"].includes(severity));
+}
+
 function renderFixWindowValue(value: unknown, findingByUid?: Map<string, VulnerabilityFinding>): string {
   if (!Array.isArray(value) || value.length === 0) {
     return "<span class='muted'>No prioritized fixes for this window.</span>";
@@ -5080,6 +5434,9 @@ function renderFixWindowValue(value: unknown, findingByUid?: Map<string, Vulnera
   const rendered = entries
     .slice(0, 6)
     .map((entry) => {
+      if (!hasUsableFixWindowEntry(entry, findingByUid)) {
+        return "";
+      }
       if (typeof entry === "string") {
         const finding = findingByUid?.get(entry);
         if (!finding) {
@@ -5353,6 +5710,8 @@ function exportThemeCss(extra = ""): string {
     .tone-accent .value{color:var(--accent)}
     .section-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:14px}
     .stack{display:grid;gap:14px}
+    .toolbar{display:flex;gap:8px;align-items:center;margin:6px 0 10px;flex-wrap:wrap}
+    input[type="search"],input[type="text"],select{background:rgba(7,20,36,.14);border:1px solid rgba(120,168,205,.28);border-radius:8px;color:var(--text);padding:7px 10px;min-width:240px}
     .table-frame{border:1px solid rgba(120,168,205,0.24);border-radius:16px;overflow:hidden;background:rgba(6,17,29,0.14)}
     .table-scroll{overflow:auto;max-width:100%}
     table{width:100%;border-collapse:collapse;table-layout:fixed;line-height:1.52}

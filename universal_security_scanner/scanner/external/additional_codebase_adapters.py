@@ -272,43 +272,44 @@ def run_eslint_security_scan(
                 payloads.extend(item for item in payload if isinstance(item, dict))
                 continue
         last_error = " | ".join((stderr or stdout or "").strip().splitlines()[:2])
-    if not payloads and last_error:
+    if payloads:
+        findings: list[Finding] = []
+        for file_result in payloads:
+            if not isinstance(file_result, dict):
+                continue
+            file_path = normalize_path(target_root, str(file_result.get("filePath") or "unknown"))
+            for message in file_result.get("messages", []) or []:
+                if not isinstance(message, dict):
+                    continue
+                rule_id = str(message.get("ruleId") or "eslint-security")
+                severity_num = int(message.get("severity") or 1)
+                severity = to_severity("high" if severity_num >= 2 else "medium")
+                text = str(message.get("message") or "ESLint security rule triggered")
+                line_number = int(message.get("line") or 1)
+                findings.append(
+                    Finding(
+                        vulnerability_type="JavaScript Security Anti-pattern",
+                        severity=severity,
+                        file_path=file_path,
+                        line_number=max(1, line_number),
+                        business_impact="JavaScript runtime behavior may be exploitable through unsafe APIs or untrusted input handling.",
+                        recommendation="Apply secure ESLint rule guidance and validate user-controlled data before sink usage.",
+                        reference="https://github.com/eslint-community/eslint-plugin-security",
+                        owasp_category=_to_owasp_from_text(text),
+                        description=text,
+                        rule_id=f"ESLINT-SECURITY-{rule_id}",
+                        cwe=extract_cwe(text) or "CWE-20",
+                        evidence=text[:240],
+                    )
+                )
+        return findings, []
+    if last_error:
         return [], [f"ESLint security run failed: {last_error}"]
     if saw_success:
         return [], []
-    if not payloads and not last_error:
+    if not last_error:
         return [], ["ESLint not found in PATH/toolchain. Install or bootstrap eslint-security integration."]
-
-    findings: list[Finding] = []
-    for file_result in payloads:
-        if not isinstance(file_result, dict):
-            continue
-        file_path = normalize_path(target_root, str(file_result.get("filePath") or "unknown"))
-        for message in file_result.get("messages", []) or []:
-            if not isinstance(message, dict):
-                continue
-            rule_id = str(message.get("ruleId") or "eslint-security")
-            severity_num = int(message.get("severity") or 1)
-            severity = to_severity("high" if severity_num >= 2 else "medium")
-            text = str(message.get("message") or "ESLint security rule triggered")
-            line_number = int(message.get("line") or 1)
-            findings.append(
-                Finding(
-                    vulnerability_type="JavaScript Security Anti-pattern",
-                    severity=severity,
-                    file_path=file_path,
-                    line_number=max(1, line_number),
-                    business_impact="JavaScript runtime behavior may be exploitable through unsafe APIs or untrusted input handling.",
-                    recommendation="Apply secure ESLint rule guidance and validate user-controlled data before sink usage.",
-                    reference="https://github.com/eslint-community/eslint-plugin-security",
-                    owasp_category=_to_owasp_from_text(text),
-                    description=text,
-                    rule_id=f"ESLINT-SECURITY-{rule_id}",
-                    cwe=extract_cwe(text) or "CWE-20",
-                    evidence=text[:240],
-                )
-            )
-    return findings, []
+    return [], []
 
 
 def _discover_bytecode_artifacts(target_root: Path) -> list[str]:

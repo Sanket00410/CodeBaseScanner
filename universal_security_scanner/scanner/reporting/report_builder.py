@@ -94,7 +94,7 @@ def _build_validation_narrative(finding: dict, active_poc: dict) -> str:
 def _build_ai_summary(finding: dict, active_poc: dict) -> str:
     status = _active_poc_status(active_poc)
     location = f"{finding.get('file_path', 'unknown')}:{int(finding.get('line_number', 1) or 1)}"
-    title = str(finding.get("vulnerability_title") or finding.get("vulnerability_type") or "Security Finding")
+    title = _resolved_vulnerability_title(finding)
     recommendation = str(finding.get("recommendation") or "").strip()
     if status == "verified":
         prefix = f"{title} is source-verified at {location} and should be remediated with priority."
@@ -210,6 +210,83 @@ def _scenario_for(vulnerability_type: str) -> tuple[str, str, str, str]:
         "Reproduce by supplying crafted untrusted input to vulnerable path and validate unexpected behavior.",
         "Apply defense-in-depth controls with strict validation and least privilege.",
     )
+
+
+def _resolved_vulnerability_title(item: dict) -> str:
+    raw = str(item.get("vulnerability_title") or item.get("vulnerability_type") or "").strip()
+    lower = raw.lower()
+    if raw and lower not in {
+        "security",
+        "security issue",
+        "security finding",
+        "vulnerability",
+        "issue",
+        "finding",
+        "external analyzer finding",
+        "analyzer finding",
+    }:
+        return raw
+
+    cwe = str(item.get("cwe_id") or item.get("cwe") or "").upper()
+    cwe_map = {
+        "CWE-20": "Improper Input Validation",
+        "CWE-22": "Path Traversal",
+        "CWE-78": "Command Injection",
+        "CWE-79": "Cross-Site Scripting (XSS)",
+        "CWE-89": "SQL Injection",
+        "CWE-95": "Unsafe Eval Usage",
+        "CWE-250": "Improper Privilege Management",
+        "CWE-319": "Cleartext Transmission of Sensitive Data",
+        "CWE-327": "Weak Cryptography Usage",
+        "CWE-330": "Insufficient Randomness",
+        "CWE-502": "Insecure Deserialization",
+        "CWE-611": "XML External Entity (XXE)",
+        "CWE-704": "Unsafe Type Handling / Conversion",
+        "CWE-798": "Hardcoded Secrets / Credentials",
+        "CWE-918": "Server-Side Request Forgery (SSRF)",
+        "CWE-1104": "Dependency Vulnerability",
+    }
+    if cwe in cwe_map:
+        return cwe_map[cwe]
+
+    blob = " ".join(
+        str(item.get(key) or "").lower()
+        for key in (
+            "rule_id",
+            "owasp_mapping",
+            "description",
+            "business_impact",
+            "vulnerable_code_snippet",
+            "original_code",
+            "recommendation",
+        )
+    )
+    hints = [
+        ("sql injection", "SQL Injection"),
+        ("command injection", "Command Injection"),
+        ("cross-site scripting", "Cross-Site Scripting (XSS)"),
+        ("xss", "Cross-Site Scripting (XSS)"),
+        ("path traversal", "Path Traversal"),
+        ("hardcoded", "Hardcoded Secrets / Credentials"),
+        ("secret", "Hardcoded Secrets / Credentials"),
+        ("credential", "Hardcoded Secrets / Credentials"),
+        ("deserial", "Insecure Deserialization"),
+        ("weak crypto", "Weak Cryptography Usage"),
+        ("dependency", "Dependency Vulnerability"),
+        ("input validation", "Improper Input Validation"),
+        ("authorization", "Authentication / Authorization Flaw"),
+        ("auth", "Authentication / Authorization Flaw"),
+        ("session", "Session Security Misconfiguration"),
+        ("misconfig", "Security Misconfiguration"),
+        ("ssrf", "Server-Side Request Forgery (SSRF)"),
+        ("xxe", "XML External Entity (XXE)"),
+        ("cleartext", "Cleartext Transmission of Sensitive Data"),
+        ("eval(", "Unsafe Eval Usage"),
+    ]
+    for token, label in hints:
+        if token in blob:
+            return label
+    return "Unclassified Security Finding"
 
 
 def _normalize_snippet(value: str | None) -> str:
@@ -497,6 +574,7 @@ def _enriched_findings(findings: list[Finding]) -> list[dict]:
         base["owasp_mapping"] = normalized_owasp
         if normalized_owasp != finding.owasp_category:
             base["owasp_mapping_legacy"] = finding.owasp_category
+        base["vulnerability_title"] = _resolved_vulnerability_title(base)
         base["attack_scenario"] = attack_scenario
         base["exploitation_example"] = exploitation_example
         base["proof_of_concept_template"] = proof_of_concept_template
@@ -563,6 +641,63 @@ def _deduplicate_enriched_findings(findings: list[dict]) -> list[dict]:
         )
     )
     return deduped
+
+
+_REPORT_NOISE_SEGMENTS = {
+    ".venv",
+    "venv",
+    "env",
+    "virtualenv",
+    "site-packages",
+    "node_modules",
+    "bower_components",
+    "vendor",
+    "third_party",
+    "external",
+    "deps",
+    ".toolchain",
+    "__pycache__",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".mypy_cache",
+    "dist",
+    "build",
+    "coverage",
+    "reports",
+    "artifacts",
+    "tmp",
+    "temp",
+    "logs",
+    "packages",
+}
+
+
+def _normalized_report_path(value: str) -> str:
+    return str(value or "").replace("\\", "/").strip().strip("/")
+
+
+def _is_report_noise_finding(item: dict) -> bool:
+    normalized = _normalized_report_path(str(item.get("file_path") or "")).lower()
+    if not normalized:
+        return False
+
+    parts = [part for part in normalized.split("/") if part]
+    if any(part in _REPORT_NOISE_SEGMENTS for part in parts):
+        return True
+
+    if any(part in {"tests", "test", "spec", "__tests__", "fixtures", "testdata", "mocks", "snapshots"} for part in parts):
+        return True
+
+    basename = parts[-1] if parts else normalized
+    if basename.endswith((".min.js", ".min.css", ".bundle.js", ".chunk.js")):
+        return True
+
+    return False
+
+
+def _filter_report_noise(findings: list[dict]) -> tuple[list[dict], int]:
+    filtered = [item for item in findings if not _is_report_noise_finding(item)]
+    return filtered, max(0, len(findings) - len(filtered))
 
 
 def _severity_distribution_from_enriched(findings: list[dict]) -> dict[str, int]:
@@ -1807,7 +1942,8 @@ def _apply_validation_and_ai(findings: list[dict], target_path: str) -> tuple[li
 
 
 def build_report(scan_result: ScanResult) -> dict:
-    raw_enriched = _enriched_findings(scan_result.findings)
+    raw_enriched_all = _enriched_findings(scan_result.findings)
+    raw_enriched, noise_filtered_count = _filter_report_noise(raw_enriched_all)
     enriched_findings = _deduplicate_enriched_findings(raw_enriched)
     enriched_findings, advanced_features = _apply_validation_and_ai(enriched_findings, scan_result.target_path)
     duplicate_reduction = max(0, len(raw_enriched) - len(enriched_findings))
@@ -1836,13 +1972,14 @@ def build_report(scan_result: ScanResult) -> dict:
     false_positive_report = _build_false_positive_report(enriched_findings)
     data_quality = _build_data_quality(
         enriched_findings,
-        raw_total=len(scan_result.findings),
+        raw_total=len(raw_enriched),
         deduplicated_total=len(enriched_findings),
         duplicate_reduction=duplicate_reduction,
         confidence=confidence,
         toolchain_execution=toolchain_execution,
         false_positive_report=false_positive_report,
     )
+    data_quality["noise_filtered_findings"] = noise_filtered_count
     enterprise_assurance = _build_enterprise_assurance(
         enriched_findings,
         scan_result.toolchain_status,
@@ -1863,9 +2000,10 @@ def build_report(scan_result: ScanResult) -> dict:
         "target_path": scan_result.target_path,
         "generated_at": scan_result.completed_at.isoformat(),
         "files_scanned": scan_result.files_scanned,
-        "total_vulnerabilities": len(scan_result.findings),
+        "total_vulnerabilities": len(raw_enriched),
         "deduplicated_vulnerabilities": len(enriched_findings),
         "duplicate_findings_removed": duplicate_reduction,
+        "noise_filtered_findings": noise_filtered_count,
         "total_files_impacted": impacted_files,
         "active_risk_findings": active_risk_count,
         "assessment_confidence": confidence,
@@ -1909,11 +2047,12 @@ def build_report(scan_result: ScanResult) -> dict:
     vulnerability_findings = {
         "summary": {
             "total": len(enriched_findings),
-            "raw_total": len(scan_result.findings),
+            "raw_total": len(raw_enriched),
             "duplicate_reduction": duplicate_reduction,
             "severity_distribution": distribution,
             "top_vulnerability_types": _top_vulnerability_types(enriched_findings),
             "scan_profile": profile_compliance["scan_profile"],
+            "noise_filtered_findings": noise_filtered_count,
         },
         "findings": enriched_findings,
         "toolchain_status": scan_result.toolchain_status,
@@ -1942,8 +2081,9 @@ def build_report(scan_result: ScanResult) -> dict:
         "generated_at": scan_result.completed_at.isoformat(),
         "summary": {
             "total_findings": len(enriched_findings),
-            "raw_findings_total": len(scan_result.findings),
+            "raw_findings_total": len(raw_enriched),
             "duplicate_findings_removed": duplicate_reduction,
+            "noise_filtered_findings": noise_filtered_count,
             "severity_distribution": distribution,
             "risk_score": risk_score,
             "risk_rating": risk_rating(risk_score),
