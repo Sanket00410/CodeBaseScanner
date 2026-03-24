@@ -1183,6 +1183,540 @@ def _dependency_reachability(findings: list[dict], target_path: str) -> None:
         }
 
 
+def _folder_name(file_path: str) -> str:
+    normalized = str(file_path or "").replace("\\", "/").strip("./")
+    if not normalized or "/" not in normalized:
+        return "."
+    return normalized.rsplit("/", 1)[0] or "."
+
+
+def _release_gate_action(item: dict) -> str:
+    severity = str(item.get("severity") or "Info")
+    poc_status = _active_poc_status(item.get("active_poc") or {})
+    if severity == "Critical":
+        return "Block release"
+    if severity == "High":
+        return "Fix before prod" if poc_status == "verified" else "Scheduled fix"
+    if severity == "Medium":
+        return "Scheduled fix"
+    return "Track"
+
+
+def _severity_sla_hours(severity: str) -> int:
+    return {
+        "Critical": 8,
+        "High": 24,
+        "Medium": 72,
+        "Low": 168,
+        "Info": 336,
+    }.get(severity, 168)
+
+
+def _estimate_financial_exposure(distribution: dict[str, int]) -> dict[str, object]:
+    weighted = (
+        distribution.get("Critical", 0) * 185000
+        + distribution.get("High", 0) * 62000
+        + distribution.get("Medium", 0) * 18000
+        + distribution.get("Low", 0) * 5000
+    )
+    if weighted <= 0:
+        return {"available": False}
+    return {
+        "available": True,
+        "best_case_usd": round(weighted * 0.65),
+        "most_likely_usd": round(weighted),
+        "worst_case_usd": round(weighted * 1.85),
+    }
+
+
+def _estimate_downtime(distribution: dict[str, int]) -> dict[str, object]:
+    weighted = (
+        distribution.get("Critical", 0) * 7.5
+        + distribution.get("High", 0) * 3.0
+        + distribution.get("Medium", 0) * 1.25
+        + distribution.get("Low", 0) * 0.4
+    )
+    if weighted <= 0:
+        return {"available": False}
+    return {
+        "available": True,
+        "best_case_hours": round(weighted * 0.6, 1),
+        "most_likely_hours": round(weighted, 1),
+        "worst_case_hours": round(weighted * 1.7, 1),
+    }
+
+
+def _build_toolchain_execution_summary(toolchain_status: dict[str, dict[str, object]]) -> dict[str, object]:
+    selected_rows = [
+        (tool_name, payload)
+        for tool_name, payload in sorted(toolchain_status.items())
+        if bool(payload.get("selected"))
+    ]
+    total_tools = len(toolchain_status)
+    selected_tools = len(selected_rows)
+    available_tools = sum(1 for _tool_name, payload in selected_rows if bool(payload.get("available")))
+    integrated_tools = sum(1 for _tool_name, payload in selected_rows if bool(payload.get("integrated")))
+    runner_available_tools = sum(1 for _tool_name, payload in selected_rows if bool(payload.get("runner_available", True)))
+    unavailable_tools = sum(1 for _tool_name, payload in selected_rows if not bool(payload.get("available")))
+    no_runner_tools = sum(1 for _tool_name, payload in selected_rows if not bool(payload.get("runner_available", True)))
+
+    status_distribution: Counter[str] = Counter()
+    failures: list[dict[str, object]] = []
+    slowest_tools: list[dict[str, object]] = []
+    timing_breakdown: list[dict[str, object]] = []
+    attempted_tools = 0
+    successful_tools = 0
+    failed_tools = 0
+    skipped_tools = 0
+    total_attempted_duration_ms = 0
+
+    for tool_name, payload in selected_rows:
+        execution = payload.get("execution") if isinstance(payload.get("execution"), dict) else {}
+        attempted = bool(execution.get("attempted"))
+        available = bool(payload.get("available"))
+        runner_available = bool(payload.get("runner_available", True))
+        findings_count = int(execution.get("findings_count") or 0)
+        error_rows = [str(item) for item in execution.get("errors", []) if str(item).strip()]
+        duration_ms = int(execution.get("duration_ms") or 0)
+        status = str(execution.get("status") or "").strip().lower()
+        if not status:
+            if not available:
+                status = "unavailable"
+            elif not runner_available:
+                status = "no_runner"
+            elif attempted:
+                status = "success" if not error_rows else "failed"
+            else:
+                status = "skipped"
+
+        status_distribution[status] += 1
+        if attempted:
+            attempted_tools += 1
+            total_attempted_duration_ms += duration_ms
+            if status in {"success", "partial_success"}:
+                successful_tools += 1
+            else:
+                failed_tools += 1
+        else:
+            skipped_tools += 1
+
+        if status not in {"success", "partial_success"} and (error_rows or attempted or not available or not runner_available):
+            failures.append(
+                {
+                    "tool": tool_name,
+                    "status": status,
+                    "message": str(payload.get("message") or "Analyzer did not complete successfully."),
+                    "errors": error_rows[:6],
+                }
+            )
+
+        timing_breakdown.append(
+            {
+                "tool": tool_name,
+                "selected": True,
+                "available": available,
+                "runner_available": runner_available,
+                "attempted": attempted,
+                "status": status,
+                "duration_ms": duration_ms,
+                "findings_count": findings_count,
+                "errors_count": len(error_rows),
+                "avg_ms_per_finding": round(duration_ms / findings_count, 2) if findings_count else None,
+            }
+        )
+
+        if attempted:
+            slowest_tools.append(
+                {
+                    "tool": tool_name,
+                    "duration_ms": duration_ms,
+                    "findings_count": findings_count,
+                    "status": status,
+                }
+            )
+
+    average_attempted_duration_ms = round(total_attempted_duration_ms / attempted_tools, 2) if attempted_tools else 0.0
+    success_rate_percent = round((successful_tools / attempted_tools) * 100.0, 2) if attempted_tools else 0.0
+
+    return {
+        "total_tools": total_tools,
+        "selected_tools": selected_tools,
+        "available_tools": available_tools,
+        "integrated_tools": integrated_tools,
+        "runner_available_tools": runner_available_tools,
+        "attempted_tools": attempted_tools,
+        "successful_tools": successful_tools,
+        "failed_tools": failed_tools,
+        "unavailable_tools": unavailable_tools,
+        "no_runner_tools": no_runner_tools,
+        "skipped_tools": skipped_tools,
+        "success_rate_percent": success_rate_percent,
+        "status_distribution": dict(status_distribution),
+        "failures": failures[:12],
+        "slowest_tools": sorted(slowest_tools, key=lambda item: -int(item["duration_ms"]))[:8],
+        "total_attempted_duration_ms": total_attempted_duration_ms,
+        "average_attempted_duration_ms": average_attempted_duration_ms,
+        "timing_breakdown": timing_breakdown,
+    }
+
+
+def _build_risk_intelligence(findings: list[dict]) -> dict[str, int]:
+    findings_with_cve = 0
+    findings_cvss_ge_7 = 0
+    known_exploited_findings = 0
+    for item in findings:
+        if item.get("cve_ids") or item.get("advisory_ids") or item.get("dependency_id"):
+            findings_with_cve += 1
+        if float(item.get("cvss_score", 0.0) or 0.0) >= 7.0:
+            findings_cvss_ge_7 += 1
+        if bool(item.get("known_exploited")):
+            known_exploited_findings += 1
+    return {
+        "findings_with_cve": findings_with_cve,
+        "findings_cvss_ge_7": findings_cvss_ge_7,
+        "known_exploited_findings": known_exploited_findings,
+    }
+
+
+def _build_enterprise_assurance(
+    findings: list[dict],
+    toolchain_status: dict[str, dict[str, object]],
+    toolchain_execution: dict[str, object],
+    scan_profile: str,
+) -> dict[str, object]:
+    selected_required = [
+        tool_name
+        for tool_name, payload in toolchain_status.items()
+        if bool(payload.get("selected")) and bool(payload.get("runner_available", True))
+    ]
+    required_tools_total = len(selected_required)
+    required_tools_ready = sum(
+        1 for tool_name in selected_required if bool(toolchain_status.get(tool_name, {}).get("available"))
+    )
+    required_tools_attempted = sum(
+        1
+        for tool_name in selected_required
+        if bool((toolchain_status.get(tool_name, {}).get("execution") or {}).get("attempted"))
+    )
+    required_tools_coverage_percent = (
+        round((required_tools_attempted / required_tools_total) * 100.0, 2) if required_tools_total else 0.0
+    )
+    critical_count = sum(1 for item in findings if str(item.get("severity")) == "Critical")
+    high_count = sum(1 for item in findings if str(item.get("severity")) == "High")
+    blockers: list[str] = []
+    if critical_count:
+        blockers.append(f"{critical_count} critical finding(s) still require remediation before release.")
+    if required_tools_total and required_tools_attempted == 0:
+        blockers.append("Selected analyzers did not produce execution evidence for this scan.")
+    for failure in (toolchain_execution.get("failures") or [])[:6]:
+        if not isinstance(failure, dict):
+            continue
+        blockers.append(
+            f"{failure.get('tool', 'analyzer')} status={failure.get('status', 'failed')}: {failure.get('message', 'Analyzer did not complete successfully.')}"
+        )
+
+    tool_success_rate_percent = float(toolchain_execution.get("success_rate_percent") or 0.0)
+    readiness_score = round(
+        max(
+            0.0,
+            min(
+                100.0,
+                required_tools_coverage_percent * 0.4
+                + tool_success_rate_percent * 0.35
+                + max(0.0, 25.0 - critical_count * 7.0 - high_count * 2.0),
+            ),
+        ),
+        2,
+    )
+    status = "ready"
+    if blockers:
+        status = "blocked"
+    elif required_tools_total and (required_tools_coverage_percent < 100 or tool_success_rate_percent < 80):
+        status = "warning"
+
+    recommendation = "Release criteria met with current analyzer coverage."
+    if status == "blocked":
+        recommendation = "Resolve critical findings and failed analyzer coverage before relying on this report for release sign-off."
+    elif status == "warning":
+        recommendation = "Increase analyzer coverage and resolve high-priority findings before production deployment."
+
+    return {
+        "status": status,
+        "is_enterprise_ready": status == "ready",
+        "scan_profile": scan_profile,
+        "required_tools": selected_required,
+        "required_tools_total": required_tools_total,
+        "required_tools_ready": required_tools_ready,
+        "required_tools_coverage_percent": required_tools_coverage_percent,
+        "recommended_tools": [],
+        "recommended_tools_total": 0,
+        "recommended_tools_ready": 0,
+        "recommended_tools_coverage_percent": 0.0,
+        "toolchain_success_rate_percent": tool_success_rate_percent,
+        "toolchain_attempted_tools": int(toolchain_execution.get("attempted_tools") or 0),
+        "toolchain_failed_tools": int(toolchain_execution.get("failed_tools") or 0),
+        "toolchain_unavailable_tools": int(toolchain_execution.get("unavailable_tools") or 0),
+        "toolchain_no_runner_tools": int(toolchain_execution.get("no_runner_tools") or 0),
+        "readiness_score": readiness_score,
+        "blockers": blockers,
+        "advisories": [],
+        "recommendation": recommendation,
+    }
+
+
+def _is_auth_abuse_finding(item: dict) -> bool:
+    combined = " ".join(
+        [
+            str(item.get("vulnerability_title") or item.get("vulnerability_type") or ""),
+            str(item.get("owasp_mapping") or item.get("owasp_category") or ""),
+            str(item.get("description") or ""),
+        ]
+    ).lower()
+    tokens = (
+        "auth",
+        "authorization",
+        "broken access",
+        "bola",
+        "bopla",
+        "permission",
+        "privilege",
+        "session",
+        "cookie",
+        "token",
+        "brute force",
+        "user enumeration",
+        "credential",
+        "account takeover",
+    )
+    return any(token in combined for token in tokens)
+
+
+def _build_auth_abuse_session_security(findings: list[dict]) -> dict[str, object] | None:
+    scoped = [item for item in findings if _is_auth_abuse_finding(item)]
+    if not scoped:
+        return None
+
+    severity_distribution = _severity_distribution_from_enriched(scoped)
+    mapping_counter: Counter[tuple[str, str, str]] = Counter()
+    severity_counter: dict[tuple[str, str, str], Counter[str]] = {}
+    for item in scoped:
+        issue_type = str(item.get("vulnerability_title") or item.get("vulnerability_type") or "Issue")
+        file_path = str(item.get("file_path") or "unknown")
+        folder = _folder_name(file_path)
+        key = (issue_type, file_path, folder)
+        mapping_counter[key] += 1
+        severity_counter.setdefault(key, Counter())[str(item.get("severity") or "Info")] += 1
+
+    issue_file_mapping = [
+        {
+            "issue_type": issue_type,
+            "file": file_path,
+            "folder": folder,
+            "count": count,
+            "critical": severity_counter[(issue_type, file_path, folder)].get("Critical", 0),
+            "high": severity_counter[(issue_type, file_path, folder)].get("High", 0),
+        }
+        for (issue_type, file_path, folder), count in mapping_counter.most_common(40)
+    ]
+
+    return {
+        "total_findings": len(scoped),
+        "severity_distribution": severity_distribution,
+        "top_vulnerability_types": _top_vulnerability_types(scoped, limit=10),
+        "affected_modules": _affected_modules(scoped, limit=15),
+        "affected_files": _affected_files(scoped, limit=20),
+        "issue_file_mapping": issue_file_mapping,
+    }
+
+
+def _build_false_positive_report(findings: list[dict]) -> dict[str, object] | None:
+    candidates: list[dict[str, object]] = []
+    for item in findings:
+        active_poc = item.get("active_poc") or {}
+        status = _active_poc_status(active_poc)
+        if status not in {"inconclusive", "error"}:
+            continue
+        candidates.append(
+            {
+                "finding_uid": item.get("finding_uid"),
+                "vulnerability_title": item.get("vulnerability_title", item.get("vulnerability_type", "Issue")),
+                "severity": item.get("severity", "Medium"),
+                "file_path": item.get("file_path"),
+                "line_number": item.get("line_number"),
+                "reason_summary": "Validation requires analyst review",
+                "reason_detail": str(active_poc.get("verification_basis") or "Deterministic validation did not fully confirm exploitability in this code path."),
+                "confidence": float(active_poc.get("confidence") or 0.0),
+                "verification_steps": [str(item.get("ai_validation_steps") or "").splitlines()[0]] if str(item.get("ai_validation_steps") or "").strip() else [],
+            }
+        )
+    if not candidates:
+        return None
+    return {
+        "policy_note": "Only inconclusive or errored validation candidates are listed for analyst suppression review.",
+        "candidate_count": len(candidates),
+        "candidates": candidates[:80],
+    }
+
+
+def _build_data_quality(
+    findings: list[dict],
+    raw_total: int,
+    deduplicated_total: int,
+    duplicate_reduction: int,
+    confidence: str,
+    toolchain_execution: dict[str, object],
+    false_positive_report: dict[str, object] | None,
+) -> dict[str, object]:
+    unknown_rule_count = 0
+    unknown_cwe_count = 0
+    unknown_owasp_count = 0
+    unknown_taxonomy_count = 0
+    for item in findings:
+        rule_id = str(item.get("rule_id") or "").strip()
+        cwe = str(item.get("cwe_id") or item.get("cwe") or "").strip()
+        owasp = str(item.get("owasp_mapping") or item.get("owasp_category") or "").strip()
+        if not rule_id:
+            unknown_rule_count += 1
+        if not cwe:
+            unknown_cwe_count += 1
+        if not owasp:
+            unknown_owasp_count += 1
+        if not rule_id or not cwe or not owasp:
+            unknown_taxonomy_count += 1
+    suppressed_findings = int((false_positive_report or {}).get("candidate_count") or 0)
+    coverage_confidence_score = {"High": 85.0, "Medium": 65.0, "Low": 40.0}.get(confidence, 55.0)
+    return {
+        "raw_findings": raw_total,
+        "deduplicated_findings": deduplicated_total,
+        "duplicate_findings_removed": duplicate_reduction,
+        "dedup_ratio_percent": round((duplicate_reduction / max(1, raw_total)) * 100.0, 2),
+        "suppressed_findings": suppressed_findings,
+        "suppression_rate_percent": round((suppressed_findings / max(1, deduplicated_total + suppressed_findings)) * 100.0, 2),
+        "tool_success_rate_percent": float(toolchain_execution.get("success_rate_percent") or 0.0),
+        "tool_attempted_count": int(toolchain_execution.get("attempted_tools") or 0),
+        "coverage_confidence": confidence,
+        "coverage_confidence_score": coverage_confidence_score,
+        "unknown_rule_count": unknown_rule_count,
+        "unknown_cwe_count": unknown_cwe_count,
+        "unknown_owasp_count": unknown_owasp_count,
+        "unknown_taxonomy_count": unknown_taxonomy_count,
+    }
+
+
+def _build_cto_board_view(findings: list[dict], risk_score: float) -> dict[str, object]:
+    distribution = _severity_distribution_from_enriched(findings)
+    ranked = sorted(findings, key=lambda item: -float(item.get("risk_priority_score", item.get("cvss_score", 0.0))))
+    top_urgent = [
+        {
+            "title": item.get("vulnerability_title", item.get("vulnerability_type", "Risk")),
+            "severity": item.get("severity", "Info"),
+            "priority_score": float(item.get("risk_priority_score", item.get("cvss_score", 0.0))),
+            "business_impact": item.get("business_impact", "N/A"),
+        }
+        for item in ranked[:5]
+    ]
+    ai_summary = [
+        f"{entry['title']} is currently a {entry['severity'].lower()}-severity risk with priority {float(entry['priority_score']):.2f}."
+        for entry in top_urgent[:3]
+    ]
+    return {
+        "business_risk_exposure_score": round(risk_score, 2),
+        "trend": {
+            "available": False,
+            "direction": "stable",
+            "delta_points": 0,
+        },
+        "financial_exposure_usd": _estimate_financial_exposure(distribution),
+        "downtime_estimate": _estimate_downtime(distribution),
+        "top_5_urgent_risks": top_urgent,
+        "ai_executive_summary": ai_summary,
+    }
+
+
+def _build_ciso_security_view(findings: list[dict]) -> dict[str, object]:
+    ranked = sorted(findings, key=lambda item: -float(item.get("risk_priority_score", item.get("cvss_score", 0.0))))
+    rows = []
+    for item in ranked[:24]:
+        rows.append(
+            {
+                "title": item.get("vulnerability_title", item.get("vulnerability_type", "Issue")),
+                "severity": item.get("severity", "Info"),
+                "cvss": round(float(item.get("cvss_score", 0.0) or 0.0), 1),
+                "exploitability": _active_poc_status(item.get("active_poc") or {}),
+                "business_impact": item.get("business_impact", "N/A"),
+                "priority_score": float(item.get("risk_priority_score", item.get("cvss_score", 0.0))),
+                "active_exploit": "Yes" if bool(item.get("known_exploited")) else "No",
+                "release_gate": _release_gate_action(item),
+                "sla_hours": _severity_sla_hours(str(item.get("severity") or "Info")),
+            }
+        )
+    return {
+        "attack_chain_example": "External attacker -> service/API -> lateral movement -> critical asset impact",
+        "vulnerability_operational_table": rows,
+    }
+
+
+def _build_developer_devops_view(findings: list[dict]) -> dict[str, object]:
+    ranked = sorted(findings, key=lambda item: -float(item.get("risk_priority_score", item.get("cvss_score", 0.0))))
+    return {
+        "tactical_remediation_table": [
+            {
+                "title": item.get("vulnerability_title", item.get("vulnerability_type", "Issue")),
+                "severity": item.get("severity", "Info"),
+                "location": f"{item.get('file_path', 'unknown')}:{int(item.get('line_number', 1) or 1)}",
+                "cwe": item.get("cwe_id", item.get("cwe", "N/A")),
+                "owasp": item.get("owasp_mapping", item.get("owasp_category", "N/A")),
+                "secure_fix_snippet": item.get("ai_suggested_fix", item.get("fixed_code", item.get("recommendation", "N/A"))),
+            }
+            for item in ranked[:28]
+        ]
+    }
+
+
+def _build_risk_story_mode(findings: list[dict]) -> dict[str, object]:
+    ranked = sorted(findings, key=lambda item: -float(item.get("risk_priority_score", item.get("cvss_score", 0.0))))
+    if not ranked:
+        return {
+            "scenario_title": "N/A",
+            "narrative": "No chained attack story generated.",
+            "likely_outcome": {},
+        }
+    chain = [str(item.get("vulnerability_title") or item.get("vulnerability_type") or "Issue") for item in ranked[:3]]
+    distribution = _severity_distribution_from_enriched(ranked[:12])
+    return {
+        "scenario_title": "Priority risk chain",
+        "narrative": f"If attackers chain {' -> '.join(chain)}, they can move from initial weakness to broader service impact.",
+        "likely_outcome": {
+            "critical_findings_in_chain": distribution.get("Critical", 0),
+            "high_findings_in_chain": distribution.get("High", 0),
+            "likely_release_action": _release_gate_action(ranked[0]),
+        },
+    }
+
+
+def _build_security_maturity_scoring(
+    controls_summary: dict[str, object],
+    toolchain_execution: dict[str, object],
+    profile_compliance: dict[str, object],
+) -> dict[str, float]:
+    implemented_controls = int(controls_summary.get("implemented_controls", 0) or 0)
+    standards_coverage = controls_summary.get("standards_coverage", {}) or {}
+    standards_average = 0.0
+    if isinstance(standards_coverage, dict) and standards_coverage:
+        values = [float(value or 0.0) for value in standards_coverage.values()]
+        standards_average = sum(values) / len(values)
+    tool_success_rate = float(toolchain_execution.get("success_rate_percent") or 0.0)
+    profile_depth = 85.0 if str(profile_compliance.get("scan_profile") or "standard") == "deep" else 65.0
+    overall = round(min(100.0, implemented_controls * 6.5 + standards_average * 0.35 + tool_success_rate * 0.3 + profile_depth * 0.2), 2)
+    return {
+        "overall_score": overall,
+        "controls_implemented_score": round(min(100.0, implemented_controls * 8.0), 2),
+        "standards_coverage_score": round(min(100.0, standards_average), 2),
+        "tool_reliability_score": round(min(100.0, tool_success_rate), 2),
+        "scan_depth_score": round(profile_depth, 2),
+    }
+
+
 def _apply_validation_and_ai(findings: list[dict], target_path: str) -> tuple[list[dict], dict[str, object]]:
     _dependency_reachability(findings, target_path)
     provider_config = load_ai_provider_config()
@@ -1296,6 +1830,34 @@ def build_report(scan_result: ScanResult) -> dict:
     compliance_matrix = _compliance_matrix(controls_summary)
     profile_compliance = build_profile_compliance(scan_result.target_path, enriched_findings, controls_payload)
     autofix = _autofix_recommendations(enriched_findings)
+    toolchain_execution = _build_toolchain_execution_summary(scan_result.toolchain_status)
+    risk_intelligence = _build_risk_intelligence(enriched_findings)
+    auth_abuse_session_security = _build_auth_abuse_session_security(enriched_findings)
+    false_positive_report = _build_false_positive_report(enriched_findings)
+    data_quality = _build_data_quality(
+        enriched_findings,
+        raw_total=len(scan_result.findings),
+        deduplicated_total=len(enriched_findings),
+        duplicate_reduction=duplicate_reduction,
+        confidence=confidence,
+        toolchain_execution=toolchain_execution,
+        false_positive_report=false_positive_report,
+    )
+    enterprise_assurance = _build_enterprise_assurance(
+        enriched_findings,
+        scan_result.toolchain_status,
+        toolchain_execution,
+        scan_profile=profile_compliance["scan_profile"],
+    )
+    cto_board_view = _build_cto_board_view(enriched_findings, risk_score)
+    ciso_security_view = _build_ciso_security_view(enriched_findings)
+    developer_devops_view = _build_developer_devops_view(enriched_findings)
+    risk_story_mode = _build_risk_story_mode(enriched_findings)
+    advanced_features["security_maturity_scoring"] = _build_security_maturity_scoring(
+        controls_summary,
+        toolchain_execution,
+        profile_compliance,
+    )
 
     executive_summary = {
         "target_path": scan_result.target_path,
@@ -1320,6 +1882,11 @@ def build_report(scan_result: ScanResult) -> dict:
         "scan_profile": profile_compliance["scan_profile"],
         "scan_profile_label": profile_compliance["scan_profile_label"],
         "framework_versions": profile_compliance["framework_versions"],
+        "toolchain_execution": toolchain_execution,
+        "enterprise_assurance": enterprise_assurance,
+        "data_quality": data_quality,
+        "deterministic_replay": None,
+        "report_integrity_chain": None,
     }
 
     technical_report = {
@@ -1388,8 +1955,17 @@ def build_report(scan_result: ScanResult) -> dict:
             "affected_files": _affected_files(enriched_findings),
             "affected_folders": _affected_folders(enriched_findings),
             "scan_profile": profile_compliance["scan_profile"],
+            "release_gate_distribution": dict(Counter(_release_gate_action(item) for item in enriched_findings)),
+            "risk_intelligence": risk_intelligence,
+            "auth_abuse_session_security": auth_abuse_session_security,
+            "toolchain_execution": toolchain_execution,
             "active_poc": active_poc_summary,
             "fix_verification": fix_verification_summary,
+            "enterprise_assurance": enterprise_assurance,
+            "false_positive_candidates": int((false_positive_report or {}).get("candidate_count") or 0),
+            "data_quality": data_quality,
+            "deterministic_replay": None,
+            "report_integrity_chain": None,
         },
         "findings": enriched_findings,
         "auto_fix_recommendations": autofix,
@@ -1397,9 +1973,17 @@ def build_report(scan_result: ScanResult) -> dict:
     }
 
     role_aware_report = {
+        "cto_board_view": cto_board_view,
+        "ciso_security_view": ciso_security_view,
+        "developer_devops_view": developer_devops_view,
+        "risk_story_mode": risk_story_mode,
         "advanced_features": advanced_features,
+        "enterprise_assurance": enterprise_assurance,
+        "false_positive_report": false_positive_report,
     }
     vulnerability_fixed_code_report["role_aware_report"] = role_aware_report
+    if false_positive_report:
+        vulnerability_fixed_code_report["false_positive_report"] = false_positive_report
 
     return {
         "scanner": {
@@ -1414,5 +1998,6 @@ def build_report(scan_result: ScanResult) -> dict:
         "auto_fix_recommendations": autofix,
         "technical_report": technical_report,
         "profile_compliance": profile_compliance,
+        "false_positive_report": false_positive_report,
         "role_aware_report": role_aware_report,
     }

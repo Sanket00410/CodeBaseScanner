@@ -102,10 +102,19 @@ function extractExportTargetName(scan: ScanView): string {
 
 function extractExportDateTimeParts(value: string): { datePart: string; timePart: string } {
   const raw = String(value || "").trim();
-  const match = raw.match(/(\d{4}-\d{2}-\d{2}).*?(\d{2})[:\-](\d{2})[:\-](\d{2})(?:[.\-:](\d{1,3}))?/);
-  if (match) {
-    const datePart = match[1];
-    const timePart = [match[2], match[3], match[4], match[5]].filter(Boolean).join("-");
+  const parsed = new Date(raw);
+  if (!Number.isNaN(parsed.getTime())) {
+    const datePart = [
+      parsed.getFullYear(),
+      String(parsed.getMonth() + 1).padStart(2, "0"),
+      String(parsed.getDate()).padStart(2, "0"),
+    ].join("-");
+    const timePart = [
+      String(parsed.getHours()).padStart(2, "0"),
+      String(parsed.getMinutes()).padStart(2, "0"),
+      String(parsed.getSeconds()).padStart(2, "0"),
+      String(parsed.getMilliseconds()).padStart(3, "0"),
+    ].join("-");
     return { datePart, timePart };
   }
   const safe = raw.replaceAll(":", "-").replaceAll(".", "-").replace("T", "_");
@@ -114,6 +123,15 @@ function extractExportDateTimeParts(value: string): { datePart: string; timePart
     datePart: sanitizeExportToken(datePartRaw || "date", "date"),
     timePart: sanitizeExportToken(timePartRaw || "time", "time"),
   };
+}
+
+function formatDisplayTimestamp(value: string): string {
+  const raw = String(value || "").trim();
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) {
+    return raw || "N/A";
+  }
+  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")} ${String(parsed.getHours()).padStart(2, "0")}:${String(parsed.getMinutes()).padStart(2, "0")}:${String(parsed.getSeconds()).padStart(2, "0")}.${String(parsed.getMilliseconds()).padStart(3, "0")}`;
 }
 
 function exportReportTypeToken(
@@ -162,14 +180,177 @@ function resolveEnterpriseAssurance(
   scan: ScanView,
   summary: VulnerabilityFixedCodeReport["summary"],
 ): EnterpriseAssuranceSummary | null {
-  return summary.enterprise_assurance || scan.report.executive_summary.enterprise_assurance || null;
+  const existing = summary.enterprise_assurance || scan.report.executive_summary.enterprise_assurance || null;
+  const existingMeaningful =
+    existing &&
+    (Number(existing.required_tools_total || 0) > 0 ||
+      Number(existing.readiness_score || 0) > 0 ||
+      Boolean((existing.blockers || []).length) ||
+      Number(existing.toolchain_attempted_tools || 0) > 0);
+  if (existingMeaningful) {
+    return existing;
+  }
+  const toolchainExecution = resolveToolchainExecution(scan, summary);
+  const findings = scan.report.vulnerability_fixed_code_report.findings || [];
+  const requiredTools = Object.entries(scan.report.vulnerability_fixed_code_report.toolchain_status || {})
+    .filter(([, item]) => item.selected && item.runner_available !== false)
+    .map(([tool]) => tool);
+  const requiredToolsReady = requiredTools.filter(
+    (tool) => scan.report.vulnerability_fixed_code_report.toolchain_status?.[tool]?.available,
+  ).length;
+  const requiredCoverage = requiredTools.length
+    ? Math.round(((toolchainExecution?.attempted_tools || 0) / requiredTools.length) * 10000) / 100
+    : 0;
+  const failures = toolchainExecution?.failures || [];
+  const criticalFindings = findings.filter((finding) => finding.severity === "Critical").length;
+  const highFindings = findings.filter((finding) => finding.severity === "High").length;
+  const blockers: string[] = [];
+  if (criticalFindings > 0) {
+    blockers.push(`${criticalFindings} critical finding(s) still require remediation before release.`);
+  }
+  for (const failure of failures.slice(0, 6)) {
+    blockers.push(`${failure.tool}: ${failure.message}`);
+  }
+  if (!blockers.length && requiredTools.length && (toolchainExecution?.attempted_tools || 0) === 0) {
+    blockers.push("Selected analyzers did not produce execution evidence for this scan.");
+  }
+  const successRate = Number(toolchainExecution?.success_rate_percent || 0);
+  const readinessScore = Math.max(
+    0,
+    Math.min(100, Math.round(requiredCoverage * 0.45 + successRate * 0.35 + Math.max(0, 25 - criticalFindings * 7 - highFindings * 2) * 100) / 100),
+  );
+  const status = blockers.length ? "blocked" : requiredCoverage < 100 || successRate < 80 ? "warning" : "ready";
+  return {
+    status,
+    is_enterprise_ready: status === "ready",
+    scan_profile: String(summary.scan_profile || scan.report.executive_summary.scan_profile || "standard") as EnterpriseAssuranceSummary["scan_profile"],
+    required_tools: requiredTools,
+    required_tools_total: requiredTools.length,
+    required_tools_ready: requiredToolsReady,
+    required_tools_coverage_percent: requiredCoverage,
+    recommended_tools: [],
+    recommended_tools_total: 0,
+    recommended_tools_ready: 0,
+    recommended_tools_coverage_percent: 0,
+    toolchain_success_rate_percent: successRate,
+    toolchain_attempted_tools: Number(toolchainExecution?.attempted_tools || 0),
+    toolchain_failed_tools: Number(toolchainExecution?.failed_tools || 0),
+    toolchain_unavailable_tools: Number(toolchainExecution?.unavailable_tools || 0),
+    toolchain_no_runner_tools: Number(toolchainExecution?.no_runner_tools || 0),
+    readiness_score: readinessScore,
+    blockers,
+    advisories: [],
+    recommendation:
+      status === "blocked"
+        ? "Resolve critical findings and failed analyzer coverage before using this export for release sign-off."
+        : status === "warning"
+          ? "Increase analyzer coverage and close high-priority risks before production deployment."
+          : "Release criteria met with current analyzer coverage.",
+  };
 }
 
 function resolveToolchainExecution(
   scan: ScanView,
   summary: VulnerabilityFixedCodeReport["summary"],
 ): ToolchainExecutionSummary | null {
-  return summary.toolchain_execution || scan.report.executive_summary.toolchain_execution || null;
+  const existing = summary.toolchain_execution || scan.report.executive_summary.toolchain_execution || null;
+  const existingMeaningful =
+    existing &&
+    (Number(existing.attempted_tools || 0) > 0 ||
+      Number(existing.failed_tools || 0) > 0 ||
+      Number(existing.unavailable_tools || 0) > 0 ||
+      (Array.isArray(existing.timing_breakdown) && existing.timing_breakdown.length > 0));
+  if (existingMeaningful) {
+    return existing;
+  }
+  const toolchainStatus = scan.report.vulnerability_fixed_code_report.toolchain_status || {};
+  const selectedEntries = Object.entries(toolchainStatus).filter(([, item]) => item.selected);
+  if (!selectedEntries.length) {
+    return null;
+  }
+  const statusDistribution: Record<string, number> = {};
+  const failures: ToolchainExecutionSummary["failures"] = [];
+  const slowestTools: ToolchainExecutionSummary["slowest_tools"] = [];
+  const timingBreakdown: NonNullable<ToolchainExecutionSummary["timing_breakdown"]> = [];
+  let attemptedTools = 0;
+  let successfulTools = 0;
+  let failedTools = 0;
+  let unavailableTools = 0;
+  let noRunnerTools = 0;
+  let skippedTools = 0;
+  let totalAttemptedDurationMs = 0;
+
+  for (const [tool, item] of selectedEntries) {
+    const execution = item.execution;
+    const attempted = Boolean(execution?.attempted);
+    const available = Boolean(item.available);
+    const runnerAvailable = item.runner_available !== false;
+    const findingsCount = Number(execution?.findings_count || 0);
+    const errors = Array.isArray(execution?.errors) ? execution?.errors : [];
+    const status =
+      String(execution?.status || (!available ? "unavailable" : !runnerAvailable ? "no_runner" : attempted ? (errors.length ? "failed" : "success") : "skipped"));
+    statusDistribution[status] = Number(statusDistribution[status] || 0) + 1;
+    if (!available) unavailableTools += 1;
+    if (!runnerAvailable) noRunnerTools += 1;
+    if (attempted) {
+      attemptedTools += 1;
+      totalAttemptedDurationMs += Number(execution?.duration_ms || 0);
+      if (status === "success" || status === "partial_success") {
+        successfulTools += 1;
+      } else {
+        failedTools += 1;
+      }
+      slowestTools.push({
+        tool,
+        duration_ms: Number(execution?.duration_ms || 0),
+        findings_count: findingsCount,
+        status,
+      });
+    } else {
+      skippedTools += 1;
+    }
+    if (status !== "success" && status !== "partial_success" && (attempted || !available || !runnerAvailable || errors.length)) {
+      failures.push({
+        tool,
+        status,
+        message: String(item.message || "Analyzer did not complete successfully."),
+        errors: errors.map((entry) => String(entry)),
+      });
+    }
+    timingBreakdown.push({
+      tool,
+      selected: true,
+      available,
+      runner_available: runnerAvailable,
+      attempted,
+      status,
+      duration_ms: Number(execution?.duration_ms || 0),
+      findings_count: findingsCount,
+      errors_count: errors.length,
+      avg_ms_per_finding: findingsCount ? Math.round((Number(execution?.duration_ms || 0) / findingsCount) * 100) / 100 : null,
+    });
+  }
+
+  return {
+    total_tools: Object.keys(toolchainStatus).length,
+    selected_tools: selectedEntries.length,
+    available_tools: selectedEntries.filter(([, item]) => item.available).length,
+    integrated_tools: selectedEntries.filter(([, item]) => item.integrated).length,
+    runner_available_tools: selectedEntries.filter(([, item]) => item.runner_available !== false).length,
+    attempted_tools: attemptedTools,
+    successful_tools: successfulTools,
+    failed_tools: failedTools,
+    unavailable_tools: unavailableTools,
+    no_runner_tools: noRunnerTools,
+    skipped_tools: skippedTools,
+    success_rate_percent: attemptedTools ? Math.round((successfulTools / attemptedTools) * 10000) / 100 : 0,
+    status_distribution: statusDistribution,
+    failures: failures.slice(0, 12),
+    slowest_tools: slowestTools.sort((a, b) => b.duration_ms - a.duration_ms).slice(0, 8),
+    total_attempted_duration_ms: totalAttemptedDurationMs,
+    average_attempted_duration_ms: attemptedTools ? Math.round((totalAttemptedDurationMs / attemptedTools) * 100) / 100 : 0,
+    timing_breakdown: timingBreakdown,
+  };
 }
 
 function deriveDataQuality(
@@ -228,8 +409,8 @@ function deriveDataQuality(
 
 function summarizeTimingRows(rows: ToolTimingRow[]) {
   const attempted = rows.filter((row) => row.attempted);
-  const visible = attempted.filter((row) => row.status === "success");
-  const omitted = Math.max(0, attempted.length - visible.length);
+  const visible = [...attempted].sort((left, right) => right.durationMs - left.durationMs);
+  const omitted = 0;
   const totalDuration = attempted.reduce((sum, row) => sum + row.durationMs, 0);
   const averageDuration = attempted.length ? Number((totalDuration / attempted.length).toFixed(2)) : 0;
   return { attempted, visible, omitted, totalDuration, averageDuration };
@@ -669,7 +850,7 @@ function writeExistingPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
   const profileCompliance = report.profile_compliance || scan.report.profile_compliance;
   writePdfHero(doc, "CodeSentinelX Existing Security Implementation Report", [
     `Target: ${report.target_path}`,
-    `Generated: ${report.generated_at}`,
+    `Generated: ${formatDisplayTimestamp(report.generated_at)}`,
     `Profile: ${profileCompliance?.scan_profile_label || "Codebase"}`,
   ]);
   writePdfMetricStrip(doc, [
@@ -785,8 +966,6 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
   const timingSummary = summarizeTimingRows(timingBreakdown);
   const executionEvidence = collectExecutionEvidenceRows(report.toolchain_status || {});
   const roleAware = report.role_aware_report || scan.report.role_aware_report || {};
-  const ctoBoard = (roleAware.cto_board_view as Record<string, unknown>) || {};
-  const advanced = (roleAware.advanced_features as Record<string, unknown>) || {};
   const falsePositiveReport =
     report.false_positive_report ||
     scan.report.false_positive_report ||
@@ -823,15 +1002,9 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
       previous_report_sha256?: string | null;
     };
   };
-  const riskIntel = summaryExtras.risk_intelligence
-    ? {
-        findings_with_cve: Number(summaryExtras.risk_intelligence.findings_with_cve || 0),
-        findings_cvss_ge_7: Number(summaryExtras.risk_intelligence.findings_cvss_ge_7 || 0),
-        known_exploited_findings: Number(summaryExtras.risk_intelligence.known_exploited_findings || 0),
-      }
-    : null;
+  const riskIntel = resolveRiskIntelligence(summaryExtras, findings);
   const releaseGateDistribution: Record<string, number> = summaryExtras.release_gate_distribution || {};
-  const authAbuse = summaryExtras.auth_abuse_session_security || null;
+  const authAbuse = resolveAuthAbuse(summaryExtras, findings);
   const deterministicReplay =
     summaryExtras.deterministic_replay ||
     (report as VulnerabilityFixedCodeReport & { deterministic_replay?: NonNullable<typeof summaryExtras.deterministic_replay> }).deterministic_replay ||
@@ -842,12 +1015,41 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     (report as VulnerabilityFixedCodeReport & { report_integrity_chain?: NonNullable<typeof summaryExtras.report_integrity_chain> }).report_integrity_chain ||
     scan.report.executive_summary.report_integrity_chain ||
     null;
+  const roleAwareRecord = roleAware as unknown as Record<string, unknown>;
+  const ctoBoard = resolveCtoBoardView(roleAwareRecord, findings, report.summary, riskIntel);
+  const advanced = resolveAdvancedFeatures(roleAwareRecord, findings, enterprise, dataQuality);
   const hasRiskIntelligence = hasRiskIntelligenceData(riskIntel, releaseGateDistribution);
   const hasFalsePositiveData = hasFalsePositiveCandidates(falsePositiveReport);
+  const urgentRisks = Array.isArray(ctoBoard.top_5_urgent_risks) ? ctoBoard.top_5_urgent_risks : [];
+  const aiExecutiveSummary = Array.isArray(ctoBoard.ai_summary_plain_language) ? ctoBoard.ai_summary_plain_language : [];
+  const ctoFinancialText = formatBestLikelyWorst((ctoBoard.financial_exposure_usd as Record<string, unknown>) || {});
+  const ctoDowntimeText = formatBestLikelyWorst((ctoBoard.downtime_estimate as Record<string, unknown>) || {});
+  const hasEnterpriseData = Boolean(
+    enterprise &&
+      (Number(enterprise.required_tools_total || 0) > 0 ||
+        Number(enterprise.readiness_score || 0) > 0 ||
+        Boolean((enterprise.blockers || []).length) ||
+        Number(toolchainExecution?.attempted_tools || 0) > 0),
+  );
+  const hasCtoData = Boolean(urgentRisks.length || aiExecutiveSummary.length || ctoFinancialText !== "N/A" || ctoDowntimeText !== "N/A");
+  const aiSolutionEngine = (advanced.ai_solution_engine as Record<string, unknown>) || {};
+  const fixWindowPlan =
+    Object.keys((advanced.what_should_i_fix_first_ai as Record<string, unknown>) || {}).length > 0
+      ? ((advanced.what_should_i_fix_first_ai as Record<string, unknown>) || {})
+      : buildFallbackFixWindowPlan(findings);
+  const hasMeaningfulFixPlan = Object.values(fixWindowPlan).some((value) => Array.isArray(value) && value.length > 0);
+  const maturityMetrics = (advanced.security_maturity_scoring as Record<string, unknown>) || {};
+  const hasMaturityData = Object.values(maturityMetrics).some((value) => Number(value) > 0);
+  const hasAdvancedData = Boolean(hasMaturityData || hasMeaningfulFixPlan);
+  const hasToolEvidenceData = executionEvidence.length > 0;
+  const hasTimingData = timingSummary.visible.length > 0;
+  const hasAuthAbuseData = hasMeaningfulAuthAbuse(authAbuse);
+  const hasReplayData = hasReplaySummaryData(deterministicReplay);
+  const hasIntegrityData = hasIntegrityChainData(reportIntegrity);
 
   writePdfHero(doc, "CodeSentinelX Vulnerability Report", [
     `Target: ${report.target_path}`,
-    `Generated: ${report.generated_at}`,
+    `Generated: ${formatDisplayTimestamp(report.generated_at)}`,
     `Risk Score: ${report.summary.risk_score} (${report.summary.risk_rating})`,
   ]);
   writePdfMetricStrip(doc, [
@@ -904,28 +1106,30 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     ]);
   }
 
-  writePdfSectionHeader(doc, "Enterprise Assurance");
-  writePdfKeyValueTable(doc, [
-    { key: "Status", value: String((enterprise?.status || "blocked").toUpperCase()) },
-    { key: "Readiness Score", value: String(enterprise?.readiness_score ?? 0) },
-    {
-      key: "Required Tool Coverage",
-      value: `${enterprise?.required_tools_ready ?? 0}/${enterprise?.required_tools_total ?? 0} (${(
-        enterprise?.required_tools_coverage_percent ?? 0
-      ).toFixed(2)}%)`,
-    },
-    {
-      key: "Tool Execution Success",
-      value: `${toolchainExecution?.successful_tools ?? 0}/${toolchainExecution?.attempted_tools ?? 0} (${(
-        toolchainExecution?.success_rate_percent ?? 0
-      ).toFixed(2)}%)`,
-    },
-    { key: "Failed Tools", value: String(toolchainExecution?.failed_tools ?? 0) },
-    { key: "Recommendation", value: String(enterprise?.recommendation || "N/A") },
-  ]);
-  writeWrapped(doc, "Status meaning: READY=gate passed, WARNING=partial coverage, BLOCKED=release blockers present.", 8);
-  for (const blocker of (enterprise?.blockers || []).slice(0, 10)) {
-    writeWrapped(doc, `- ${blocker}`, 8);
+  if (hasEnterpriseData) {
+    writePdfSectionHeader(doc, "Enterprise Assurance");
+    writePdfKeyValueTable(doc, [
+      { key: "Status", value: String((enterprise?.status || "blocked").toUpperCase()) },
+      { key: "Readiness Score", value: String(enterprise?.readiness_score ?? 0) },
+      {
+        key: "Required Tool Coverage",
+        value: `${enterprise?.required_tools_ready ?? 0}/${enterprise?.required_tools_total ?? 0} (${(
+          enterprise?.required_tools_coverage_percent ?? 0
+        ).toFixed(2)}%)`,
+      },
+      {
+        key: "Tool Execution Success",
+        value: `${toolchainExecution?.successful_tools ?? 0}/${toolchainExecution?.attempted_tools ?? 0} (${(
+          toolchainExecution?.success_rate_percent ?? 0
+        ).toFixed(2)}%)`,
+      },
+      { key: "Failed Tools", value: String(toolchainExecution?.failed_tools ?? 0) },
+      { key: "Recommendation", value: String(enterprise?.recommendation || "N/A") },
+    ]);
+    writeWrapped(doc, "Status meaning: READY=gate passed, WARNING=partial coverage, BLOCKED=release blockers present.", 8);
+    for (const blocker of (enterprise?.blockers || []).slice(0, 10)) {
+      writeWrapped(doc, `- ${blocker}`, 8);
+    }
   }
 
   writePdfSectionHeader(doc, "Data Quality");
@@ -942,10 +1146,8 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     { key: "Taxonomy Gaps", value: String(dataQuality.unknown_taxonomy_count ?? 0) },
   ]);
 
-  writePdfSectionHeader(doc, "Analyzer Runtime Breakdown");
-  if (!timingSummary.visible.length) {
-    writeWrapped(doc, "No successful analyzer timing data was recorded in this scan.", 9);
-  } else {
+  if (hasTimingData) {
+    writePdfSectionHeader(doc, "Analyzer Runtime Breakdown");
     const totalDuration = timingSummary.totalDuration;
     const averageDuration = Math.round(timingSummary.averageDuration);
     writeWrapped(
@@ -968,81 +1170,71 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     }
   }
 
-  writePdfSectionHeader(doc, "CTO / Board View");
-  writeWrapped(
-    doc,
-    `Business Risk Exposure: ${Number(ctoBoard.business_risk_exposure_score || report.summary.risk_score || 0).toFixed(2)} / 100`,
-    9,
-  );
-  const trendMeta = (ctoBoard.trend as Record<string, unknown>) || {};
-  const trendText =
-    trendMeta.available === false
-      ? "Unavailable (no prior scan in report chain)"
-      : `${String(trendMeta.direction || "stable")} (delta=${String(trendMeta.delta_points || 0)})`;
-  writeWrapped(doc, `Trend: ${trendText}`, 9);
-  const financial = (ctoBoard.financial_exposure_usd as Record<string, unknown>) || {};
-  writeWrapped(
-    doc,
-    `Financial Exposure USD (best/likely/worst): ${Number(financial.best_case_usd || 0)} / ${Number(financial.most_likely_usd || 0)} / ${Number(financial.worst_case_usd || 0)}`,
-    8,
-  );
-  const downtime = (ctoBoard.downtime_estimate as Record<string, unknown>) || {};
-  writeWrapped(
-    doc,
-    `Downtime estimate hours (best/likely/worst): ${Number(downtime.best_case_hours || 0)} / ${Number(downtime.most_likely_hours || 0)} / ${Number(downtime.worst_case_hours || 0)}`,
-    8,
-  );
-  const urgentRisks = Array.isArray(ctoBoard.top_5_urgent_risks) ? ctoBoard.top_5_urgent_risks : [];
-  for (const item of urgentRisks.slice(0, 5)) {
-    const row = item as Record<string, unknown>;
+  if (hasCtoData) {
+    writePdfSectionHeader(doc, "CTO / Board View");
     writeWrapped(
       doc,
-      `- ${String(row.title || row.vulnerability_title || "Risk")} [${String(row.severity || "N/A")}] priority=${String(row.priority_score || "N/A")}`,
-      8,
+      `Business Risk Exposure: ${Number(ctoBoard.business_risk_exposure_score || report.summary.risk_score || 0).toFixed(2)} / 100`,
+      9,
     );
-  }
-  const aiSolutionEngine = (advanced.ai_solution_engine as Record<string, unknown>) || {};
-  const fixWindowPlan =
-    Object.keys((advanced.what_should_i_fix_first_ai as Record<string, unknown>) || {}).length > 0
-      ? ((advanced.what_should_i_fix_first_ai as Record<string, unknown>) || {})
-      : buildFallbackFixWindowPlan(findings);
-  writePdfSectionHeader(doc, "AI Solution Engine");
-  writeWrapped(
-    doc,
-    String(
-      aiSolutionEngine.description || "Evidence-driven local remediation engine using finding context, code location, and validation evidence.",
-    ),
-    8,
-  );
-  writeWrapped(
-    doc,
-    `Mode=${String(aiSolutionEngine.mode || "contextual-remediation")} | Provider=${String(aiSolutionEngine.provider || "local-evidence-driven")} | Model=${String(aiSolutionEngine.model || "N/A")} | Status=${String(aiSolutionEngine.status || "ready")} | Grounded=${aiSolutionEngine.grounded_generation === false ? "No" : "Yes"} | Prioritization=${String(aiSolutionEngine.prioritization_status || "deterministic")}`,
-    8,
-  );
-  writeWrapped(doc, "What Should I Fix First (AI):", 8);
-  for (const [window, values] of Object.entries(fixWindowPlan).slice(0, 3)) {
-    writeWrapped(doc, `- ${String(window).replaceAll("_", " ")}`, 8);
-    if (!Array.isArray(values) || values.length === 0) {
-      writeWrapped(doc, "  * No prioritized fixes for this window.", 8);
-      continue;
+    const trendMeta = (ctoBoard.trend as Record<string, unknown>) || {};
+    const trendText =
+      trendMeta.available === false
+        ? "Unavailable (no prior scan in report chain)"
+        : `${String(trendMeta.direction || "stable")} (delta=${String(trendMeta.delta_points || 0)})`;
+    writeWrapped(doc, `Trend: ${trendText}`, 9);
+    if (ctoFinancialText !== "N/A") {
+      writeWrapped(doc, `Financial Exposure USD (best/likely/worst): ${ctoFinancialText}`, 8);
     }
-    for (const rawEntry of values.slice(0, 3)) {
-      if (!rawEntry || typeof rawEntry !== "object") {
-        continue;
-      }
-      const entry = rawEntry as Record<string, unknown>;
+    if (ctoDowntimeText !== "N/A") {
+      writeWrapped(doc, `Downtime estimate hours (best/likely/worst): ${ctoDowntimeText}`, 8);
+    }
+    for (const item of urgentRisks.slice(0, 5)) {
+      const row = item as Record<string, unknown>;
       writeWrapped(
         doc,
-        `  * ${String(entry.title || "Issue")} [${String(entry.severity || "Info")}] ${String(entry.file_path || "unknown")}:${Number(entry.line_number || 1)} | priority=${Number(entry.priority_score || 0).toFixed(2)} | fix_confidence=${String(entry.fix_confidence_label || "Medium")} (${Number(entry.fix_confidence_score || 0).toFixed(2)})`,
+        `- ${String(row.title || row.vulnerability_title || "Risk")} [${String(row.severity || "N/A")}] priority=${String(row.priority_score || "N/A")}`,
         8,
       );
     }
   }
 
-  writePdfSectionHeader(doc, "Tool Command Evidence (Authenticity)");
-  if (!executionEvidence.length) {
-    writeWrapped(doc, "No execution evidence captured for this scan/tool set.", 9);
-  } else {
+  if (hasAdvancedData) {
+    writePdfSectionHeader(doc, "AI Solution Engine");
+    writeWrapped(
+      doc,
+      String(
+        aiSolutionEngine.description || "Evidence-driven local remediation engine using finding context, code location, and validation evidence.",
+      ),
+      8,
+    );
+    writeWrapped(
+      doc,
+      `Mode=${String(aiSolutionEngine.mode || "contextual-remediation")} | Provider=${String(aiSolutionEngine.provider || "local-evidence-driven")} | Model=${String(aiSolutionEngine.model || "N/A")} | Status=${String(aiSolutionEngine.status || "ready")} | Grounded=${aiSolutionEngine.grounded_generation === false ? "No" : "Yes"} | Prioritization=${String(aiSolutionEngine.prioritization_status || "deterministic")}`,
+      8,
+    );
+    writeWrapped(doc, "What Should I Fix First (AI):", 8);
+    for (const [window, values] of Object.entries(fixWindowPlan).slice(0, 3)) {
+      writeWrapped(doc, `- ${String(window).replaceAll("_", " ")}`, 8);
+      if (!Array.isArray(values) || values.length === 0) {
+        continue;
+      }
+      for (const rawEntry of values.slice(0, 3)) {
+        if (!rawEntry || typeof rawEntry !== "object") {
+          continue;
+        }
+        const entry = rawEntry as Record<string, unknown>;
+        writeWrapped(
+          doc,
+          `  * ${String(entry.title || "Issue")} [${String(entry.severity || "Info")}] ${String(entry.file_path || "unknown")}:${Number(entry.line_number || 1)} | priority=${Number(entry.priority_score || 0).toFixed(2)} | fix_confidence=${String(entry.fix_confidence_label || "Medium")} (${Number(entry.fix_confidence_score || 0).toFixed(2)})`,
+          8,
+        );
+      }
+    }
+  }
+
+  if (hasToolEvidenceData) {
+    writePdfSectionHeader(doc, "Tool Command Evidence (Authenticity)");
     for (const row of executionEvidence.slice(0, 18)) {
       writeWrapped(
         doc,
@@ -1060,10 +1252,8 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     }
   }
 
-  writePdfSectionHeader(doc, "Deterministic Evidence Replay Pack");
-  if (!hasReplaySummaryData(deterministicReplay)) {
-    writeWrapped(doc, "No deterministic replay metadata was captured for this scan.", 9);
-  } else {
+  if (hasReplayData) {
+    writePdfSectionHeader(doc, "Deterministic Evidence Replay Pack");
     const replayData = deterministicReplay as NonNullable<typeof deterministicReplay>;
     writePdfKeyValueTable(doc, [
       { key: "Mode", value: String(replayData.mode || "deterministic-evidence-replay") },
@@ -1082,10 +1272,8 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     ]);
   }
 
-  writePdfSectionHeader(doc, "Tamper-Evident Report Chain");
-  if (!hasIntegrityChainData(reportIntegrity)) {
-    writeWrapped(doc, "No report integrity chain metadata was captured for this scan.", 9);
-  } else {
+  if (hasIntegrityData) {
+    writePdfSectionHeader(doc, "Tamper-Evident Report Chain");
     const integrityData = reportIntegrity as NonNullable<typeof reportIntegrity>;
     writePdfKeyValueTable(doc, [
       { key: "Chain Version", value: String(integrityData.chain_version || "1.0") },
@@ -1099,17 +1287,18 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     ]);
   }
 
-  if (authAbuse) {
+  if (hasAuthAbuseData) {
+    const authAbuseData = authAbuse as NonNullable<typeof authAbuse>;
     writePdfSectionHeader(doc, "Auth Abuse & Session Security");
     writeWrapped(
       doc,
-      `Total=${Number(authAbuse.total_findings || 0)} | Critical=${Number(authAbuse.severity_distribution?.Critical || 0)} | High=${Number(authAbuse.severity_distribution?.High || 0)}`,
+      `Total=${Number(authAbuseData.total_findings || 0)} | Critical=${Number(authAbuseData.severity_distribution?.Critical || 0)} | High=${Number(authAbuseData.severity_distribution?.High || 0)}`,
       9,
     );
-    for (const item of (authAbuse.top_vulnerability_types || []).slice(0, 8)) {
+    for (const item of (authAbuseData.top_vulnerability_types || []).slice(0, 8)) {
       writeWrapped(doc, `- ${item.type}: ${item.count}`, 8);
     }
-    for (const item of (authAbuse.issue_file_mapping || []).slice(0, 10)) {
+    for (const item of (authAbuseData.issue_file_mapping || []).slice(0, 10)) {
       writeWrapped(
         doc,
         `- ${String(item.issue_type || "Issue")} -> ${String(item.file || "unknown")} (${Number(item.count || 0)} total, ${Number(item.critical || 0)} critical, ${Number(item.high || 0)} high)`,
@@ -1118,10 +1307,8 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     }
   }
 
-  writePdfSectionHeader(doc, "False Positive Review");
-  if (!hasFalsePositiveData) {
-    writeWrapped(doc, "No false-positive candidates were identified for this scan.", 9);
-  } else {
+  if (hasFalsePositiveData) {
+    writePdfSectionHeader(doc, "False Positive Review");
     writeWrapped(
       doc,
       `Policy: ${String((falsePositiveReport as Record<string, unknown>).policy_note || "No policy note available.")}`,
@@ -1258,7 +1445,7 @@ function writeFixesPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
 
   writePdfHero(doc, "CodeSentinelX Original and Suggested Fix Report", [
     `Target: ${report.target_path}`,
-    `Generated: ${report.generated_at}`,
+    `Generated: ${formatDisplayTimestamp(report.generated_at)}`,
     `Total Findings: ${report.summary.total_findings}`,
   ]);
   const fixVerificationSummary = normalizedFixVerificationSummary(report.summary.fix_verification, findings);
@@ -1499,7 +1686,7 @@ function writeFindingDetailsPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
   const report = scan.report.vulnerability_fixed_code_report;
   writePdfHero(doc, "CodeSentinelX Finding Details Report", [
     `Target: ${report.target_path}`,
-    `Generated: ${report.generated_at}`,
+    `Generated: ${formatDisplayTimestamp(report.generated_at)}`,
     `Total Findings: ${findings.length}`,
   ]);
   writePdfSectionHeader(doc, "Finding Details");
@@ -1520,45 +1707,46 @@ function writeFindingDetailsPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
 function drawPdfReportBackdrop(doc: PDFKit.PDFDocument): void {
   const pageWidth = doc.page.width;
   const pageHeight = doc.page.height;
-  const globeSize = Math.min(pageWidth * 1.02, 470);
-  const globeX = pageWidth - globeSize * 0.42;
-  const globeY = -10;
+  const globeSize = Math.min(pageWidth * 1.08, 505);
+  const globeX = pageWidth - globeSize * 0.34;
+  const globeY = -8;
 
   doc.save();
-  doc.fillColor("#edf4fb").rect(0, 0, pageWidth, pageHeight).fill();
-  doc.opacity(0.35).fillColor("#f8fbff").rect(0, 0, pageWidth, pageHeight * 0.22).fill();
+  doc.fillColor("#06111d").rect(0, 0, pageWidth, pageHeight).fill();
+  doc.opacity(0.14).fillColor("#0a1c31").rect(0, 0, pageWidth, pageHeight * 0.32).fill();
+  doc.opacity(0.08).fillColor("#12304c").rect(0, pageHeight * 0.68, pageWidth, pageHeight * 0.32).fill();
   doc.restore();
 
   doc.save();
   doc.circle(globeX, globeY + globeSize / 2, globeSize / 2).clip();
-  doc.opacity(0.2);
+  doc.opacity(0.34);
   if (REPORT_GLOBE_TEXTURE_PATH) {
     doc.image(REPORT_GLOBE_TEXTURE_PATH, globeX - globeSize / 2, globeY, {
       width: globeSize,
       height: globeSize,
     });
   } else {
-    doc.fillColor("#dbe7f3").circle(globeX, globeY + globeSize / 2, globeSize / 2).fill();
+    doc.fillColor("#11253d").circle(globeX, globeY + globeSize / 2, globeSize / 2).fill();
   }
   doc.restore();
 
   doc.save();
-  doc.opacity(0.26);
+  doc.opacity(0.32);
   doc.lineWidth(1);
-  doc.strokeColor("#c5d9ee").circle(globeX, globeY + globeSize / 2, globeSize / 2).stroke();
-  doc.opacity(0.16);
-  doc.strokeColor("#7dcfff").circle(globeX, globeY + globeSize / 2, globeSize / 2 + 10).stroke();
+  doc.strokeColor("#2f567a").circle(globeX, globeY + globeSize / 2, globeSize / 2).stroke();
+  doc.opacity(0.2);
+  doc.strokeColor("#5dc9ff").circle(globeX, globeY + globeSize / 2, globeSize / 2 + 10).stroke();
   doc.restore();
 
   doc.save();
-  doc.opacity(0.12);
-  doc.strokeColor("#7dcfff").lineWidth(0.8);
+  doc.opacity(0.14);
+  doc.strokeColor("#5dc9ff").lineWidth(0.8);
   doc.moveTo(globeX - globeSize * 0.42, globeY + globeSize * 0.48)
     .lineTo(globeX + globeSize * 0.42, globeY + globeSize * 0.48)
     .stroke();
   doc.restore();
 
-  doc.fillColor("#0f1720");
+  doc.fillColor("#dce9f7");
 }
 
 function writeWrapped(doc: PDFKit.PDFDocument, text: string, fontSize: number): void {
@@ -1581,16 +1769,16 @@ function writePdfHero(doc: PDFKit.PDFDocument, title: string, meta: string[]): v
   const height = 62 + meta.length * 15;
   ensurePdfSpace(doc, height + 8);
   doc.save();
-  doc.fillOpacity(0.64);
-  doc.roundedRect(x, y, width, height, 10).fillAndStroke("#f8fbff", "#bfd4e7");
+  doc.fillOpacity(0.72);
+  doc.roundedRect(x, y, width, height, 12).fillAndStroke("#0b1b2d", "#27496c");
   doc.fillOpacity(1);
-  doc.fillColor("#12304c").font("Helvetica-Bold").fontSize(19).text(title, x + 16, y + 12, { width: width - 32 });
-  doc.font("Helvetica").fontSize(9.5).fillColor("#5d7286");
+  doc.fillColor("#f5fbff").font("Helvetica-Bold").fontSize(19).text(title, x + 16, y + 12, { width: width - 32 });
+  doc.font("Helvetica").fontSize(9.5).fillColor("#9eb6ce");
   meta.forEach((line, index) => {
     doc.text(line, x + 16, y + 38 + index * 13, { width: width - 32 });
   });
   doc.restore();
-  doc.fillColor("#0f1720");
+  doc.fillColor("#dce9f7");
   doc.y = y + height + 10;
 }
 
@@ -1598,11 +1786,11 @@ function writePdfSectionHeader(doc: PDFKit.PDFDocument, title: string): void {
   ensurePdfSpace(doc, 26);
   const x = doc.page.margins.left;
   const width = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-  doc.font("Helvetica-Bold").fontSize(13).fillColor("#12304c").text(title, x, doc.y);
+  doc.font("Helvetica-Bold").fontSize(13).fillColor("#f5fbff").text(title, x, doc.y);
   const lineY = doc.y + 4;
-  doc.moveTo(x, lineY).lineTo(x + width, lineY).strokeColor("#b8c7d8").lineWidth(0.7).stroke();
+  doc.moveTo(x, lineY).lineTo(x + width, lineY).strokeColor("#2d5376").lineWidth(0.7).stroke();
   doc.moveDown(0.55);
-  doc.fillColor("#0f1720").font("Helvetica");
+  doc.fillColor("#dce9f7").font("Helvetica");
 }
 
 function writePdfKeyValueTable(
@@ -1626,33 +1814,33 @@ function writePdfKeyValueTable(
   let cursorY = doc.y;
   const startY = cursorY;
   doc.save();
-  doc.fillOpacity(0.58);
-  doc.roundedRect(x, cursorY, width, totalRows * rowHeight, 8).fillAndStroke("#f9fcff", "#c5d8e8");
+  doc.fillOpacity(0.74);
+  doc.roundedRect(x, cursorY, width, totalRows * rowHeight, 8).fillAndStroke("#0b1b2d", "#27496c");
   doc.fillOpacity(1);
   doc
-    .fillColor("#35506a")
+    .fillColor("#c8dbef")
     .font("Helvetica-Bold")
     .fontSize(8.5)
     .text("Metric", x + 10, cursorY + 6, { width: keyWidth - 16, ellipsis: true })
     .text("Value", x + keyWidth + 10, cursorY + 6, { width: valueWidth - 16, ellipsis: true });
   cursorY += rowHeight;
-  doc.moveTo(x + keyWidth, startY).lineTo(x + keyWidth, startY + totalRows * rowHeight).strokeColor("#cadbeb").lineWidth(0.8).stroke();
+  doc.moveTo(x + keyWidth, startY).lineTo(x + keyWidth, startY + totalRows * rowHeight).strokeColor("#264867").lineWidth(0.8).stroke();
   for (let i = 0; i < rows.length; i += 1) {
     const row = rows[i];
-    const shade = i % 2 === 0 ? "#f9fcff" : "#f1f7fc";
-    doc.rect(x, cursorY, width, rowHeight).fillAndStroke(shade, "#d9e5f0");
+    const shade = i % 2 === 0 ? "#0d2238" : "#102840";
+    doc.rect(x, cursorY, width, rowHeight).fillAndStroke(shade, "#1f3c5a");
     doc
-      .fillColor("#4f6477")
+      .fillColor("#9eb6ce")
       .font("Helvetica")
       .fontSize(8.5)
       .text(row.key, x + 10, cursorY + 6, { width: keyWidth - 16, ellipsis: true })
-      .fillColor("#10253f")
+      .fillColor("#f5fbff")
       .text(row.value, x + keyWidth + 10, cursorY + 6, { width: valueWidth - 16, ellipsis: true });
     cursorY += rowHeight;
   }
   doc.restore();
   doc.y = cursorY + 8;
-  doc.fillColor("#0f1720").font("Helvetica");
+  doc.fillColor("#dce9f7").font("Helvetica");
 }
 
 function writePdfMetricStrip(
@@ -1663,12 +1851,12 @@ function writePdfMetricStrip(
     return;
   }
   const colors: Record<string, string> = {
-    critical: "#f8dbe2",
-    high: "#f9e2d0",
-    medium: "#f8efc8",
-    low: "#d8e7f6",
-    info: "#d7f0e7",
-    accent: "#dcebfb",
+    critical: "#3b1020",
+    high: "#3b2411",
+    medium: "#3b3112",
+    low: "#112f47",
+    info: "#123327",
+    accent: "#103149",
   };
   const x = doc.page.margins.left;
   const width = doc.page.width - doc.page.margins.left - doc.page.margins.right;
@@ -1685,19 +1873,19 @@ function writePdfMetricStrip(
     const cardX = x + col * (cardWidth + gap);
     const cardY = startY + row * (rowHeight + gap);
     doc.save();
-    doc.fillOpacity(0.64);
-    doc.roundedRect(cardX, cardY, cardWidth, rowHeight, 8).fillAndStroke(colors[metric.tone || "accent"] || colors.accent, "#bed4e6");
+    doc.fillOpacity(0.82);
+    doc.roundedRect(cardX, cardY, cardWidth, rowHeight, 8).fillAndStroke(colors[metric.tone || "accent"] || colors.accent, "#254a69");
     doc.fillOpacity(1);
-    doc.fillColor("#587086").font("Helvetica").fontSize(7.5).text(metric.label.toUpperCase(), cardX + 10, cardY + 9, {
+    doc.fillColor("#95b7d6").font("Helvetica").fontSize(7.5).text(metric.label.toUpperCase(), cardX + 10, cardY + 9, {
       width: cardWidth - 16,
     });
-    doc.fillColor("#12304c").font("Helvetica-Bold").fontSize(15).text(metric.value, cardX + 10, cardY + 23, {
+    doc.fillColor("#f5fbff").font("Helvetica-Bold").fontSize(15).text(metric.value, cardX + 10, cardY + 23, {
       width: cardWidth - 16,
     });
     doc.restore();
   });
   doc.y = startY + rows * rowHeight + (rows - 1) * gap + 8;
-  doc.fillColor("#0f1720").font("Helvetica");
+  doc.fillColor("#dce9f7").font("Helvetica");
 }
 
 function renderExistingHtml(scan: ScanView): string {
@@ -1827,7 +2015,7 @@ function renderExistingHtml(scan: ScanView): string {
       <h1>CodeSentinelX Existing Security Implementation Report</h1>
       <div class="hero-meta">
         <div class="meta-pill"><strong>Target:</strong> ${escapeHtml(report.target_path)}</div>
-        <div class="meta-pill"><strong>Generated:</strong> ${escapeHtml(report.generated_at)}</div>
+        <div class="meta-pill"><strong>Generated:</strong> ${escapeHtml(formatDisplayTimestamp(report.generated_at))}</div>
         <div class="meta-pill"><strong>Profile:</strong> ${escapeHtml(profileCompliance?.scan_profile_label || "Codebase")}</div>
       </div>
       ${existingCards}
@@ -1948,13 +2136,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
     toolchain_execution?: ToolchainExecutionSummary;
   };
   const releaseGateDistribution: Record<string, number> = summaryExtras.release_gate_distribution || {};
-  const riskIntel = summaryExtras.risk_intelligence
-    ? {
-        findings_with_cve: Number(summaryExtras.risk_intelligence.findings_with_cve || 0),
-        findings_cvss_ge_7: Number(summaryExtras.risk_intelligence.findings_cvss_ge_7 || 0),
-        known_exploited_findings: Number(summaryExtras.risk_intelligence.known_exploited_findings || 0),
-      }
-    : null;
+  const riskIntel = resolveRiskIntelligence(summaryExtras, findings);
   const gitDiffTracking = summaryExtras.git_diff_tracking
     ? {
         enabled: Boolean(summaryExtras.git_diff_tracking.enabled),
@@ -1963,7 +2145,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
         findings_on_changed_lines: Number(summaryExtras.git_diff_tracking.findings_on_changed_lines || 0),
       }
     : null;
-  const authAbuse = summaryExtras.auth_abuse_session_security || null;
+  const authAbuse = resolveAuthAbuse(summaryExtras, findings);
   const deterministicReplay =
     summaryExtras.deterministic_replay ||
     (report as VulnerabilityFixedCodeReport & { deterministic_replay?: NonNullable<typeof summaryExtras.deterministic_replay> }).deterministic_replay ||
@@ -1974,13 +2156,13 @@ function renderVulnerabilityHtml(scan: ScanView): string {
     (report as VulnerabilityFixedCodeReport & { report_integrity_chain?: NonNullable<typeof summaryExtras.report_integrity_chain> }).report_integrity_chain ||
     scan.report.executive_summary.report_integrity_chain ||
     null;
-  const toolchainExecution = summaryExtras.toolchain_execution || scan.report.executive_summary.toolchain_execution || null;
+  const toolchainExecution = resolveToolchainExecution(scan, report.summary);
   const dataQualityRaw = summaryExtras.data_quality || scan.report.executive_summary.data_quality || null;
   const dataQuality =
     dataQualityRaw && Object.keys(dataQualityRaw).length > 0
       ? dataQualityRaw
       : deriveDataQuality(report.summary, scan.report.executive_summary, findings, toolchainExecution);
-  const enterprise = summaryExtras.enterprise_assurance || scan.report.executive_summary.enterprise_assurance || null;
+  const enterprise = resolveEnterpriseAssurance(scan, report.summary);
   const dataQualityRows = dataQuality
     ? `
       <tr><td>Raw Findings</td><td>${Number(dataQuality.raw_findings || 0)}</td></tr>
@@ -1997,11 +2179,12 @@ function renderVulnerabilityHtml(scan: ScanView): string {
     : `<tr><td colspan="2" class="muted">No data quality metrics available.</td></tr>`;
   const executionEvidence = collectExecutionEvidenceRows(report.toolchain_status || {}).slice(0, EXEC_LIMIT);
   const roleAware = report.role_aware_report || scan.report.role_aware_report || {};
-  const ctoBoard = (roleAware.cto_board_view as Record<string, unknown>) || {};
-  const cisoView = (roleAware.ciso_security_view as Record<string, unknown>) || {};
-  const devView = (roleAware.developer_devops_view as Record<string, unknown>) || {};
-  const riskStory = (roleAware.risk_story_mode as Record<string, unknown>) || {};
-  const advanced = (roleAware.advanced_features as Record<string, unknown>) || {};
+  const roleAwareRecord = roleAware as unknown as Record<string, unknown>;
+  const ctoBoard = resolveCtoBoardView(roleAwareRecord, findings, report.summary, riskIntel);
+  const cisoView = resolveCisoSecurityView(roleAwareRecord, findings);
+  const devView = resolveDeveloperDevopsView(roleAwareRecord, findings);
+  const riskStory = resolveRiskStoryMode(roleAwareRecord, findings);
+  const advanced = resolveAdvancedFeatures(roleAwareRecord, findings, enterprise, dataQuality);
   const falsePositiveReport =
     report.false_positive_report ||
     scan.report.false_positive_report ||
@@ -2264,13 +2447,38 @@ function renderVulnerabilityHtml(scan: ScanView): string {
     })
     .join("");
   const riskStoryOutcomeRows = objectSummaryRows(riskStory.likely_outcome);
-  const maturityRows = objectSummaryRows((advanced.security_maturity_scoring as Record<string, unknown>) || {});
+  const maturityMetrics = (advanced.security_maturity_scoring as Record<string, unknown>) || {};
+  const maturityRows = objectSummaryRows(maturityMetrics);
   const aiSolutionEngine = (advanced.ai_solution_engine as Record<string, unknown>) || {};
   const findingByUid = new Map(findings.map((finding) => [String(finding.finding_uid || ""), finding]));
   const fixWindowPlanSource =
     Object.keys((advanced.what_should_i_fix_first_ai as Record<string, unknown>) || {}).length > 0
       ? ((advanced.what_should_i_fix_first_ai as Record<string, unknown>) || {})
       : buildFallbackFixWindowPlan(findings);
+  const hasMeaningfulFixPlan = Object.values(fixWindowPlanSource).some((value) => {
+    if (!Array.isArray(value) || value.length === 0) {
+      return false;
+    }
+    return value.some((entry) => {
+      if (typeof entry === "string") {
+        const finding = findingByUid.get(entry);
+        if (!finding) {
+          return false;
+        }
+        const title = normalizedFindingTitle(finding).trim().toLowerCase();
+        return Boolean(String(finding.file_path || "").trim()) && !["", "issue", "unknown", "n/a", "unclassified security finding"].includes(title);
+      }
+      if (!entry || typeof entry !== "object") {
+        return false;
+      }
+      const raw = entry as Record<string, unknown>;
+      const title = String(raw.title || "").trim().toLowerCase();
+      const severity = String(raw.severity || "Info");
+      const filePath = String(raw.file_path || "").trim();
+      const priorityScore = Number(raw.priority_score || 0);
+      return Boolean(filePath) && !["", "issue", "unknown", "n/a", "unclassified security finding"].includes(title) && (priorityScore > 0 || ["Critical", "High", "Medium"].includes(severity));
+    });
+  });
   const fixFirstRows = Object.entries(fixWindowPlanSource)
     .map(([window, value]) => {
       return `<tr><td>${escapeHtml(window.replaceAll("_", " "))}</td><td>${renderFixWindowValue(value, findingByUid)}</td></tr>`;
@@ -2364,11 +2572,42 @@ function renderVulnerabilityHtml(scan: ScanView): string {
     },
     {
       label: "Known Exploited",
-      value: riskIntel ? riskIntel.known_exploited_findings : "N/A",
+      value: riskIntel.known_exploited_findings,
       tone: "info",
       sub: "CISA KEV-backed findings",
     },
   ]);
+  const hasEnterpriseData = Boolean(
+    enterprise &&
+      (Number(enterprise.required_tools_total || 0) > 0 ||
+        Number(enterprise.readiness_score || 0) > 0 ||
+        Boolean((enterprise.blockers || []).length) ||
+        Number(toolchainExecution?.attempted_tools || 0) > 0),
+  );
+  const hasCtoData = Boolean(
+    ctoUrgentRows ||
+      aiSummaryRows ||
+      financialText !== "N/A" ||
+      downtimeText !== "N/A",
+  );
+  const hasCisoData = Boolean(cisoRows);
+  const hasDevData = Boolean(devRows);
+  const riskStoryTitle = String(riskStory.scenario_title || "").trim();
+  const riskStoryNarrative = String(riskStory.narrative || "").trim();
+  const hasRiskStoryData = Boolean(
+    riskStoryTitle ||
+      (riskStoryNarrative &&
+        !["no chained attack story generated.", "n/a"].includes(riskStoryNarrative.toLowerCase())) ||
+      riskStoryOutcomeRows,
+  );
+  const hasMaturityData = Object.values(maturityMetrics).some((value) => Number(value) > 0);
+  const hasAdvancedData = Boolean(hasMaturityData || hasMeaningfulFixPlan);
+  const hasFalsePositiveData = Boolean(fpRows);
+  const hasToolEvidenceData = Boolean(evidenceRows);
+  const hasReplayData = hasReplaySummaryData(deterministicReplay);
+  const hasIntegrityData = hasIntegrityChainData(reportIntegrity);
+  const hasAuthAbuseData = hasMeaningfulAuthAbuse(authAbuse);
+  const hasTimingData = Boolean(timingRows);
   const hasRiskIntelData = Boolean(
     (hasRiskIntel && riskIntel && (riskIntel.findings_with_cve || riskIntel.findings_cvss_ge_7 || riskIntel.known_exploited_findings)) ||
       hasReleaseGate ||
@@ -2533,7 +2772,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
     <h1>CodeSentinelX Vulnerability Dashboard</h1>
     <div class="hero-meta">
       <div class="meta-pill"><strong>Target:</strong> ${escapeHtml(report.target_path)}</div>
-      <div class="meta-pill"><strong>Generated:</strong> ${escapeHtml(report.generated_at)}</div>
+      <div class="meta-pill"><strong>Generated:</strong> ${escapeHtml(formatDisplayTimestamp(report.generated_at))}</div>
       <div class="meta-pill"><strong>Risk Score:</strong> ${report.summary.risk_score} (${escapeHtml(report.summary.risk_rating)})</div>
       <div class="meta-pill"><strong>Preset:</strong> ${escapeHtml(String(scan.report.executive_summary.scan_preset_label || scan.report.executive_summary.scan_preset || "Standard"))}</div>
     </div>
@@ -2583,7 +2822,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
 
   ${riskIntelSection}
 
-  <section class="panel">
+  ${hasEnterpriseData ? `<section class="panel">
     <h2>Enterprise Assurance</h2>
     <p class="muted">Status meaning: READY=release criteria met, WARNING=partial readiness, BLOCKED=release gate not satisfied.</p>
     <div class="table-scroll">
@@ -2603,7 +2842,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
     </div>
     <h3>Enterprise Blockers</h3>
     <ul>${enterpriseBlockers || "<li class='muted'>No enterprise blockers detected.</li>"}</ul>
-  </section>
+  </section>` : ""}
 
   <section class="panel">
     <h2>Data Quality</h2>
@@ -2615,7 +2854,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
     </div>
   </section>
 
-  <section class="panel">
+  ${hasCtoData ? `<section class="panel">
     <h2>CTO / Board View</h2>
     <div class="table-scroll">
       <table class="summary">
@@ -2637,9 +2876,9 @@ function renderVulnerabilityHtml(scan: ScanView): string {
     </div>
     <h3>AI Executive Summary</h3>
     <ul>${aiSummaryRows || "<li class='muted'>No AI summary bullets available.</li>"}</ul>
-  </section>
+  </section>` : ""}
 
-  <section class="panel">
+  ${hasCisoData ? `<section class="panel">
     <h2>CISO / Security Team View</h2>
     <p class="muted"><strong>Attack Chain:</strong> ${escapeHtml(String(cisoView.attack_chain_example || "External attacker -> service/API -> lateral movement -> critical asset impact"))}</p>
     <div class="table-scroll">
@@ -2648,9 +2887,9 @@ function renderVulnerabilityHtml(scan: ScanView): string {
         <tbody>${cisoRows || "<tr><td colspan='9' class='muted'>No CISO operational rows available.</td></tr>"}</tbody>
       </table>
     </div>
-  </section>
+  </section>` : ""}
 
-  <section class="panel">
+  ${hasDevData ? `<section class="panel">
     <h2>Developer / DevOps View</h2>
     <div class="table-scroll">
       <table>
@@ -2658,9 +2897,9 @@ function renderVulnerabilityHtml(scan: ScanView): string {
         <tbody>${devRows || "<tr><td colspan='6' class='muted'>No tactical remediation rows available.</td></tr>"}</tbody>
       </table>
     </div>
-  </section>
+  </section>` : ""}
 
-  <section class="panel">
+  ${hasRiskStoryData ? `<section class="panel">
     <h2>Risk Story Mode</h2>
     <p><strong>Scenario:</strong> ${escapeHtml(String(riskStory.scenario_title || "N/A"))}</p>
     <p>${escapeHtml(String(riskStory.narrative || "No chained attack story generated."))}</p>
@@ -2670,9 +2909,9 @@ function renderVulnerabilityHtml(scan: ScanView): string {
         <tbody>${riskStoryOutcomeRows || "<tr><td colspan='2' class='muted'>No modeled outcomes.</td></tr>"}</tbody>
       </table>
     </div>
-  </section>
+  </section>` : ""}
 
-  <section class="panel">
+  ${hasAdvancedData ? `<section class="panel">
     <h2>Advanced Features</h2>
     <h3>Security Maturity Scoring</h3>
     <div class="table-scroll">
@@ -2691,17 +2930,17 @@ function renderVulnerabilityHtml(scan: ScanView): string {
         <tbody>${fixFirstRows || "<tr><td colspan='2' class='muted'>No prioritized fix windows.</td></tr>"}</tbody>
       </table>
     </div>
-  </section>
+  </section>` : ""}
 
-  ${falsePositiveSection}
+  ${hasFalsePositiveData ? falsePositiveSection : ""}
 
-  ${toolEvidenceSection}
+  ${hasToolEvidenceData ? toolEvidenceSection : ""}
 
-  ${replaySectionHtml}
+  ${hasReplayData ? replaySectionHtml : ""}
 
-  ${integritySectionHtml}
+  ${hasIntegrityData ? integritySectionHtml : ""}
 
-  <section class="panel">
+  ${hasTimingData ? `<section class="panel">
     <h2>Analyzer Runtime Breakdown</h2>
     <p class="muted">Deterministic per-analyzer timings captured from this scan execution.</p>
     <div class="table-scroll">
@@ -2731,9 +2970,9 @@ function renderVulnerabilityHtml(scan: ScanView): string {
         <tbody>${timingRows || "<tr><td colspan='7' class='muted'>No successful analyzer timing data available for this scan.</td></tr>"}</tbody>
       </table>
     </div>
-  </section>
+  </section>` : ""}
 
-  <section class="panel">
+  ${hasAuthAbuseData ? `<section class="panel">
     <h2>Auth Abuse &amp; Session Security</h2>
     <p class="muted">Leadership view for auth/session-risk findings (BOLA/BOPLA, brute force, session handling, token/cookie issues).</p>
     <div class="table-scroll">
@@ -2774,7 +3013,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
         <tbody>${authIssueMappingRows || "<tr><td colspan='6' class='muted'>No auth/session issue mapping available.</td></tr>"}</tbody>
       </table>
     </div>
-  </section>
+  </section>` : ""}
 
   <section class="panel">
     <h2>Affected Modules</h2>
@@ -3361,7 +3600,7 @@ function renderFixesHtml(scan: ScanView): string {
       <h1>CodeSentinelX Original and Suggested Fix Report</h1>
       <div class="hero-meta">
         <div class="meta-pill"><strong>Target:</strong> ${escapeHtml(report.target_path)}</div>
-        <div class="meta-pill"><strong>Generated:</strong> ${escapeHtml(report.generated_at)}</div>
+        <div class="meta-pill"><strong>Generated:</strong> ${escapeHtml(formatDisplayTimestamp(report.generated_at))}</div>
         <div class="meta-pill"><strong>Enterprise Status:</strong> ${escapeHtml(String(enterprise?.status || "blocked").toUpperCase())}</div>
       </div>
       ${fixesCards}
@@ -3535,7 +3774,7 @@ function renderFindingDetailsHtml(scan: ScanView): string {
     <section class="hero">
       <h1>CodeSentinelX Finding Details Report</h1>
       <p class="meta"><strong>Target:</strong> ${escapeHtml(report.target_path)}</p>
-      <p class="meta"><strong>Generated:</strong> ${escapeHtml(report.generated_at)}</p>
+      <p class="meta"><strong>Generated:</strong> ${escapeHtml(formatDisplayTimestamp(report.generated_at))}</p>
       <p class="meta"><strong>Total Findings:</strong> ${findings.length}</p>
     </section>
     <section class="section">
@@ -3830,7 +4069,7 @@ function collectExecutionEvidenceRows(
           : exitCodeRaw === 0
             ? "success"
             : "failed";
-      if (effectiveStatus !== "success") {
+      if (["skipped", "skipped_irrelevant", "unavailable", "no_runner", "unknown"].includes(effectiveStatus)) {
         continue;
       }
       rows.push({
@@ -4242,7 +4481,13 @@ function hasRiskIntelligenceData(
   releaseGateDistribution: Record<string, number> | null | undefined,
 ): boolean {
   if (riskIntel) {
-    return true;
+    if (
+      Number(riskIntel.findings_with_cve || 0) > 0 ||
+      Number(riskIntel.findings_cvss_ge_7 || 0) > 0 ||
+      Number(riskIntel.known_exploited_findings || 0) > 0
+    ) {
+      return true;
+    }
   }
   if (!releaseGateDistribution) {
     return false;
@@ -4259,6 +4504,440 @@ function hasFalsePositiveCandidates(falsePositiveReport: unknown): boolean {
     ? (candidateSource as Array<unknown>)
     : [];
   return candidates.length > 0;
+}
+
+function deriveRiskIntelligenceFromFindings(findings: VulnerabilityFinding[]): {
+  findings_with_cve: number;
+  findings_cvss_ge_7: number;
+  known_exploited_findings: number;
+} {
+  let findingsWithCve = 0;
+  let findingsCvssGe7 = 0;
+  let knownExploitedFindings = 0;
+  for (const finding of findings) {
+    if (advisoryValues(finding).length > 0) {
+      findingsWithCve += 1;
+    }
+    if (Number(finding.cvss_score || 0) >= 7) {
+      findingsCvssGe7 += 1;
+    }
+    if (Boolean((finding as VulnerabilityFinding & { known_exploited?: boolean }).known_exploited)) {
+      knownExploitedFindings += 1;
+    }
+  }
+  return {
+    findings_with_cve: findingsWithCve,
+    findings_cvss_ge_7: findingsCvssGe7,
+    known_exploited_findings: knownExploitedFindings,
+  };
+}
+
+function deriveReleaseGateDistribution(findings: VulnerabilityFinding[]): Record<string, number> {
+  const counters: Record<string, number> = {};
+  for (const finding of findings) {
+    const gate = Number(finding.cvss_score || 0) >= 9
+      ? "Block release"
+      : finding.severity === "High"
+        ? "Fix before prod"
+        : finding.severity === "Medium"
+          ? "Scheduled fix"
+          : "Track";
+    counters[gate] = Number(counters[gate] || 0) + 1;
+  }
+  return counters;
+}
+
+function deriveAuthAbuseFromFindings(findings: VulnerabilityFinding[]):
+  | {
+      total_findings: number;
+      severity_distribution: Record<string, number>;
+      top_vulnerability_types: Array<{ type: string; count: number }>;
+      affected_modules: Array<{ module: string; count: number; critical: number; high: number }>;
+      affected_files: Array<{ file: string; folder: string; count: number; critical: number; high: number }>;
+      issue_file_mapping: Array<{ issue_type: string; file: string; folder: string; count: number; critical: number; high: number }>;
+    }
+  | null {
+  const scoped = findings.filter((finding) => {
+    const combined = [
+      normalizedFindingTitle(finding),
+      String(finding.owasp_mapping || ""),
+      String(finding.description || ""),
+    ]
+      .join(" ")
+      .toLowerCase();
+    return [
+      "auth",
+      "authorization",
+      "broken access",
+      "bola",
+      "bopla",
+      "permission",
+      "privilege",
+      "session",
+      "cookie",
+      "token",
+      "brute force",
+      "user enumeration",
+      "credential",
+      "account takeover",
+    ].some((token) => combined.includes(token));
+  });
+  if (!scoped.length) {
+    return null;
+  }
+  const severityDistribution: Record<string, number> = {};
+  const typeCounts = new Map<string, number>();
+  const fileCounts = new Map<string, { file: string; folder: string; count: number; critical: number; high: number }>();
+  const moduleCounts = new Map<string, { module: string; count: number; critical: number; high: number }>();
+  const mappingCounts = new Map<string, { issue_type: string; file: string; folder: string; count: number; critical: number; high: number }>();
+  for (const finding of scoped) {
+    severityDistribution[finding.severity] = Number(severityDistribution[finding.severity] || 0) + 1;
+    const title = normalizedFindingTitle(finding);
+    typeCounts.set(title, Number(typeCounts.get(title) || 0) + 1);
+    const file = normalizePath(finding.file_path);
+    const folder = folderFromPath(finding.file_path);
+    const fileKey = `${file}@@${folder}`;
+    const fileRow = fileCounts.get(fileKey) || { file, folder, count: 0, critical: 0, high: 0 };
+    fileRow.count += 1;
+    if (finding.severity === "Critical") fileRow.critical += 1;
+    if (finding.severity === "High") fileRow.high += 1;
+    fileCounts.set(fileKey, fileRow);
+    const module = moduleFromFinding(finding);
+    const moduleRow = moduleCounts.get(module) || { module, count: 0, critical: 0, high: 0 };
+    moduleRow.count += 1;
+    if (finding.severity === "Critical") moduleRow.critical += 1;
+    if (finding.severity === "High") moduleRow.high += 1;
+    moduleCounts.set(module, moduleRow);
+    const mapKey = `${title}@@${file}@@${folder}`;
+    const mappingRow = mappingCounts.get(mapKey) || { issue_type: title, file, folder, count: 0, critical: 0, high: 0 };
+    mappingRow.count += 1;
+    if (finding.severity === "Critical") mappingRow.critical += 1;
+    if (finding.severity === "High") mappingRow.high += 1;
+    mappingCounts.set(mapKey, mappingRow);
+  }
+  return {
+    total_findings: scoped.length,
+    severity_distribution: severityDistribution,
+    top_vulnerability_types: Array.from(typeCounts.entries())
+      .map(([type, count]) => ({ type, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10),
+    affected_modules: Array.from(moduleCounts.values()).sort((a, b) => b.count - a.count).slice(0, 15),
+    affected_files: Array.from(fileCounts.values()).sort((a, b) => b.count - a.count).slice(0, 20),
+    issue_file_mapping: Array.from(mappingCounts.values()).sort((a, b) => b.count - a.count).slice(0, 30),
+  };
+}
+
+function hasMeaningfulAuthAbuse(
+  authAbuse:
+    | {
+        total_findings?: number;
+        top_vulnerability_types?: Array<{ type: string; count: number }>;
+        affected_files?: Array<{ file: string; count: number; critical: number; high: number }>;
+        issue_file_mapping?: Array<{ issue_type: string; file: string; folder: string; count: number; critical: number; high: number }>;
+      }
+    | null
+    | undefined,
+): boolean {
+  if (!authAbuse) {
+    return false;
+  }
+  return (
+    Number(authAbuse.total_findings || 0) > 0 ||
+    Boolean(authAbuse.top_vulnerability_types?.length) ||
+    Boolean(authAbuse.affected_files?.length) ||
+    Boolean(authAbuse.issue_file_mapping?.length)
+  );
+}
+
+function severityPriorityWeight(severity: string): number {
+  switch (severity) {
+    case "Critical":
+      return 96;
+    case "High":
+      return 78;
+    case "Medium":
+      return 56;
+    case "Low":
+      return 34;
+    default:
+      return 16;
+  }
+}
+
+function deriveReleaseGateForFinding(finding: VulnerabilityFinding): string {
+  if (finding.release_gate_action) {
+    return String(finding.release_gate_action);
+  }
+  if (finding.severity === "Critical" || Number(finding.cvss_score || 0) >= 9) {
+    return "Block release";
+  }
+  if (finding.severity === "High") {
+    return "Fix before prod";
+  }
+  if (finding.severity === "Medium") {
+    return "Scheduled fix";
+  }
+  return "Track";
+}
+
+function deriveSlaHoursForFinding(finding: VulnerabilityFinding): number {
+  switch (finding.severity) {
+    case "Critical":
+      return 24;
+    case "High":
+      return 72;
+    case "Medium":
+      return 168;
+    case "Low":
+      return 336;
+    default:
+      return 720;
+  }
+}
+
+function deriveExploitabilityScore(finding: VulnerabilityFinding): number {
+  const cvssScore = Number(finding.cvss_score || 0);
+  const validated = String(finding.active_poc?.status || "").toLowerCase() === "verified";
+  const knownExploited = Boolean((finding as VulnerabilityFinding & { known_exploited?: boolean }).known_exploited);
+  const score = Math.min(
+    1,
+    (cvssScore / 10) * 0.58 +
+      severityPriorityWeight(finding.severity) / 180 +
+      (validated ? 0.22 : 0) +
+      (knownExploited ? 0.14 : 0),
+  );
+  return Math.max(0.05, Math.round(score * 100) / 100);
+}
+
+function deriveBusinessImpactScore(finding: VulnerabilityFinding): number {
+  const explicit = String(finding.business_impact || "").toLowerCase();
+  if (explicit.includes("critical") || explicit.includes("production outage")) {
+    return 0.95;
+  }
+  if (explicit.includes("high") || explicit.includes("service disruption") || explicit.includes("credential")) {
+    return 0.82;
+  }
+  if (explicit.includes("medium") || explicit.includes("degrade")) {
+    return 0.64;
+  }
+  return Math.max(0.2, Math.round((severityPriorityWeight(finding.severity) / 100) * 100) / 100);
+}
+
+function rankedFindings(findings: VulnerabilityFinding[], limit = findings.length): VulnerabilityFinding[] {
+  return [...findings]
+    .sort((left, right) => {
+      const leftPriority = Number((left as VulnerabilityFinding & { risk_priority_score?: number }).risk_priority_score || 0);
+      const rightPriority = Number((right as VulnerabilityFinding & { risk_priority_score?: number }).risk_priority_score || 0);
+      const leftScore = leftPriority || Number(left.cvss_score || 0) + severityPriorityWeight(left.severity) / 100;
+      const rightScore = rightPriority || Number(right.cvss_score || 0) + severityPriorityWeight(right.severity) / 100;
+      if (rightScore !== leftScore) {
+        return rightScore - leftScore;
+      }
+      return SEVERITY_ORDER.indexOf(left.severity) - SEVERITY_ORDER.indexOf(right.severity);
+    })
+    .slice(0, limit);
+}
+
+function resolveRiskIntelligence(
+  summary: VulnerabilityFixedCodeReport["summary"] & {
+    risk_intelligence?: { findings_with_cve?: number; findings_cvss_ge_7?: number; known_exploited_findings?: number };
+  },
+  findings: VulnerabilityFinding[],
+): { findings_with_cve: number; findings_cvss_ge_7: number; known_exploited_findings: number } {
+  const existing = summary.risk_intelligence;
+  if (existing) {
+    return {
+      findings_with_cve: Number(existing.findings_with_cve || 0),
+      findings_cvss_ge_7: Number(existing.findings_cvss_ge_7 || 0),
+      known_exploited_findings: Number(existing.known_exploited_findings || 0),
+    };
+  }
+  return deriveRiskIntelligenceFromFindings(findings);
+}
+
+function resolveAuthAbuse(
+  summary: VulnerabilityFixedCodeReport["summary"] & {
+    auth_abuse_session_security?: {
+      total_findings?: number;
+      severity_distribution?: Record<string, number>;
+      top_vulnerability_types?: Array<{ type: string; count: number }>;
+      affected_modules?: Array<{ module: string; count: number; critical: number; high: number }>;
+      affected_files?: Array<{ file: string; folder: string; count: number; critical: number; high: number }>;
+      issue_file_mapping?: Array<{ issue_type: string; file: string; folder: string; count: number; critical: number; high: number }>;
+    };
+  },
+  findings: VulnerabilityFinding[],
+): ReturnType<typeof deriveAuthAbuseFromFindings> {
+  const existing = summary.auth_abuse_session_security || null;
+  if (hasMeaningfulAuthAbuse(existing)) {
+    return {
+      total_findings: Number(existing?.total_findings || 0),
+      severity_distribution: existing?.severity_distribution || {},
+      top_vulnerability_types: existing?.top_vulnerability_types || [],
+      affected_modules: existing?.affected_modules || [],
+      affected_files: existing?.affected_files || [],
+      issue_file_mapping: existing?.issue_file_mapping || [],
+    };
+  }
+  return deriveAuthAbuseFromFindings(findings);
+}
+
+function resolveCtoBoardView(
+  roleAware: Record<string, unknown>,
+  findings: VulnerabilityFinding[],
+  summary: VulnerabilityFixedCodeReport["summary"],
+  riskIntel: { findings_with_cve: number; findings_cvss_ge_7: number; known_exploited_findings: number },
+): Record<string, unknown> {
+  const existing = (roleAware.cto_board_view as Record<string, unknown>) || {};
+  const urgent = Array.isArray(existing.top_5_urgent_risks) ? existing.top_5_urgent_risks : [];
+  const aiSummary = Array.isArray(existing.ai_summary_plain_language) ? existing.ai_summary_plain_language : [];
+  if (Object.keys(existing).length > 0 && (urgent.length > 0 || aiSummary.length > 0 || existing.financial_exposure_usd || existing.downtime_estimate)) {
+    return existing;
+  }
+  const ranked = rankedFindings(findings, 5);
+  const totalFindings = findings.length;
+  const activeRisk = Number(summary.active_risk_findings || 0);
+  const likelyLoss = Math.round(activeRisk * 185000 + riskIntel.known_exploited_findings * 95000 + totalFindings * 4200);
+  const likelyDowntime = Math.round((activeRisk * 4.5 + riskIntel.findings_cvss_ge_7 * 0.7) * 10) / 10;
+  return {
+    business_risk_exposure_score: Number(summary.risk_score || 0),
+    trend: { available: false, direction: "stable", delta_points: 0 },
+    financial_exposure_usd: {
+      best_case_usd: Math.round(likelyLoss * 0.55),
+      most_likely_usd: likelyLoss,
+      worst_case_usd: Math.round(likelyLoss * 1.7),
+    },
+    downtime_estimate: {
+      best_case_hours: Math.round(likelyDowntime * 0.6 * 10) / 10,
+      most_likely_hours: likelyDowntime,
+      worst_case_hours: Math.round(likelyDowntime * 1.8 * 10) / 10,
+    },
+    top_5_urgent_risks: ranked.map((finding) => ({
+      title: normalizedFindingTitle(finding),
+      severity: finding.severity,
+      priority_score: Number((finding as VulnerabilityFinding & { risk_priority_score?: number }).risk_priority_score || finding.cvss_score || 0),
+      business_impact: finding.business_impact || "Material engineering and service risk.",
+    })),
+    ai_summary_plain_language: [
+      `${activeRisk} high-priority finding(s) are still open across ${Number(summary.files_impacted || 0)} impacted file(s).`,
+      `${riskIntel.findings_with_cve} finding(s) carry advisory identifiers and ${riskIntel.known_exploited_findings} map to known exploited intelligence.`,
+      `Release pressure remains ${activeRisk > 0 ? "elevated" : "controlled"} based on current critical/high finding volume and analyzer coverage.`,
+    ],
+  };
+}
+
+function resolveCisoSecurityView(
+  roleAware: Record<string, unknown>,
+  findings: VulnerabilityFinding[],
+): Record<string, unknown> {
+  const existing = (roleAware.ciso_security_view as Record<string, unknown>) || {};
+  const table = Array.isArray(existing.vulnerability_operational_table)
+    ? (existing.vulnerability_operational_table as Array<Record<string, unknown>>)
+    : [];
+  if (table.length > 0) {
+    return existing;
+  }
+  return {
+    attack_chain_example: "External attacker -> service/API -> lateral movement -> critical asset impact",
+    vulnerability_operational_table: rankedFindings(findings, 20).map((finding) => ({
+      title: normalizedFindingTitle(finding),
+      severity: finding.severity,
+      cvss_score: Number(finding.cvss_score || 0),
+      exploitability_score: deriveExploitabilityScore(finding),
+      business_impact_score: deriveBusinessImpactScore(finding),
+      priority_score: Number((finding as VulnerabilityFinding & { risk_priority_score?: number }).risk_priority_score || finding.cvss_score || 0),
+      active_exploit_flag: Boolean((finding as VulnerabilityFinding & { known_exploited?: boolean }).known_exploited),
+      release_gate_action: deriveReleaseGateForFinding(finding),
+      sla_hours: deriveSlaHoursForFinding(finding),
+    })),
+  };
+}
+
+function resolveDeveloperDevopsView(
+  roleAware: Record<string, unknown>,
+  findings: VulnerabilityFinding[],
+): Record<string, unknown> {
+  const existing = (roleAware.developer_devops_view as Record<string, unknown>) || {};
+  const rows = Array.isArray(existing.tactical_findings) ? existing.tactical_findings : [];
+  if (rows.length > 0) {
+    return existing;
+  }
+  return {
+    tactical_findings: rankedFindings(findings, 24).map((finding) => ({
+      title: normalizedFindingTitle(finding),
+      severity: finding.severity,
+      file_path: normalizePath(finding.file_path),
+      line_number: Number(finding.line_number || 1),
+      cwe_id: finding.cwe_id || "N/A",
+      owasp_mapping: finding.owasp_mapping || "N/A",
+      secure_fix_snippet: preferredFindingFix(finding),
+    })),
+  };
+}
+
+function resolveRiskStoryMode(
+  roleAware: Record<string, unknown>,
+  findings: VulnerabilityFinding[],
+): Record<string, unknown> {
+  const existing = (roleAware.risk_story_mode as Record<string, unknown>) || {};
+  if (Object.keys(existing).length > 0 && (existing.scenario_title || existing.narrative || existing.likely_outcome)) {
+    return existing;
+  }
+  const topFindings = rankedFindings(findings, 3);
+  if (!topFindings.length) {
+    return {};
+  }
+  const titles = topFindings.map((finding) => normalizedFindingTitle(finding));
+  return {
+    scenario_title: "Code-path exploitation chain",
+    narrative: `An attacker who reaches ${titles.join(", ")} can chain exposed code paths into broader service or credential impact if the findings stay unremediated.`,
+    likely_outcome: {
+      likely_path: titles.join(" -> "),
+      most_affected_area: normalizePath(topFindings[0].file_path),
+      primary_release_gate: deriveReleaseGateForFinding(topFindings[0]),
+    },
+  };
+}
+
+function summaryValueOrZero(value: unknown): number {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function resolveAdvancedFeatures(
+  roleAware: Record<string, unknown>,
+  findings: VulnerabilityFinding[],
+  enterprise: EnterpriseAssuranceSummary | null,
+  dataQuality: DataQualitySummary,
+): Record<string, unknown> {
+  const existing = (roleAware.advanced_features as Record<string, unknown>) || {};
+  const fixPlan = Object.keys((existing.what_should_i_fix_first_ai as Record<string, unknown>) || {}).length > 0
+    ? (existing.what_should_i_fix_first_ai as Record<string, unknown>)
+    : buildFallbackFixWindowPlan(findings);
+  const aiSolutionEngine = (existing.ai_solution_engine as Record<string, unknown>) || {};
+  return {
+    ...existing,
+    security_maturity_scoring:
+      (existing.security_maturity_scoring as Record<string, unknown>) || {
+        overall_score: summaryValueOrZero(dataQuality.coverage_confidence_score),
+        patch_speed_score: Number(enterprise?.toolchain_success_rate_percent || 0),
+        exposure_window_score: Math.max(0, 100 - Number(enterprise?.readiness_score || 0)),
+        developer_fix_velocity_score: Math.max(0, 100 - Number(dataQuality.dedup_ratio_percent || 0)),
+      },
+    ai_solution_engine: Object.keys(aiSolutionEngine).length > 0
+      ? aiSolutionEngine
+      : {
+          description: "Evidence-driven local remediation engine using finding context, code location, and validation evidence.",
+          mode: "context-aware",
+          provider: "local-evidence-driven",
+          model: "parser-flow-validation-v2",
+          status: "ready",
+          grounded_generation: true,
+          prioritization_status: "ready",
+        },
+    what_should_i_fix_first_ai: fixPlan,
+  };
 }
 
 function preferredFindingFix(finding: VulnerabilityFinding): string {
@@ -4711,15 +5390,15 @@ function exportThemeCss(extra = ""): string {
     a{color:var(--accent)}
     @media (max-width:1100px){.section-grid,.code-grid,.hero-meta{grid-template-columns:1fr}}
     @media print{
-      body{background:#ecf3fb;color:#172838;padding:8px}
-      body::before{animation:none;right:-16px;top:6px;width:390px;opacity:.18;border-color:#c7d6e4;filter:grayscale(1) contrast(1.15) brightness(1.03)}
-      body::after{right:18px;top:34px;width:320px;opacity:.12}
+      body{background:#06111d !important;color:#dce9f7;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+      body::before{animation:none;right:-6px;top:12px;width:430px;opacity:.28;border-color:#2d5376;filter:saturate(1.04) contrast(1.16) brightness(.92)}
+      body::after{right:24px;top:44px;width:350px;opacity:.16}
       .report-shell{max-width:none}
-      .hero,.section,.stat-card,.table-frame,.code,pre{box-shadow:none;background:rgba(255,255,255,.76);color:#172838}
-      .hero,.section,.table-frame,.code,pre,.stat-card{border-color:#b9c8d6}
-      th{background:rgba(231,239,247,.82);color:#172838}
-      td{background:rgba(255,255,255,.62);color:#172838}
-      .muted,.meta,.meta-pill{color:#445465}
+      .hero,.section,.stat-card,.table-frame,.code,pre{box-shadow:none;background:rgba(10,27,46,.78) !important;color:#dce9f7}
+      .hero,.section,.table-frame,.code,pre,.stat-card{border-color:#264867}
+      th{background:rgba(16,37,63,.82);color:#dce9f7}
+      td{background:rgba(8,21,36,.48);color:#dce9f7}
+      .muted,.meta,.meta-pill{color:#9eb6ce}
       .table-scroll thead th{position:static}
       .avoid-break{break-inside:avoid-page;page-break-inside:avoid}
     }

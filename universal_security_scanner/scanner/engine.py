@@ -340,24 +340,41 @@ class ScanEngine:
                 )
 
             if not bool(status.get("available", False)):
+                status["execution"] = {
+                    "attempted": False,
+                    "status": "unavailable",
+                    "duration_ms": 0,
+                    "findings_count": 0,
+                    "errors": [str(status.get("message") or "Tool unavailable for this scan.")],
+                    "evidence": [],
+                }
                 continue
 
             if not _is_tool_relevant(tool_name, file_extensions, file_names):
                 status["message"] = (
                     "Skipped for speed optimization: no relevant files/manifests were detected for this target."
                 )
+                status["execution"] = {
+                    "attempted": False,
+                    "status": "skipped_irrelevant",
+                    "duration_ms": 0,
+                    "findings_count": 0,
+                    "errors": [],
+                    "evidence": [],
+                }
                 continue
 
             if findings_limit_reached():
                 errors.append("Maximum findings limit reached; external checks skipped.")
                 break
 
-            tool_findings, tool_errors = run_external_tool(
+            tool_findings, tool_errors, tool_execution = run_external_tool(
                 tool_name,
                 target_root=target,
                 config=self.config,
                 command=str(status.get("command") or tool_name),
             )
+            status["execution"] = tool_execution
             for error in tool_errors:
                 errors.append(f"[{tool_name}] {error}")
 

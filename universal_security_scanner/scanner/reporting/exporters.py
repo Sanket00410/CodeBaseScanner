@@ -3,6 +3,7 @@
 import base64
 import html
 import json
+from datetime import datetime
 from pathlib import Path
 import re
 import textwrap
@@ -92,23 +93,23 @@ def _report_globe_css() -> str:
     }}
     @media print {{
       body {{
-        background: #ecf3fb;
-        color: #172838;
+        background: #071321;
+        color: #dce9f7;
       }}
       body::before {{
         animation: none;
-        right: -16px;
-        top: 6px;
-        width: 390px;
-        opacity: 0.18;
-        border-color: #d4dee8;
-        filter: grayscale(1) contrast(1.15) brightness(1.03);
+        right: -8px;
+        top: 8px;
+        width: 420px;
+        opacity: 0.3;
+        border-color: rgba(110,226,255,0.18);
+        filter: saturate(1.1) contrast(1.15) brightness(0.9);
       }}
       body::after {{
-        right: 18px;
-        top: 34px;
-        width: 320px;
-        opacity: 0.12;
+        right: 12px;
+        top: 28px;
+        width: 340px;
+        opacity: 0.18;
       }}
     }}
     """
@@ -146,6 +147,13 @@ def _extract_export_target_name(report: dict) -> str:
 
 def _extract_export_date_time(value: str) -> tuple[str, str]:
     raw = str(value or "").strip()
+    if raw:
+        normalized = raw.replace("Z", "+00:00")
+        try:
+            parsed = datetime.fromisoformat(normalized)
+            return parsed.strftime("%Y-%m-%d"), parsed.strftime("%H-%M-%S-%f")[:12]
+        except ValueError:
+            pass
     match = re.search(r"(\d{4}-\d{2}-\d{2}).*?(\d{2})[:\-](\d{2})[:\-](\d{2})(?:[.\-:](\d{1,3}))?", raw)
     if match:
         date_part = match.group(1)
@@ -154,6 +162,18 @@ def _extract_export_date_time(value: str) -> tuple[str, str]:
     safe = raw.replace(":", "-").replace(".", "-").replace("T", "_")
     date_raw, _, time_raw = safe.partition("_")
     return _sanitize_export_token(date_raw or "date", "date"), _sanitize_export_token(time_raw or "time", "time")
+
+
+def _format_display_timestamp(value: str) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return "N/A"
+    normalized = raw.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+        return parsed.strftime("%Y-%m-%d %H:%M:%S.%f")[:23]
+    except ValueError:
+        return raw
 
 
 def _severity_rank(value: str) -> int:
@@ -499,7 +519,7 @@ class ReportExporter:
             controls = existing.get("controls", [])
             write_line("CodeSentinelX Existing Security Implementation Report", font="Helvetica-Bold", size=13, gap=16)
             write_line(f"Target: {existing.get('target_path', summary.get('target_path', 'N/A'))}")
-            write_line(f"Generated: {existing.get('generated_at', summary.get('generated_at', 'N/A'))}", gap=14)
+            write_line(f"Generated: {_format_display_timestamp(str(existing.get('generated_at', summary.get('generated_at', 'N/A'))))}", gap=14)
             write_line("Coverage Summary", font="Helvetica-Bold", size=11)
             for key, value in (existing.get("summary", {}) or {}).items():
                 write_line(f"- {key.replace('_', ' ').title()}: {value}")
@@ -518,7 +538,7 @@ class ReportExporter:
             verification = _fix_verification_summary(findings)
             write_line("CodeSentinelX Original and Suggested Fix Report", font="Helvetica-Bold", size=13, gap=16)
             write_line(f"Target: {vuln.get('target_path', summary.get('target_path', 'N/A'))}")
-            write_line(f"Generated: {vuln.get('generated_at', summary.get('generated_at', 'N/A'))}")
+            write_line(f"Generated: {_format_display_timestamp(str(vuln.get('generated_at', summary.get('generated_at', 'N/A'))))}")
             write_line(f"Total findings: {len(findings)}", gap=14)
             write_line("Verification Summary", font="Helvetica-Bold", size=11)
             for key, value in verification.items():
@@ -576,7 +596,7 @@ class ReportExporter:
         alerts = _alert_groups(findings)
         write_line("CodeSentinelX Vulnerability Report (ZAP-Style)", font="Helvetica-Bold", size=13, gap=16)
         write_line(f"Target: {vuln.get('target_path', summary.get('target_path', 'N/A'))}")
-        write_line(f"Generated: {vuln.get('generated_at', summary.get('generated_at', 'N/A'))}")
+        write_line(f"Generated: {_format_display_timestamp(str(vuln.get('generated_at', summary.get('generated_at', 'N/A'))))}")
         write_line(f"Risk Score: {vuln_summary.get('risk_score', summary.get('risk_score', 0))}", gap=14)
         write_line("Summary of Alerts", font="Helvetica-Bold", size=11)
         for severity, count in (vuln_summary.get("severity_distribution", summary.get("severity_distribution", {})) or {}).items():
@@ -785,7 +805,7 @@ class ReportExporter:
 <body>
   <h1>CodeSentinelX Existing Security Implementation Report</h1>
   <p class='meta'><strong>Target:</strong> {html.escape(str(existing.get('target_path', 'N/A')))}</p>
-  <p class='meta'><strong>Generated:</strong> {html.escape(str(existing.get('generated_at', 'N/A')))}</p>
+    <p class='meta'><strong>Generated:</strong> {html.escape(_format_display_timestamp(str(existing.get('generated_at', 'N/A'))))}</p>
   <h2>Coverage Summary</h2>
   <table>
     <thead><tr><th>Metric</th><th>Value</th></tr></thead>
@@ -948,7 +968,7 @@ class ReportExporter:
 <body>
   <h1>CodeSentinelX Vulnerability Report (ZAP-Style)</h1>
   <p class='meta'><strong>Target:</strong> {html.escape(target_path)}</p>
-  <p class='meta'><strong>Generated:</strong> {html.escape(generated_at)}</p>
+  <p class='meta'><strong>Generated:</strong> {html.escape(_format_display_timestamp(generated_at))}</p>
   <p class='meta'><strong>Risk Score:</strong> {risk_score} ({html.escape(risk_rating)})</p>
 
   <h2>Summary of Alerts</h2>
@@ -1340,7 +1360,7 @@ class ReportExporter:
   <section class='panel'>
     <h1>CodeSentinelX Original and Suggested Fix Report</h1>
     <p class='meta'><strong>Target:</strong> {html.escape(target_path)}</p>
-    <p class='meta'><strong>Generated:</strong> {html.escape(generated_at)}</p>
+    <p class='meta'><strong>Generated:</strong> {html.escape(_format_display_timestamp(generated_at))}</p>
     <p class='meta'><strong>Total Findings:</strong> {summary.get('total_findings', len(findings))}</p>
   </section>
   <section class='panel'>
@@ -1395,7 +1415,7 @@ class ReportExporter:
     <section class='panel'>
       <h1>CodeSentinelX Combined Security Report</h1>
       <p>Target: {html.escape(str(exec_summary.get('target_path', 'N/A')))}</p>
-      <p>Generated: {html.escape(str(exec_summary.get('generated_at', 'N/A')))}</p>
+      <p>Generated: {html.escape(_format_display_timestamp(str(exec_summary.get('generated_at', 'N/A'))))}</p>
       <p>Risk Score: {exec_summary.get('risk_score', 0)} ({html.escape(str(exec_summary.get('risk_rating', 'N/A')) )})</p>
     </section>
     <section class='panel'>

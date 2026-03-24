@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from pathlib import Path
 
@@ -11,6 +11,66 @@ from universal_security_scanner.scanner.external.common import (
     safe_json_loads,
     to_severity,
 )
+
+
+def _semgrep_command_candidates(binary: str, target_root: Path) -> list[list[str]]:
+    binary_path = Path(str(binary))
+    candidates: list[list[str]] = []
+
+    if binary_path.name.lower().startswith("semgrep-core"):
+        seen_semgrep: set[str] = set()
+        for parent in (binary_path.parent, *binary_path.parents):
+            for sibling in (
+                parent / "semgrep.exe",
+                parent / "semgrep.cmd",
+                parent / "semgrep",
+                parent / "pysemgrep.exe",
+                parent / "pysemgrep.cmd",
+                parent / "pysemgrep",
+                parent / "Scripts" / "semgrep.exe",
+                parent / "Scripts" / "semgrep.cmd",
+                parent / "Scripts" / "pysemgrep.exe",
+                parent / "Scripts" / "pysemgrep.cmd",
+            ):
+                if sibling.exists() and sibling.is_file():
+                    resolved = str(sibling.resolve())
+                    if resolved not in seen_semgrep:
+                        candidates.append(
+                            [
+                                resolved,
+                                "scan",
+                                "--config",
+                                "auto",
+                                "--json",
+                                "--quiet",
+                                "--disable-version-check",
+                                str(target_root),
+                            ]
+                        )
+                        seen_semgrep.add(resolved)
+
+            python_candidate = parent / "Scripts" / "python.exe"
+            if python_candidate.exists() and python_candidate.is_file():
+                candidates.append(
+                    [
+                        str(python_candidate.resolve()),
+                        "-m",
+                        "semgrep.__main__",
+                        "scan",
+                        "--config",
+                        "auto",
+                        "--json",
+                        "--quiet",
+                        "--disable-version-check",
+                        str(target_root),
+                    ]
+                )
+
+    if not binary_path.name.lower().startswith("semgrep-core"):
+        candidates.append(
+            [binary, "scan", "--config", "auto", "--json", "--quiet", "--disable-version-check", str(target_root)]
+        )
+    return candidates
 
 
 def parse_semgrep_output(data: dict, target_root: Path) -> list[Finding]:
@@ -78,29 +138,31 @@ def run_semgrep_scan(
     timeout_seconds: int,
     binary: str = "semgrep",
 ) -> tuple[list[Finding], list[str]]:
-    command = [
-        binary,
-        "scan",
-        "--config",
-        "auto",
-        "--json",
-        "--quiet",
-        str(target_root),
-    ]
+    last_error = ""
+    for command in _semgrep_command_candidates(binary, target_root):
+        try:
+            return_code, stdout, stderr = run_command(command, timeout_seconds=timeout_seconds)
+        except FileNotFoundError:
+            last_error = "Semgrep executable was not found."
+            continue
+        except Exception as exc:
+            last_error = f"Semgrep execution failed: {exc}"
+            continue
 
-    try:
-        return_code, stdout, stderr = run_command(command, timeout_seconds=timeout_seconds)
-    except FileNotFoundError:
-        return [], ["Semgrep not found in PATH. Install Semgrep for broad multi-language rule coverage."]
-    except Exception as exc:
-        return [], [f"Semgrep execution failed: {exc}"]
+        if return_code not in {0, 1}:
+            short_stderr = " | ".join(stderr.strip().splitlines()[:2])
+            last_error = f"Semgrep returned code {return_code}: {short_stderr}"
+            if "unknown option '--config'" in short_stderr.lower():
+                continue
+            return [], [last_error]
 
-    if return_code not in {0, 1}:
-        short_stderr = stderr.strip().splitlines()[:2]
-        return [], [f"Semgrep returned code {return_code}: {' | '.join(short_stderr)}"]
+        payload = safe_json_loads(stdout)
+        if not isinstance(payload, dict):
+            last_error = "Semgrep produced non-JSON output."
+            continue
 
-    payload = safe_json_loads(stdout)
-    if not isinstance(payload, dict):
-        return [], ["Semgrep produced non-JSON output."]
+        return parse_semgrep_output(payload, target_root), []
 
-    return parse_semgrep_output(payload, target_root), []
+    if last_error:
+        return [], [last_error]
+    return [], ["Semgrep not found in PATH/toolchain. Install Semgrep for broad multi-language rule coverage."]

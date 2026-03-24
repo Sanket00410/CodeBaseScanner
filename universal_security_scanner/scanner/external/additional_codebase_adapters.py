@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import sys
 import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -202,11 +203,11 @@ def run_eslint_security_scan(
     timeout_seconds: int,
     binary: str = "eslint",
 ) -> tuple[list[Finding], list[str]]:
-    js_files = _discover_files(target_root, suffixes={".js", ".cjs", ".mjs", ".jsx"})
+    js_files = _discover_files(target_root, suffixes={".js", ".cjs", ".mjs", ".jsx", ".ts", ".tsx"})
     if not js_files:
         return [], []
 
-    selected = [str(path) for path in js_files[:300]]
+    selected = [str(path) for path in js_files[:180]]
     base_rules = [
         "--plugin",
         "security",
@@ -219,37 +220,67 @@ def run_eslint_security_scan(
         "--rule",
         "security/detect-object-injection:warn",
     ]
-    attempts = [
-        [binary, "--no-error-on-unmatched-pattern", "--format", "json", "--no-config-lookup", *base_rules, *selected],
-        [binary, "--no-error-on-unmatched-pattern", "--format", "json", "--no-eslintrc", *base_rules, *selected],
-    ]
+    binary_candidates: list[list[str]] = []
+    binary_path = Path(str(binary))
+    if binary_path.exists():
+        binary_candidates.append([str(binary_path)])
+    else:
+        tool_root = Path(__file__).resolve().parents[3] / ".toolchain" / "eslint-security"
+        wrapper = tool_root / "eslint-security_embedded_wrapper.py"
+        if wrapper.exists():
+            binary_candidates.append([sys.executable, str(wrapper)])
+        for candidate in (
+            tool_root / "eslint.cmd",
+            tool_root / "eslint.exe",
+            tool_root / "node_modules" / ".bin" / "eslint.cmd",
+            tool_root / "node_modules" / ".bin" / "eslint",
+        ):
+            if candidate.exists():
+                binary_candidates.append([str(candidate)])
+    if not binary_candidates:
+        binary_candidates.append([binary])
+
+    attempts: list[list[str]] = []
+    chunk_size = 45
+    selected_chunks = [selected[index : index + chunk_size] for index in range(0, len(selected), chunk_size)] or [[]]
+    for prefix in binary_candidates:
+        for chunk in selected_chunks:
+            attempts.extend(
+                [
+                    [*prefix, "--no-error-on-unmatched-pattern", "--format", "json", "--no-config-lookup", *base_rules, *chunk],
+                    [*prefix, "--no-error-on-unmatched-pattern", "--format", "json", "--no-eslintrc", *base_rules, *chunk],
+                ]
+            )
 
     last_error = ""
-    output = ""
+    payloads: list[dict] = []
+    saw_success = False
     for command in attempts:
         try:
             return_code, stdout, stderr = run_command(command, timeout_seconds=timeout_seconds)
         except FileNotFoundError:
-            return [], ["ESLint not found in PATH/toolchain. Install or bootstrap eslint-security integration."]
+            last_error = "ESLint executable was not found."
+            continue
         except Exception as exc:
             last_error = str(exc)
             continue
 
         if return_code in {0, 1}:
-            output = stdout
-            break
+            saw_success = True
+            payload = safe_json_loads(stdout)
+            if isinstance(payload, list):
+                payloads.extend(item for item in payload if isinstance(item, dict))
+                continue
         last_error = " | ".join((stderr or stdout or "").strip().splitlines()[:2])
-    else:
-        if last_error:
-            return [], [f"ESLint security run failed: {last_error}"]
+    if not payloads and last_error:
+        return [], [f"ESLint security run failed: {last_error}"]
+    if saw_success:
         return [], []
-
-    payload = safe_json_loads(output)
-    if not isinstance(payload, list):
-        return [], ["ESLint security run produced non-JSON output."]
+    if not payloads and not last_error:
+        return [], ["ESLint not found in PATH/toolchain. Install or bootstrap eslint-security integration."]
 
     findings: list[Finding] = []
-    for file_result in payload:
+    for file_result in payloads:
         if not isinstance(file_result, dict):
             continue
         file_path = normalize_path(target_root, str(file_result.get("filePath") or "unknown"))

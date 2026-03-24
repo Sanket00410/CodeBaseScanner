@@ -36,6 +36,7 @@ from universal_security_scanner.scanner.external.additional_runtime_adapters imp
     run_sqlmap_runtime_scan,
     run_wapiti_runtime_scan,
 )
+from universal_security_scanner.scanner.external.common import clear_command_trace, consume_command_trace
 from universal_security_scanner.scanner.external.gitleaks_adapter import run_gitleaks_scan
 from universal_security_scanner.scanner.external.gosec_adapter import run_gosec_scan
 from universal_security_scanner.scanner.external.grype_adapter import run_grype_scan
@@ -97,22 +98,49 @@ def run_external_tool(
     target_root: Path,
     config: ScannerConfig,
     command: str | None = None,
-) -> tuple[list[Finding], list[str]]:
+) -> tuple[list[Finding], list[str], dict[str, object]]:
     runner = _CODEBASE_RUNNERS.get(tool_name.lower())
     if runner is None:
-        return [], [
+        errors = [
             (
                 f"No integrated parser for '{tool_name}'. Tool is cataloged and visible in Toolchain status, "
                 "but normalized finding ingestion is not wired yet."
             )
         ]
+        return [], errors, {
+            "attempted": False,
+            "status": "no_runner",
+            "duration_ms": 0,
+            "findings_count": 0,
+            "errors": errors,
+            "evidence": [],
+        }
 
+    clear_command_trace()
     findings, errors = runner(
         target_root=target_root,
         timeout_seconds=config.external_tool_timeout_seconds,
         binary=command or tool_name,
     )
-    return findings, errors
+    evidence = consume_command_trace()
+    attempted = bool(evidence)
+    duration_ms = sum(int(item.get("duration_ms") or 0) for item in evidence)
+    status = "success"
+    if errors and findings:
+        status = "partial_success"
+    elif errors:
+        status = "failed"
+    elif not attempted:
+        status = "skipped"
+    execution = {
+        "attempted": attempted,
+        "status": status,
+        "duration_ms": duration_ms,
+        "findings_count": len(findings),
+        "errors": list(errors),
+        "evidence": evidence,
+    }
+    return findings, errors, execution
 
 
 def run_external_runtime_tool(

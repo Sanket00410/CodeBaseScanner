@@ -444,6 +444,7 @@ export default function App(): React.JSX.Element {
   const [portfolioSummary, setPortfolioSummary] = useState<PortfolioSummary | null>(null);
   const [audits, setAudits] = useState<AuditLogEntry[]>([]);
   const [lastExport, setLastExport] = useState("");
+  const [isExporting, setIsExporting] = useState(false);
   const [vulnerabilityReportStyle, setVulnerabilityReportStyle] = useState<ReportStyle>("classic");
   const [reportPreviewHtml, setReportPreviewHtml] = useState("");
   const [previewReportType, setPreviewReportType] = useState<ExportType | "">("");
@@ -1296,16 +1297,23 @@ export default function App(): React.JSX.Element {
       setStatusText("No scan loaded for export.");
       return;
     }
-    const output = await window.codeSentinelX.exportReport({
-      scanId: scan.scanId,
-      reportType,
-      format,
-      reportStyle: reportType === "vulnerability" ? vulnerabilityReportStyle : undefined,
-    });
-    setLastExport(output);
+    setIsExporting(true);
     const styleLabel = reportType === "vulnerability" ? ` (${vulnerabilityReportStyle})` : "";
-    setStatusText(`Exported ${reportType}${styleLabel} report as ${format}`);
-    await loadAudits(scan.scanId);
+    setStatusText(`Preparing ${reportType}${styleLabel} ${format.toUpperCase()} export...`);
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+    try {
+      const output = await window.codeSentinelX.exportReport({
+        scanId: scan.scanId,
+        reportType,
+        format,
+        reportStyle: reportType === "vulnerability" ? vulnerabilityReportStyle : undefined,
+      });
+      setLastExport(output);
+      setStatusText(`Exported ${reportType}${styleLabel} report as ${format}`);
+      await loadAudits(scan.scanId);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const previewReport = async (reportType: ExportType): Promise<void> => {
@@ -3127,43 +3135,43 @@ export default function App(): React.JSX.Element {
             </div>
           </div>
           <div className="button-grid">
-            <button type="button" onClick={() => exportReport("existing", "html")}>
+            <button type="button" onClick={() => exportReport("existing", "html")} disabled={!scan || isExporting}>
               Controls HTML
             </button>
-            <button type="button" onClick={() => exportReport("existing", "pdf")}>
+            <button type="button" onClick={() => exportReport("existing", "pdf")} disabled={!scan || isExporting}>
               Controls PDF
             </button>
-            <button type="button" onClick={() => exportReport("vulnerability", "html")}>
+            <button type="button" onClick={() => exportReport("vulnerability", "html")} disabled={!scan || isExporting}>
               Findings HTML
             </button>
-            <button type="button" onClick={() => exportReport("vulnerability", "pdf")}>
+            <button type="button" onClick={() => exportReport("vulnerability", "pdf")} disabled={!scan || isExporting}>
               Findings PDF
             </button>
-            <button type="button" onClick={() => exportReport("fixes", "html")}>
+            <button type="button" onClick={() => exportReport("fixes", "html")} disabled={!scan || isExporting}>
               Fixes HTML
             </button>
-            <button type="button" onClick={() => exportReport("fixes", "pdf")}>
+            <button type="button" onClick={() => exportReport("fixes", "pdf")} disabled={!scan || isExporting}>
               Fixes PDF
             </button>
-            <button type="button" onClick={() => exportReport("finding_details", "html")}>
+            <button type="button" onClick={() => exportReport("finding_details", "html")} disabled={!scan || isExporting}>
               Finding Details HTML
             </button>
-            <button type="button" onClick={() => exportReport("finding_details", "pdf")}>
+            <button type="button" onClick={() => exportReport("finding_details", "pdf")} disabled={!scan || isExporting}>
               Finding Details PDF
             </button>
-            <button type="button" onClick={() => exportReport("vulnerability", "json")}>
+            <button type="button" onClick={() => exportReport("vulnerability", "json")} disabled={!scan || isExporting}>
               Vulnerability JSON
             </button>
-            <button type="button" onClick={() => exportReport("vulnerability", "xml")}>
+            <button type="button" onClick={() => exportReport("vulnerability", "xml")} disabled={!scan || isExporting}>
               Vulnerability XML
             </button>
-            <button type="button" onClick={() => exportReport("vulnerability", "sarif")}>
+            <button type="button" onClick={() => exportReport("vulnerability", "sarif")} disabled={!scan || isExporting}>
               Vulnerability SARIF
             </button>
-            <button type="button" onClick={() => exportReport("vulnerability", "csv")}>
+            <button type="button" onClick={() => exportReport("vulnerability", "csv")} disabled={!scan || isExporting}>
               Vulnerability CSV
             </button>
-            <button type="button" onClick={() => exportReport("vulnerability", "patch")}>
+            <button type="button" onClick={() => exportReport("vulnerability", "patch")} disabled={!scan || isExporting}>
               Patch Bundle
             </button>
           </div>

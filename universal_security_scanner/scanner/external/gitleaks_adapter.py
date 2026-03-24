@@ -1,5 +1,6 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
+import os
 import tempfile
 from pathlib import Path
 
@@ -55,11 +56,20 @@ def run_gitleaks_scan(
         "detect",
         "--source",
         str(target_root),
+        "--no-git",
         "--report-format",
         "json",
         "--report-path",
         str(report_path),
         "--no-banner",
+        "--timeout",
+        str(max(60, int(timeout_seconds))),
+        "--max-target-megabytes",
+        str(int(os.getenv("USS_GITLEAKS_MAX_TARGET_MB", "8"))),
+        "--max-archive-depth",
+        str(int(os.getenv("USS_GITLEAKS_MAX_ARCHIVE_DEPTH", "0"))),
+        "--max-decode-depth",
+        str(int(os.getenv("USS_GITLEAKS_MAX_DECODE_DEPTH", "1"))),
     ]
 
     try:

@@ -1190,6 +1190,7 @@ function normalizeAuthAbuseSessionSecurity(input: unknown):
       top_vulnerability_types: Array<{ type: string; count: number }>;
       affected_modules: Array<{ module: string; count: number; critical: number; high: number }>;
       affected_files: Array<{ file: string; folder: string; count: number; critical: number; high: number }>;
+      issue_file_mapping?: Array<{ issue_type: string; file: string; folder: string; count: number; critical: number; high: number }>;
     }
   | undefined {
   const raw = asRecord(input);
@@ -1202,6 +1203,20 @@ function normalizeAuthAbuseSessionSecurity(input: unknown):
     top_vulnerability_types: normalizeTopTypeRows(raw.top_vulnerability_types),
     affected_modules: normalizeAffectedModuleRows(raw.affected_modules),
     affected_files: normalizeAffectedFileRows(raw.affected_files),
+    issue_file_mapping: asArray(raw.issue_file_mapping)
+      .map((item) => {
+        const row = asRecord(item);
+        return {
+          issue_type: asString(row.issue_type, "Issue"),
+          file: asString(row.file, "unknown"),
+          folder: asString(row.folder, "."),
+          count: asNumber(row.count, 0),
+          critical: asNumber(row.critical, 0),
+          high: asNumber(row.high, 0),
+        };
+      })
+      .filter((row) => row.issue_type && row.file)
+      .slice(0, 120),
   };
 }
 
