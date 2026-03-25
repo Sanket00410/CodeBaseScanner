@@ -97,9 +97,21 @@ def test_quality_benchmark_disabled_and_missing_file(tmp_path: Path) -> None:
     assert disabled["benchmark_status"] == "disabled"
     assert disabled["gate_advisories"]
 
-    not_configured = evaluate_quality_benchmark(findings, missing, enabled=True)
-    assert not_configured["benchmark_status"] == "not_configured"
-    assert not_configured["gate_advisories"]
+    fallback = evaluate_quality_benchmark(findings, missing, enabled=True)
+    assert fallback["configured"] is True
+    assert fallback["benchmark_status"] == "warning"
+    assert fallback["gate_advisories"]
+
+
+def test_quality_benchmark_falls_back_to_starter_truth_set(tmp_path: Path) -> None:
+    missing = tmp_path / "does-not-exist.json"
+
+    benchmark = evaluate_quality_benchmark([], missing, enabled=True)
+
+    assert benchmark["configured"] is True
+    assert benchmark["benchmark_name"] == "CodeSentinelX Starter Quality Benchmark"
+    assert benchmark["benchmark_status"] == "warning"
+    assert benchmark["cases_total"] == 0
 
 
 def test_build_report_surfaces_quality_benchmark(tmp_path: Path) -> None:

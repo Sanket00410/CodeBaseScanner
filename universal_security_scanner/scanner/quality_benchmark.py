@@ -6,6 +6,20 @@ from pathlib import Path
 from typing import Any
 
 
+def _starter_benchmark_path() -> Path:
+    return Path(__file__).resolve().parents[1] / "resources" / "benchmark_truth_set.json"
+
+
+def _resolve_benchmark_file(benchmark_file: str | Path) -> Path:
+    benchmark_path = Path(benchmark_file)
+    if benchmark_path.exists():
+        return benchmark_path
+    starter_path = _starter_benchmark_path()
+    if starter_path.exists():
+        return starter_path
+    return benchmark_path
+
+
 def _normalize_text(value: Any) -> str:
     text = str(value or "").strip().lower()
     text = re.sub(r"\s+", " ", text)
@@ -225,7 +239,7 @@ def evaluate_quality_benchmark(
     min_f1: float = 88.0,
     strict_scope: bool = True,
 ) -> dict[str, Any]:
-    benchmark_path = Path(benchmark_file)
+    benchmark_path = _resolve_benchmark_file(benchmark_file)
     base_payload: dict[str, Any] = {
         "enabled": bool(enabled),
         "configured": False,
