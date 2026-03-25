@@ -201,6 +201,38 @@ cd SecureScope
 npm run typecheck
 ```
 
+## Scanner Quality Benchmark Truth Set
+
+CodeSentinelX includes a starter benchmark truth set so the quality gate section can appear on first run.
+
+- Starter file in the repo: `universal_security_scanner/resources/benchmark_truth_set.json`
+- Default runtime file: `exports/.integrity/benchmark_truth_set.json`
+- Optional override: set `USS_QUALITY_BENCHMARK_FILE` to a custom JSON file path
+
+To use your own repo-specific truth set:
+
+1. Copy the starter file into the runtime location:
+
+```powershell
+Copy-Item universal_security_scanner\resources\benchmark_truth_set.json exports\.integrity\benchmark_truth_set.json
+```
+
+2. Add benchmark cases for findings you want to measure. Each case should include:
+   - `case_id`
+   - `expected_present` or `expected_absent`
+   - `file_path`
+   - `rule_id`
+   - `title`
+   - `line_number` when relevant
+
+3. Re-run a scan. The report will show precision, recall, F1, false-positive rate, and any benchmark gate blockers.
+
+This benchmark is meant to be honest, not decorative:
+
+- empty or incomplete cases will surface as warnings
+- threshold failures will show up in the report gate
+- the starter file is intentionally minimal so you can replace it with real truth data for your repo
+
 ## Practical Advantages For Teams
 
 ### For Developers
