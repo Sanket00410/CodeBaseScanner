@@ -1292,7 +1292,6 @@ class ReportExporter:
     def _render_alert_detail(self, alert: dict) -> str:
         findings = alert.get("findings", [])
         lead = findings[0] if findings else {}
-        empty_instances_row = "<tr><td colspan='8'>No instances</td></tr>"
 
         instance_rows = "".join(
             (
@@ -1329,7 +1328,7 @@ class ReportExporter:
             "<h4>Instances</h4>"
             "<table>"
             "<thead><tr><th>File Path</th><th>Folder</th><th>Line</th><th>Severity</th><th>Status</th><th>Tool</th><th>CWE</th><th>OWASP</th></tr></thead>"
-            f"<tbody>{instance_rows or empty_instances_row}</tbody>"
+            f"<tbody>{instance_rows}</tbody>"
             "</table>"
             "</section>"
         )

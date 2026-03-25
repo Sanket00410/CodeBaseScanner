@@ -1205,15 +1205,18 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
   if (!hasRiskIntelligence) {
     writeWrapped(doc, "No risk-intelligence or release-gate artifacts were captured for this scan.", 9);
   } else {
-    writePdfKeyValueTable(doc, [
+    const riskIntelRows = [
       { key: "Findings with CVE", value: String(riskIntel ? riskIntel.findings_with_cve : 0) },
       { key: "Findings with CVSS >= 7.0", value: String(riskIntel ? riskIntel.findings_cvss_ge_7 : 0) },
-      { key: "Known Exploited Findings (CISA KEV)", value: knownExploitedMetricText(riskIntel) },
       { key: "Release Gate: Block release", value: String(Number(releaseGateDistribution["Block release"] || 0)) },
       { key: "Release Gate: Fix before prod", value: String(Number(releaseGateDistribution["Fix before prod"] || 0)) },
       { key: "Release Gate: Scheduled fix", value: String(Number(releaseGateDistribution["Scheduled fix"] || 0)) },
       { key: "Release Gate: Track", value: String(Number(releaseGateDistribution["Track"] || 0)) },
-    ]);
+    ];
+    if (Number(riskIntel?.known_exploited_findings || 0) > 0) {
+      riskIntelRows.splice(2, 0, { key: "Known Exploited Findings (CISA KEV)", value: knownExploitedMetricText(riskIntel) });
+    }
+    writePdfKeyValueTable(doc, riskIntelRows);
   }
 
   if (hasEnterpriseData) {
@@ -1348,22 +1351,32 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
       `Mode=${String(aiSolutionEngine.mode || "contextual-remediation")} | Provider=${String(aiSolutionEngine.provider || "local-evidence-driven")} | Model=${String(aiSolutionEngine.model || "N/A")} | Status=${String(aiSolutionEngine.status || "ready")} | Grounded=${aiSolutionEngine.grounded_generation === false ? "No" : "Yes"} | Prioritization=${String(aiSolutionEngine.prioritization_status || "deterministic")}`,
       8,
     );
-    writeWrapped(doc, "What Should I Fix First (AI):", 8);
-    for (const [window, values] of Object.entries(fixWindowPlan).slice(0, 3)) {
-      writeWrapped(doc, `- ${String(window).replaceAll("_", " ")}`, 8);
-      if (!Array.isArray(values) || values.length === 0) {
-        continue;
-      }
-      for (const rawEntry of values.slice(0, 3)) {
-        if (!rawEntry || typeof rawEntry !== "object") {
+    if (hasMeaningfulFixPlan) {
+      writeWrapped(doc, "What Should I Fix First (AI):", 8);
+      for (
+        const [window, values] of Object.entries(fixWindowPlan).slice(0, 3) as Array<
+          [string, Array<Record<string, unknown> | string>]
+        >
+      ) {
+        const renderedWindow = renderFixWindowValue(values, findingByUid).trim();
+        if (!renderedWindow) {
           continue;
         }
-        const entry = rawEntry as Record<string, unknown>;
-        writeWrapped(
-          doc,
-          `  * ${String(entry.title || "Issue")} [${String(entry.severity || "Info")}] ${String(entry.file_path || "unknown")}:${Number(entry.line_number || 1)} | priority=${Number(entry.priority_score || 0).toFixed(2)} | fix_confidence=${String(entry.fix_confidence_label || "Medium")} (${Number(entry.fix_confidence_score || 0).toFixed(2)})`,
-          8,
-        );
+        writeWrapped(doc, `- ${String(window).replaceAll("_", " ")}`, 8);
+        for (const rawEntry of values.slice(0, 3)) {
+          if (!rawEntry || typeof rawEntry !== "object") {
+            continue;
+          }
+          const entry = rawEntry as Record<string, unknown>;
+          if (!hasUsableFixWindowEntry(entry, findingByUid)) {
+            continue;
+          }
+          writeWrapped(
+            doc,
+            `  * ${String(entry.title || "Issue")} [${String(entry.severity || "Info")}] ${String(entry.file_path || "unknown")}:${Number(entry.line_number || 1)} | priority=${Number(entry.priority_score || 0).toFixed(2)} | fix_confidence=${String(entry.fix_confidence_label || "Medium")} (${Number(entry.fix_confidence_score || 0).toFixed(2)})`,
+            8,
+          );
+        }
       }
     }
   }
@@ -2398,7 +2411,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       <tr><td>Findings with Taxonomy Gaps</td><td>${Number(dataQuality.unknown_taxonomy_count || 0)}</td></tr>
       ${renderQualityBenchmarkRows(qualityBenchmark)}
     `
-    : `<tr><td colspan="2" class="muted">No data quality metrics available.</td></tr>`;
+    : "";
   const executionEvidence = collectExecutionEvidenceRows(report.toolchain_status || {}).slice(0, EXEC_LIMIT);
   const roleAware = report.role_aware_report || scan.report.role_aware_report || {};
   const roleAwareRecord = roleAware as unknown as Record<string, unknown>;
@@ -2549,7 +2562,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
         <tr><th>File Path</th><th>Folder</th><th>Line</th><th>Workflow Status</th><th>Tool</th><th>CWE</th><th>OWASP</th></tr>
       </thead>
       <tbody>
-        ${instanceRows || "<tr><td colspan='7'>No instances</td></tr>"}
+        ${instanceRows}
       </tbody>
     </table>
   </section>`;
@@ -2684,9 +2697,14 @@ function renderVulnerabilityHtml(scan: ScanView): string {
   );
   const fixFirstRows = Object.entries(fixWindowPlanSource)
     .map(([window, value]) => {
-      return `<tr><td>${escapeHtml(window.replaceAll("_", " "))}</td><td>${renderFixWindowValue(value, findingByUid)}</td></tr>`;
+      const renderedValue = renderFixWindowValue(value, findingByUid);
+      return renderedValue
+        ? `<tr><td>${escapeHtml(window.replaceAll("_", " "))}</td><td>${renderedValue}</td></tr>`
+        : "";
     })
+    .filter(Boolean)
     .join("");
+  const hasFixFirstRows = Boolean(fixFirstRows.trim());
   const fpCandidates = Array.isArray((falsePositiveReport as Record<string, unknown>).candidates)
     ? ((falsePositiveReport as Record<string, unknown>).candidates as Array<Record<string, unknown>>)
     : [];
@@ -2773,12 +2791,16 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       tone: "critical",
       sub: "Findings mapped to hard release stop",
     },
-    {
-      label: "Known Exploited",
-      value: knownExploitedMetricText(riskIntel),
-      tone: "info",
-      sub: knownExploitedMetricSubtext(riskIntel),
-    },
+    ...(Number(riskIntel?.known_exploited_findings || 0) > 0
+      ? [
+          {
+            label: "Known Exploited",
+            value: knownExploitedMetricText(riskIntel),
+            tone: "info" as const,
+            sub: knownExploitedMetricSubtext(riskIntel),
+          },
+        ]
+      : []),
   ]);
   const hasEnterpriseData = Boolean(
     enterprise &&
@@ -2825,7 +2847,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
         <tbody>
         <tr><td>Findings with CVE</td><td align="center">${hasAdvisoryContext ? Number(riskIntel?.findings_with_cve || 0) : "N/A"}</td></tr>
         <tr><td>Findings with CVSS &gt;= 7.0</td><td align="center">${hasAdvisoryContext ? Number(riskIntel?.findings_cvss_ge_7 || 0) : "N/A"}</td></tr>
-        <tr><td>Known Exploited Findings (CISA KEV)</td><td align="center">${escapeHtml(knownExploitedMetricText(riskIntel))}</td></tr>
+        ${Number(riskIntel?.known_exploited_findings || 0) > 0 ? `<tr><td>Known Exploited Findings (CISA KEV)</td><td align="center">${escapeHtml(knownExploitedMetricText(riskIntel))}</td></tr>` : ""}
         <tr><td>Release Gate: Block release</td><td align="center">${hasReleaseGate ? Number(releaseGateDistribution["Block release"] || 0) : "0"}</td></tr>
         <tr><td>Release Gate: Fix before prod</td><td align="center">${hasReleaseGate ? Number(releaseGateDistribution["Fix before prod"] || 0) : "0"}</td></tr>
         <tr><td>Release Gate: Scheduled fix</td><td align="center">${hasReleaseGate ? Number(releaseGateDistribution["Scheduled fix"] || 0) : "0"}</td></tr>
@@ -2841,7 +2863,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
   const falsePositiveSection = fpRows
     ? `<section class="panel">
     <h2>False Positive Review</h2>
-    <p class="muted">${escapeHtml(String((falsePositiveReport as Record<string, unknown>).policy_note || "No false-positive policy note available."))}</p>
+    ${String((falsePositiveReport as Record<string, unknown>).policy_note || "").trim() ? `<p class="muted">${escapeHtml(String((falsePositiveReport as Record<string, unknown>).policy_note || ""))}</p>` : ""}
     <div class="table-scroll">
       <table>
         <thead><tr><th>Issue</th><th>Severity</th><th>Location(s)</th><th>Reason</th><th>Detail</th><th>Confidence</th></tr></thead>
@@ -3045,8 +3067,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
         </tbody>
       </table>
     </div>
-    <h3>Enterprise Blockers</h3>
-    <ul>${enterpriseBlockers || "<li class='muted'>No enterprise blockers detected.</li>"}</ul>
+    ${enterpriseBlockers ? `<h3>Enterprise Blockers</h3><ul>${enterpriseBlockers}</ul>` : ""}
   </section>` : ""}
 
   <section class="panel">
@@ -3072,15 +3093,14 @@ function renderVulnerabilityHtml(scan: ScanView): string {
         </tbody>
       </table>
     </div>
-    <h3>Top 5 Urgent Risks</h3>
+    ${ctoUrgentRows ? `<h3>Top 5 Urgent Risks</h3>
     <div class="table-scroll">
       <table>
         <thead><tr><th>Risk</th><th>Severity</th><th>Priority</th><th>Business Impact</th></tr></thead>
-        <tbody>${ctoUrgentRows || "<tr><td colspan='4' class='muted'>No urgent risks available.</td></tr>"}</tbody>
+        <tbody>${ctoUrgentRows}</tbody>
       </table>
-    </div>
-    <h3>AI Executive Summary</h3>
-    <ul>${aiSummaryRows || "<li class='muted'>No AI summary bullets available.</li>"}</ul>
+    </div>` : ""}
+    ${aiSummaryRows ? `<h3>AI Executive Summary</h3><ul>${aiSummaryRows}</ul>` : ""}
   </section>` : ""}
 
   ${hasCisoData ? `<section class="panel">
@@ -3108,12 +3128,12 @@ function renderVulnerabilityHtml(scan: ScanView): string {
     <h2>Risk Story Mode</h2>
     <p><strong>Scenario:</strong> ${escapeHtml(String(riskStory.scenario_title || "N/A"))}</p>
     <p>${escapeHtml(String(riskStory.narrative || "No chained attack story generated."))}</p>
-    <div class="table-scroll">
+    ${riskStoryOutcomeRows ? `<div class="table-scroll">
       <table class="summary">
         <thead><tr><th>Likely Outcome</th><th>Value</th></tr></thead>
-        <tbody>${riskStoryOutcomeRows || "<tr><td colspan='2' class='muted'>No modeled outcomes.</td></tr>"}</tbody>
+        <tbody>${riskStoryOutcomeRows}</tbody>
       </table>
-    </div>
+    </div>` : ""}
   </section>` : ""}
 
   ${hasAdvancedData ? `<section class="panel">
@@ -3128,13 +3148,13 @@ function renderVulnerabilityHtml(scan: ScanView): string {
     <h3>AI Solution Engine</h3>
     <p class="muted">${escapeHtml(String(aiSolutionEngine.description || "Evidence-driven local remediation engine using finding context, code location, and validation evidence."))}</p>
     <p class="muted"><strong>Mode:</strong> ${escapeHtml(String(aiSolutionEngine.mode || "contextual-remediation"))} | <strong>Provider:</strong> ${escapeHtml(String(aiSolutionEngine.provider || "local-evidence-driven"))} | <strong>Model:</strong> ${escapeHtml(String(aiSolutionEngine.model || "N/A"))} | <strong>Status:</strong> ${escapeHtml(String(aiSolutionEngine.status || "ready"))} | <strong>Grounded:</strong> ${escapeHtml(String(aiSolutionEngine.grounded_generation === false ? "No" : "Yes"))} | <strong>Prioritization:</strong> ${escapeHtml(String(aiSolutionEngine.prioritization_status || "deterministic"))}</p>
-    <h3>What Should I Fix First (AI)</h3>
+    ${hasFixFirstRows ? `<h3>What Should I Fix First (AI)</h3>
     <div class="table-scroll">
       <table>
         <thead><tr><th>Time Window</th><th>Prioritized Findings</th></tr></thead>
-        <tbody>${fixFirstRows || "<tr><td colspan='2' class='muted'>No prioritized fix windows.</td></tr>"}</tbody>
+        <tbody>${fixFirstRows}</tbody>
       </table>
-    </div>
+    </div>` : ""}
   </section>` : ""}
 
   ${hasFalsePositiveData ? falsePositiveSection : ""}
@@ -3635,7 +3655,7 @@ function renderFixesHtml(scan: ScanView): string {
       <tr><td>Findings with Taxonomy Gaps</td><td>${Number(dataQuality.unknown_taxonomy_count || 0)}</td></tr>
       ${renderQualityBenchmarkRows(qualityBenchmark)}
     `
-    : `<tr><td colspan="2" class="muted">No data quality metrics available.</td></tr>`;
+    : "";
   const fixVerificationSummary = normalizedFixVerificationSummary(report.summary.fix_verification, findings);
   const severityBars = renderMetricBars(
     "Severity Mix",
@@ -3834,7 +3854,7 @@ function renderFixesHtml(scan: ScanView): string {
         <div class="table-scroll">
           <table>
             <thead><tr><th>Finding UID</th><th>Issue</th><th>Tool</th><th>Recorded</th><th>Command</th><th>Record SHA256</th></tr></thead>
-            <tbody>${replayRows || "<tr><td colspan='6' class='muted'>No finding-level replay rows available.</td></tr>"}</tbody>
+            <tbody>${replayRows}</tbody>
           </table>
         </div>
       </div>
@@ -3920,8 +3940,7 @@ function renderFixesHtml(scan: ScanView): string {
               </table>
             </div>
             <div style="padding:0 14px 14px">
-              <h3>Enterprise Blockers</h3>
-              <ul>${enterpriseBlockers || "<li class='muted'>No enterprise blockers detected.</li>"}</ul>
+              ${enterpriseBlockers ? `<h3>Enterprise Blockers</h3><ul>${enterpriseBlockers}</ul>` : ""}
             </div>
           </div>
           <div class="table-frame">
@@ -5039,7 +5058,8 @@ function knownExploitedMetricText(
     | null
     | undefined,
 ): string {
-  return hasAdvisoryRiskContext(riskIntel) ? String(Number(riskIntel?.known_exploited_findings || 0)) : "N/A";
+  const count = Number(riskIntel?.known_exploited_findings || 0);
+  return Number.isFinite(count) && count > 0 ? String(count) : "N/A";
 }
 
 function knownExploitedMetricSubtext(
@@ -5656,7 +5676,7 @@ function hasUsableFixWindowEntry(entry: unknown, findingByUid?: Map<string, Vuln
 
 function renderFixWindowValue(value: unknown, findingByUid?: Map<string, VulnerabilityFinding>): string {
   if (!Array.isArray(value) || value.length === 0) {
-    return "<span class='muted'>No prioritized fixes for this window.</span>";
+    return "";
   }
   const entries = value as Array<Record<string, unknown> | string>;
   const rendered = entries
@@ -5728,7 +5748,7 @@ function renderFixWindowValue(value: unknown, findingByUid?: Map<string, Vulnera
     })
     .filter(Boolean)
     .join("");
-  return rendered || "<span class='muted'>No prioritized fixes for this window.</span>";
+  return rendered;
 }
 
 function buildFallbackFixWindowPlan(findings: VulnerabilityFinding[]): Record<string, Array<Record<string, unknown>>> {
