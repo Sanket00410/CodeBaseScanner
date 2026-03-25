@@ -18,7 +18,8 @@ from universal_security_scanner.scanner.ai_provider import (
     generate_prioritization_plan,
     load_ai_provider_config,
 )
-from universal_security_scanner.scanner.dependency_auth import advisory_identity, build_dependency_inventory, normalize_package_name
+from universal_security_scanner.scanner.dependency_auth import advisory_identity, build_dependency_inventory, build_dependency_usage_map, normalize_package_name
+from universal_security_scanner.scanner.native_triage import annotate_findings
 from universal_security_scanner.scanner.reporting.compliance_profiles import (
     build_profile_compliance,
     normalize_owasp_top10_label,
@@ -400,6 +401,19 @@ def _extract_dependency_metadata(evidence: str, description: str, recommendation
     }
 
 
+def _is_dependency_finding_payload(item: dict) -> bool:
+    vuln_type = str(item.get("vulnerability_type") or item.get("vulnerability_title") or "").lower()
+    owasp = str(item.get("owasp_category") or item.get("owasp_mapping") or "").lower()
+    cwe = str(item.get("cwe") or item.get("cwe_id") or "").upper()
+    rule_id = str(item.get("rule_id") or "").upper()
+    return (
+        "dependency" in vuln_type
+        or "a06:2021" in owasp
+        or cwe == "CWE-1104"
+        or rule_id.startswith("NATIVE-DEP-")
+    )
+
+
 def _build_sql_fix(snippet: str) -> str:
     params = _extract_identifiers(snippet, max_items=3)
     if not params:
@@ -587,7 +601,9 @@ def _enriched_findings(findings: list[Finding]) -> list[dict]:
         base["patch_preview"] = patch_preview
         base["autofix_confidence"] = autofix_confidence
         base["finding_uid"] = f"{base.get('rule_id', '')}::{base.get('file_path', '')}::{base.get('line_number', 0)}"
-        if finding.vulnerability_type == "Dependency Vulnerability":
+        base["evidence_sources"] = [str(base.get("rule_id", ""))]
+        base["evidence_origins"] = [str(base.get("origin") or "rule_engine")]
+        if _is_dependency_finding_payload(base):
             base.update(
                 _extract_dependency_metadata(
                     finding.evidence or "",
@@ -611,7 +627,6 @@ def _deduplicate_enriched_findings(findings: list[dict]) -> list[dict]:
         )
         current = unique.get(key)
         if current is None:
-            item["evidence_sources"] = [str(item.get("rule_id", ""))]
             unique[key] = item
             continue
 
@@ -622,10 +637,14 @@ def _deduplicate_enriched_findings(findings: list[dict]) -> list[dict]:
             merged = item
             merged_sources = set(current.get("evidence_sources", [])) | {str(item.get("rule_id", ""))}
             merged["evidence_sources"] = sorted(source for source in merged_sources if source)
+            merged_origins = set(current.get("evidence_origins", [])) | {str(item.get("origin") or "rule_engine")}
+            merged["evidence_origins"] = sorted(origin for origin in merged_origins if origin)
             unique[key] = merged
         else:
             merged_sources = set(current.get("evidence_sources", [])) | {str(item.get("rule_id", ""))}
             current["evidence_sources"] = sorted(source for source in merged_sources if source)
+            merged_origins = set(current.get("evidence_origins", [])) | {str(item.get("origin") or "rule_engine")}
+            current["evidence_origins"] = sorted(origin for origin in merged_origins if origin)
             if not current.get("recommendation") and item.get("recommendation"):
                 current["recommendation"] = item["recommendation"]
             if not current.get("fixed_code") and item.get("fixed_code"):
@@ -1214,34 +1233,7 @@ def _dependency_reachability(findings: list[dict], target_path: str) -> None:
     if not root.exists():
         return
     inventory = build_dependency_inventory(root)
-    cache: dict[str, list[str]] = {}
-    skip_dirs = {".git", "node_modules", "dist", "build", ".venv", "venv", "__pycache__", ".toolchain", "coverage", "exports"}
-    source_files = [
-        path
-        for path in root.rglob("*")
-        if path.is_file() and path.suffix.lower() in {".py", ".js", ".jsx", ".ts", ".tsx"} and not any(part in skip_dirs for part in path.parts)
-    ]
-
-    def package_hits(package_name: str) -> list[str]:
-        if package_name in cache:
-            return cache[package_name]
-        hits: list[str] = []
-        patterns = [
-            rf"\bimport\s+{re.escape(package_name)}\b",
-            rf"\bfrom\s+{re.escape(package_name)}\b",
-            rf"require\(\s*['\"]{re.escape(package_name)}['\"]\s*\)",
-            rf"from\s+['\"]{re.escape(package_name)}['\"]",
-        ]
-        compiled = [re.compile(pattern) for pattern in patterns]
-        for path in source_files:
-            with suppress(OSError):
-                content = path.read_text(encoding="utf-8", errors="ignore")
-                if any(pattern.search(content) for pattern in compiled):
-                    hits.append(str(path.relative_to(root)).replace("\\", "/"))
-                    if len(hits) >= 10:
-                        break
-        cache[package_name] = hits
-        return hits
+    usage_map = build_dependency_usage_map(root)
 
     for item in findings:
         package_name = str(item.get("dependency_name") or "").strip()
@@ -1255,7 +1247,7 @@ def _dependency_reachability(findings: list[dict], target_path: str) -> None:
         aliases = sorted({package_name, *[str(alias) for alias in dependency_row.get("package_aliases", set()) if str(alias).strip()]})
         hits: list[str] = []
         for alias in aliases:
-            hits.extend(package_hits(alias))
+            hits.extend(usage_map.get(normalize_package_name(alias), []))
         hits = list(dict.fromkeys(hits))
         manifest_paths = sorted(str(path) for path in dependency_row.get("manifest_paths", set()))
         lockfile_paths = sorted(str(path) for path in dependency_row.get("lockfile_paths", set()))
@@ -1518,7 +1510,9 @@ def _build_enterprise_assurance(
     toolchain_status: dict[str, dict[str, object]],
     toolchain_execution: dict[str, object],
     scan_profile: str,
+    quality_benchmark: dict[str, object] | None = None,
 ) -> dict[str, object]:
+    benchmark = quality_benchmark or {}
     selected_required = [
         tool_name
         for tool_name, payload in toolchain_status.items()
@@ -1550,7 +1544,36 @@ def _build_enterprise_assurance(
             f"{failure.get('tool', 'analyzer')} status={failure.get('status', 'failed')}: {failure.get('message', 'Analyzer did not complete successfully.')}"
         )
 
+    benchmark_status = str(benchmark.get("benchmark_status") or "").strip().lower()
+    benchmark_advisories: list[str] = []
+    if benchmark:
+        benchmark_name = str(benchmark.get("benchmark_name") or "scanner quality benchmark")
+        precision = float(benchmark.get("precision_percent") or 0.0)
+        recall = float(benchmark.get("recall_percent") or 0.0)
+        f1 = float(benchmark.get("f1_percent") or 0.0)
+        if benchmark_status == "blocked":
+            blockers.append(
+                f"{benchmark_name} fell below quality thresholds (precision={precision:.2f}%, recall={recall:.2f}%, f1={f1:.2f}%)."
+            )
+        elif benchmark_status == "warning":
+            benchmark_advisories.append(
+                f"{benchmark_name} is configured but incomplete; precision={precision:.2f}%, recall={recall:.2f}%, f1={f1:.2f}%."
+            )
+        elif benchmark_status == "not_configured":
+            benchmark_advisories.append("Scanner quality benchmark file is not configured; quality proof remains optional.")
+        else:
+            benchmark_advisories.append(
+                f"{benchmark_name} passed quality thresholds with precision={precision:.2f}%, recall={recall:.2f}%, f1={f1:.2f}%."
+            )
+
     tool_success_rate_percent = float(toolchain_execution.get("success_rate_percent") or 0.0)
+    benchmark_bonus = 0.0
+    if benchmark and benchmark_status == "ready":
+        benchmark_bonus = min(12.0, (float(benchmark.get("precision_percent") or 0.0) + float(benchmark.get("recall_percent") or 0.0) + float(benchmark.get("f1_percent") or 0.0)) / 30.0)
+    elif benchmark and benchmark_status == "warning":
+        benchmark_bonus = -4.0
+    elif benchmark and benchmark_status == "blocked":
+        benchmark_bonus = -12.0
     readiness_score = round(
         max(
             0.0,
@@ -1558,7 +1581,8 @@ def _build_enterprise_assurance(
                 100.0,
                 required_tools_coverage_percent * 0.4
                 + tool_success_rate_percent * 0.35
-                + max(0.0, 25.0 - critical_count * 7.0 - high_count * 2.0),
+                + max(0.0, 25.0 - critical_count * 7.0 - high_count * 2.0)
+                + benchmark_bonus,
             ),
         ),
         2,
@@ -1568,12 +1592,19 @@ def _build_enterprise_assurance(
         status = "blocked"
     elif required_tools_total and (required_tools_coverage_percent < 100 or tool_success_rate_percent < 80):
         status = "warning"
+    elif benchmark and benchmark_status in {"blocked", "warning"}:
+        status = "blocked" if benchmark_status == "blocked" else "warning"
 
     recommendation = "Release criteria met with current analyzer coverage."
     if status == "blocked":
         recommendation = "Resolve critical findings and failed analyzer coverage before relying on this report for release sign-off."
     elif status == "warning":
         recommendation = "Increase analyzer coverage and resolve high-priority findings before production deployment."
+    if benchmark and benchmark_status == "blocked" and benchmark_advisories:
+        recommendation = f"{recommendation} Scanner quality benchmark requires attention before sign-off."
+    advisories = benchmark_advisories
+    if status == "warning" and benchmark_status == "warning" and not benchmark_advisories:
+        advisories.append("Scanner quality benchmark is partially configured.")
 
     return {
         "status": status,
@@ -1594,8 +1625,9 @@ def _build_enterprise_assurance(
         "toolchain_no_runner_tools": int(toolchain_execution.get("no_runner_tools") or 0),
         "readiness_score": readiness_score,
         "blockers": blockers,
-        "advisories": [],
+        "advisories": advisories,
         "recommendation": recommendation,
+        "quality_benchmark": benchmark if benchmark else None,
     }
 
 
@@ -1669,7 +1701,7 @@ def _build_false_positive_report(findings: list[dict]) -> dict[str, object] | No
     for item in findings:
         active_poc = item.get("active_poc") or {}
         status = _active_poc_status(active_poc)
-        if status not in {"inconclusive", "error"}:
+        if not bool(item.get("suppression_candidate")) and status not in {"inconclusive", "error"}:
             continue
         candidates.append(
             {
@@ -1678,16 +1710,23 @@ def _build_false_positive_report(findings: list[dict]) -> dict[str, object] | No
                 "severity": item.get("severity", "Medium"),
                 "file_path": item.get("file_path"),
                 "line_number": item.get("line_number"),
-                "reason_summary": "Validation requires analyst review",
-                "reason_detail": str(active_poc.get("verification_basis") or "Deterministic validation did not fully confirm exploitability in this code path."),
-                "confidence": float(active_poc.get("confidence") or 0.0),
+                "reason_summary": str(item.get("suppression_reason") or "Validation requires analyst review"),
+                "reason_detail": str(
+                    item.get("suppression_detail")
+                    or active_poc.get("verification_basis")
+                    or "Deterministic validation did not fully confirm exploitability in this code path."
+                ),
+                "confidence": float(item.get("rule_confidence") or active_poc.get("confidence") or 0.0),
+                "owner": str(item.get("suppression_owner") or ""),
+                "review_by": str(item.get("suppression_review_by") or ""),
+                "requires_expiry": bool(item.get("suppression_requires_expiry")),
                 "verification_steps": [str(item.get("ai_validation_steps") or "").splitlines()[0]] if str(item.get("ai_validation_steps") or "").strip() else [],
             }
         )
     if not candidates:
         return None
     return {
-        "policy_note": "Only inconclusive or errored validation candidates are listed for analyst suppression review.",
+        "policy_note": "Only low-confidence, non-production-context, or incompletely validated candidates are listed for analyst suppression review.",
         "candidate_count": len(candidates),
         "candidates": candidates[:80],
     }
@@ -1701,15 +1740,22 @@ def _build_data_quality(
     confidence: str,
     toolchain_execution: dict[str, object],
     false_positive_report: dict[str, object] | None,
+    quality_benchmark: dict[str, object] | None = None,
 ) -> dict[str, object]:
     unknown_rule_count = 0
     unknown_cwe_count = 0
     unknown_owasp_count = 0
     unknown_taxonomy_count = 0
+    origin_counts: Counter[str] = Counter()
+    corroborated_findings = 0
     for item in findings:
         rule_id = str(item.get("rule_id") or "").strip()
         cwe = str(item.get("cwe_id") or item.get("cwe") or "").strip()
         owasp = str(item.get("owasp_mapping") or item.get("owasp_category") or "").strip()
+        origin = str(item.get("finding_origin") or item.get("origin") or "rule_engine")
+        origin_counts[origin] += 1
+        if bool(item.get("corroborated")):
+            corroborated_findings += 1
         if not rule_id:
             unknown_rule_count += 1
         if not cwe:
@@ -1720,7 +1766,7 @@ def _build_data_quality(
             unknown_taxonomy_count += 1
     suppressed_findings = int((false_positive_report or {}).get("candidate_count") or 0)
     coverage_confidence_score = {"High": 85.0, "Medium": 65.0, "Low": 40.0}.get(confidence, 55.0)
-    return {
+    payload = {
         "raw_findings": raw_total,
         "deduplicated_findings": deduplicated_total,
         "duplicate_findings_removed": duplicate_reduction,
@@ -1735,7 +1781,12 @@ def _build_data_quality(
         "unknown_cwe_count": unknown_cwe_count,
         "unknown_owasp_count": unknown_owasp_count,
         "unknown_taxonomy_count": unknown_taxonomy_count,
+        "finding_origin_distribution": dict(origin_counts.most_common()),
+        "corroborated_findings": corroborated_findings,
     }
+    if quality_benchmark:
+        payload["quality_benchmark"] = quality_benchmark
+    return payload
 
 
 def _build_cto_board_view(findings: list[dict], risk_score: float) -> dict[str, object]:
@@ -1946,6 +1997,8 @@ def build_report(scan_result: ScanResult) -> dict:
     raw_enriched, noise_filtered_count = _filter_report_noise(raw_enriched_all)
     enriched_findings = _deduplicate_enriched_findings(raw_enriched)
     enriched_findings, advanced_features = _apply_validation_and_ai(enriched_findings, scan_result.target_path)
+    enriched_findings, suppression_lifecycle = annotate_findings(enriched_findings)
+    suppression_lifecycle["generated_at"] = scan_result.completed_at.isoformat()
     duplicate_reduction = max(0, len(raw_enriched) - len(enriched_findings))
     distribution = _severity_distribution_from_enriched(enriched_findings)
     risk_score = _risk_score_from_distribution(distribution)
@@ -1954,8 +2007,8 @@ def build_report(scan_result: ScanResult) -> dict:
     active_poc_summary = _active_poc_summary(enriched_findings)
     fix_verification_summary = _fix_verification_summary(enriched_findings)
 
-    confidence = "High"
-    if len(scan_result.errors) > 5:
+    confidence = str(suppression_lifecycle.get("average_rule_confidence_label") or "Medium")
+    if len(scan_result.errors) > 5 and confidence == "High":
         confidence = "Medium"
     if len(scan_result.errors) > 15:
         confidence = "Low"
@@ -1978,6 +2031,7 @@ def build_report(scan_result: ScanResult) -> dict:
         confidence=confidence,
         toolchain_execution=toolchain_execution,
         false_positive_report=false_positive_report,
+        quality_benchmark=getattr(scan_result, "quality_benchmark", None) or None,
     )
     data_quality["noise_filtered_findings"] = noise_filtered_count
     enterprise_assurance = _build_enterprise_assurance(
@@ -1985,6 +2039,7 @@ def build_report(scan_result: ScanResult) -> dict:
         scan_result.toolchain_status,
         toolchain_execution,
         scan_profile=profile_compliance["scan_profile"],
+        quality_benchmark=getattr(scan_result, "quality_benchmark", None) or None,
     )
     cto_board_view = _build_cto_board_view(enriched_findings, risk_score)
     ciso_security_view = _build_ciso_security_view(enriched_findings)
@@ -2020,9 +2075,11 @@ def build_report(scan_result: ScanResult) -> dict:
         "scan_profile": profile_compliance["scan_profile"],
         "scan_profile_label": profile_compliance["scan_profile_label"],
         "framework_versions": profile_compliance["framework_versions"],
+        "finding_origin_distribution": suppression_lifecycle.get("finding_origins", {}),
         "toolchain_execution": toolchain_execution,
         "enterprise_assurance": enterprise_assurance,
         "data_quality": data_quality,
+        "suppression_lifecycle": suppression_lifecycle,
         "deterministic_replay": None,
         "report_integrity_chain": None,
     }
@@ -2104,6 +2161,8 @@ def build_report(scan_result: ScanResult) -> dict:
             "enterprise_assurance": enterprise_assurance,
             "false_positive_candidates": int((false_positive_report or {}).get("candidate_count") or 0),
             "data_quality": data_quality,
+            "suppression_lifecycle": suppression_lifecycle,
+            "finding_origin_distribution": suppression_lifecycle.get("finding_origins", {}),
             "deterministic_replay": None,
             "report_integrity_chain": None,
         },

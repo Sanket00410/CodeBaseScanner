@@ -115,6 +115,77 @@ def _report_globe_css() -> str:
     """
 
 
+def _as_dict(value: object) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _quality_benchmark_from_report(report: dict) -> dict[str, Any] | None:
+    executive = _as_dict(report.get("executive_summary"))
+    existing = _as_dict(report.get("existing_implementation_report"))
+    vuln = _as_dict(report.get("vulnerability_fixed_code_report"))
+    candidates = [
+        _as_dict(executive.get("data_quality")).get("quality_benchmark"),
+        _as_dict(executive.get("enterprise_assurance")).get("quality_benchmark"),
+        _as_dict(vuln.get("summary")).get("data_quality", {}).get("quality_benchmark") if isinstance(_as_dict(vuln.get("summary")).get("data_quality"), dict) else None,
+        _as_dict(vuln.get("summary")).get("enterprise_assurance", {}).get("quality_benchmark") if isinstance(_as_dict(vuln.get("summary")).get("enterprise_assurance"), dict) else None,
+        _as_dict(existing.get("summary")).get("quality_benchmark"),
+    ]
+    for benchmark in candidates:
+        if isinstance(benchmark, dict) and benchmark.get("configured"):
+            return benchmark
+    return None
+
+
+def _render_quality_benchmark_html_section(report: dict) -> str:
+    benchmark = _quality_benchmark_from_report(report)
+    if not benchmark:
+        return ""
+    rows = [
+        ("Benchmark Status", str(benchmark.get("benchmark_status", "warning")).upper()),
+        ("Benchmark Name", str(benchmark.get("benchmark_name", "Scanner Quality Benchmark"))),
+        ("Benchmark File", str(benchmark.get("benchmark_file", "N/A"))),
+        ("Description", str(benchmark.get("benchmark_description", "N/A")) or "N/A"),
+        (
+            "Cases",
+            f"{int(benchmark.get('cases_total', 0))} total ({int(benchmark.get('expected_present', 0))} expected-present, {int(benchmark.get('expected_absent', 0))} expected-absent)",
+        ),
+        ("Precision", f"{float(benchmark.get('precision_percent', 0.0)):.2f}%"),
+        ("Recall", f"{float(benchmark.get('recall_percent', 0.0)):.2f}%"),
+        ("F1", f"{float(benchmark.get('f1_percent', 0.0)):.2f}%"),
+        ("False Positive Rate", f"{float(benchmark.get('false_positive_rate_percent', 0.0)):.2f}%"),
+        (
+            "Thresholds",
+            "precision >= "
+            f"{float(benchmark.get('threshold_precision_percent', 0.0)):.2f}%, "
+            f"recall >= {float(benchmark.get('threshold_recall_percent', 0.0)):.2f}%, "
+            f"f1 >= {float(benchmark.get('threshold_f1_percent', 0.0)):.2f}%",
+        ),
+        ("True Positives", str(int(benchmark.get("true_positives", 0)))),
+        ("False Positives", str(int(benchmark.get("false_positives", 0)))),
+        ("False Negatives", str(int(benchmark.get("false_negatives", 0)))),
+        ("True Negatives", str(int(benchmark.get("true_negatives", 0)))),
+    ]
+    blocker_items = "".join(f"<li>{html.escape(str(item))}</li>" for item in (benchmark.get("gate_blockers") or [])[:4])
+    advisory_items = "".join(f"<li>{html.escape(str(item))}</li>" for item in (benchmark.get("gate_advisories") or [])[:4])
+    rows_html = "".join(
+        f"<tr><td>{html.escape(str(key))}</td><td>{html.escape(str(value))}</td></tr>"
+        for key, value in rows
+    )
+    return f"""
+    <section class="table-frame">
+      <h2 style="padding:12px 14px 0">Scanner Quality Benchmark</h2>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+          <tbody>{rows_html}</tbody>
+        </table>
+      </div>
+      {"<div style='padding:0 14px 14px'><h3>Benchmark Blockers</h3><ul>{}</ul></div>".format(blocker_items) if blocker_items else ""}
+      {"<div style='padding:0 14px 14px'><h3>Benchmark Advisories</h3><ul>{}</ul></div>".format(advisory_items) if advisory_items else ""}
+    </section>
+    """
+
+
 def _sanitize_export_token(value: str, fallback: str) -> str:
     normalized = str(value or "").strip().replace("\\", "/")
     normalized = re.sub(r"^[A-Za-z]:", "", normalized).strip("/")
@@ -511,6 +582,29 @@ class ReportExporter:
             for line in lines:
                 write_line(line, font=font, size=size, gap=gap)
 
+        def write_quality_benchmark_section() -> None:
+            benchmark = _quality_benchmark_from_report(report)
+            if not benchmark or not benchmark.get("configured"):
+                return
+            write_line("Scanner Quality Benchmark", font="Helvetica-Bold", size=11)
+            write_line(
+                f"- Status: {str(benchmark.get('benchmark_status', 'warning')).upper()}",
+                size=8,
+            )
+            write_line(f"- Benchmark: {benchmark.get('benchmark_name', 'Scanner Quality Benchmark')}", size=8)
+            write_line(
+                f"- Cases: {int(benchmark.get('cases_total', 0))} total ({int(benchmark.get('expected_present', 0))} expected-present, {int(benchmark.get('expected_absent', 0))} expected-absent)",
+                size=8,
+            )
+            write_line(f"- Precision: {float(benchmark.get('precision_percent', 0.0)):.2f}%", size=8)
+            write_line(f"- Recall: {float(benchmark.get('recall_percent', 0.0)):.2f}%", size=8)
+            write_line(f"- F1: {float(benchmark.get('f1_percent', 0.0)):.2f}%", size=8)
+            write_line(f"- False Positive Rate: {float(benchmark.get('false_positive_rate_percent', 0.0)):.2f}%", size=8)
+            for blocker in (benchmark.get("gate_blockers") or [])[:4]:
+                write_line(f"- Blocker: {blocker}", size=8)
+            for advisory in (benchmark.get("gate_advisories") or [])[:4]:
+                write_line(f"- Advisory: {advisory}", size=8)
+
         summary = report.get("executive_summary", {})
         report_kind = report_type.lower()
 
@@ -529,6 +623,7 @@ class ReportExporter:
                     f"- {control.get('name', 'Control')} [{control.get('coverage_level', 'N/A')}] "
                     f"({control.get('category', 'Security')})"
                 )
+            write_quality_benchmark_section()
             pdf.save()
             return output_path
 
@@ -619,6 +714,7 @@ class ReportExporter:
         write_line("Action Plan", font="Helvetica-Bold", size=11)
         for step in action_plan[:10]:
             write_line(f"- {step}")
+        write_quality_benchmark_section()
         write_line("Alert Details", font="Helvetica-Bold", size=11)
         for alert in alerts[:35]:
             write_line(f"[{alert.get('severity')}] {alert.get('title')} ({alert.get('count')})", font="Helvetica-Bold", size=9)
@@ -753,6 +849,7 @@ class ReportExporter:
         summary = existing.get("summary", {})
         controls = existing.get("controls", [])
         matrix = existing.get("compliance_matrix", [])
+        benchmark_section = _render_quality_benchmark_html_section(report)
 
         summary_rows = "".join(
             f"<tr><td>{html.escape(str(key).replace('_', ' ').title())}</td><td>{html.escape(str(value))}</td></tr>"
@@ -821,6 +918,7 @@ class ReportExporter:
     <thead><tr><th>Standard</th><th>Control Count</th><th>Status</th></tr></thead>
     <tbody>{matrix_rows or "<tr><td colspan='3'>No compliance mapping data.</td></tr>"}</tbody>
   </table>
+  {benchmark_section}
 </body>
 </html>
 """
@@ -840,6 +938,7 @@ class ReportExporter:
         affected_modules = summary.get("affected_modules", exec_summary.get("affected_modules", []))
         owasp_rows = _owasp_counts(findings)
         action_plan = exec_summary.get("recommended_action_plan", [])
+        benchmark_section = _render_quality_benchmark_html_section(report)
 
         summary_rows = "".join(
             (
@@ -1027,6 +1126,7 @@ class ReportExporter:
   <h2>Action Plan</h2>
   <ol>{action_rows or "<li>No action plan available.</li>"}</ol>
 
+  {benchmark_section}
   <h2>Detailed Findings</h2>
   {detail_sections or "<p>No findings available.</p>"}
   <script>
@@ -1240,6 +1340,7 @@ class ReportExporter:
         findings = _sorted_findings(report)
         target_path = str(vuln_report.get("target_path", report.get("executive_summary", {}).get("target_path", "N/A")))
         generated_at = str(vuln_report.get("generated_at", report.get("executive_summary", {}).get("generated_at", "N/A")))
+        benchmark_section = _render_quality_benchmark_html_section(report)
 
         severity_rows = "".join(
             (
@@ -1377,6 +1478,7 @@ class ReportExporter:
       <tbody>{verification_rows}</tbody>
     </table>
   </section>
+  {benchmark_section}
   <section class='panel'>
     <h2>Fix Queue</h2>
     <table>
@@ -1397,6 +1499,7 @@ class ReportExporter:
         exec_summary = report.get("executive_summary", {})
         existing = report.get("existing_implementation_report", {})
         vuln = report.get("vulnerability_fixed_code_report", {})
+        benchmark_section = _render_quality_benchmark_html_section(report)
         return f"""
 <!doctype html>
 <html lang='en'>
@@ -1429,6 +1532,7 @@ class ReportExporter:
       <p>Implemented controls: {existing.get('summary', {}).get('implemented_controls', 0)}</p>
       <p>Deduplicated findings: {vuln.get('summary', {}).get('total_findings', 0)}</p>
     </section>
+    {benchmark_section}
   </main>
 </body>
 </html>

@@ -43,12 +43,77 @@ def build_dependency_inventory(root: Path) -> dict[str, dict[str, object]]:
     return inventory
 
 
+def build_dependency_usage_map(root: Path) -> dict[str, list[str]]:
+    usage: dict[str, list[str]] = defaultdict(list)
+    if not root.exists():
+        return {}
+
+    skip_dirs = {
+        ".git",
+        "node_modules",
+        "dist",
+        "build",
+        ".venv",
+        "venv",
+        "__pycache__",
+        ".toolchain",
+        "coverage",
+        "exports",
+    }
+    source_suffixes = {".py", ".js", ".jsx", ".ts", ".tsx"}
+    for path in root.rglob("*"):
+        if not path.is_file() or path.suffix.lower() not in source_suffixes:
+            continue
+        if any(part in skip_dirs for part in path.parts):
+            continue
+        relative = _relpath(path, root)
+        try:
+            content = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        for package in _extract_dependency_imports(content, path.suffix.lower()):
+            row = usage[normalize_package_name(package)]
+            if relative not in row:
+                row.append(relative)
+    return {key: value[:10] for key, value in usage.items()}
+
+
 def advisory_identity(findings_ids: list[str]) -> dict[str, object]:
     normalized = sorted({str(item).strip().upper() for item in findings_ids if str(item).strip()})
     return {
         "advisory_ids": normalized,
         "advisory_verified": any(re.match(r"^(CVE-\d{4}-\d{4,7}|GHSA-[A-Z0-9-]+)$", item, re.IGNORECASE) for item in normalized),
     }
+
+
+def _extract_dependency_imports(content: str, suffix: str) -> set[str]:
+    imports: set[str] = set()
+    if suffix == ".py":
+        for match in re.finditer(r"^\s*import\s+([A-Za-z_][A-Za-z0-9_\.]*)", content, flags=re.MULTILINE):
+            imports.add(match.group(1).split(".", 1)[0])
+        for match in re.finditer(r"^\s*from\s+([A-Za-z_][A-Za-z0-9_\.]*)\s+import\b", content, flags=re.MULTILINE):
+            imports.add(match.group(1).split(".", 1)[0])
+    elif suffix in {".js", ".jsx", ".ts", ".tsx"}:
+        for match in re.finditer(r"require\(\s*['\"]([^'\"]+)['\"]\s*\)", content):
+            spec = match.group(1).strip()
+            if not spec.startswith((".", "/")):
+                imports.add(_top_level_js_package(spec))
+        for match in re.finditer(r"from\s+['\"]([^'\"]+)['\"]", content):
+            spec = match.group(1).strip()
+            if not spec.startswith((".", "/")):
+                imports.add(_top_level_js_package(spec))
+        for match in re.finditer(r"^\s*import\s+['\"]([^'\"]+)['\"]", content, flags=re.MULTILINE):
+            spec = match.group(1).strip()
+            if not spec.startswith((".", "/")):
+                imports.add(_top_level_js_package(spec))
+    return {item for item in imports if item}
+
+
+def _top_level_js_package(spec: str) -> str:
+    if spec.startswith("@"):
+        parts = spec.split("/")
+        return "/".join(parts[:2]) if len(parts) >= 2 else spec
+    return spec.split("/", 1)[0]
 
 
 def _ensure_row(inventory: dict[str, dict[str, object]], package_name: str) -> dict[str, object]:

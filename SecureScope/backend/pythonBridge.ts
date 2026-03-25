@@ -331,6 +331,8 @@ function buildScanEnvironment(
   delete env.USS_CHANGED_LINES_JSON;
   env.USS_REPORT_CHAIN_FILE = path.join(scannerRoot, "exports", ".integrity", "report_chain.json");
   env.USS_SUPPRESSION_LIFECYCLE_FILE = path.join(scannerRoot, "exports", ".integrity", "suppression_lifecycle.json");
+  env.USS_SCAN_CACHE_FILE = env.USS_SCAN_CACHE_FILE || path.join(scannerRoot, "exports", ".integrity", "scan_cache.json");
+  env.USS_QUALITY_BENCHMARK_FILE = env.USS_QUALITY_BENCHMARK_FILE || path.join(scannerRoot, "exports", ".integrity", "benchmark_truth_set.json");
   if (scmContext) {
     if (scmContext.diffBaseRef) {
       env.USS_DIFF_BASE_REF = String(scmContext.diffBaseRef);
@@ -354,7 +356,7 @@ function buildScanEnvironment(
 }
 
 function applyScanPreset(env: NodeJS.ProcessEnv, preset: "fast" | "standard" | "deep"): void {
-  const logicalCores = Math.max(2, Math.min(12, os.cpus().length || 4));
+  const logicalCores = Math.max(2, Math.min(16, os.cpus().length || 4));
   const toolPresets: Record<NonNullable<ScanRequest["scanPreset"]>, string[]> = {
     fast: ["semgrep", "gitleaks", "bandit", "trivy", "checkov"],
     standard: [
@@ -404,26 +406,29 @@ function applyScanPreset(env: NodeJS.ProcessEnv, preset: "fast" | "standard" | "
     env.USS_EXTERNAL_TOOLS = env.USS_CODEBASE_TOOLS;
   }
   if (!env.USS_TOOL_WORKERS) {
-    env.USS_TOOL_WORKERS = String(Math.max(2, Math.min(6, logicalCores)));
+    env.USS_TOOL_WORKERS = String(Math.max(2, Math.min(8, logicalCores)));
   }
   if (!env.USS_EXTERNAL_TOOL_WORKERS) {
     env.USS_EXTERNAL_TOOL_WORKERS = env.USS_TOOL_WORKERS;
   }
+  if (!env.USS_SCAN_CACHE_ENABLED) {
+    env.USS_SCAN_CACHE_ENABLED = "1";
+  }
   if (preset === "fast") {
-    env.USS_FILE_SCAN_WORKERS = String(logicalCores);
+    env.USS_FILE_SCAN_WORKERS = String(Math.max(4, Math.min(12, logicalCores)));
     env.USS_MAX_FILE_SIZE_KB = "512";
     env.USS_ACTIVE_POC_MODE = "0";
     env.USS_ACTIVE_POC_MAX_FINDINGS = "0";
     return;
   }
   if (preset === "deep") {
-    env.USS_FILE_SCAN_WORKERS = String(Math.max(4, Math.min(8, logicalCores)));
+    env.USS_FILE_SCAN_WORKERS = String(Math.max(4, Math.min(10, logicalCores)));
     env.USS_MAX_FILE_SIZE_KB = "2048";
     env.USS_ACTIVE_POC_MODE = "1";
     env.USS_ACTIVE_POC_MAX_FINDINGS = "0";
     return;
   }
-  env.USS_FILE_SCAN_WORKERS = String(Math.max(4, Math.min(8, logicalCores)));
+  env.USS_FILE_SCAN_WORKERS = String(Math.max(4, Math.min(10, logicalCores)));
   env.USS_MAX_FILE_SIZE_KB = "1024";
   env.USS_ACTIVE_POC_MODE = "1";
   env.USS_ACTIVE_POC_MAX_FINDINGS = "80";

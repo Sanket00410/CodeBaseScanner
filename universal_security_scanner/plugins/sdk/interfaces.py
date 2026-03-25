@@ -64,4 +64,11 @@ class BaseLanguagePlugin(ABC):
             rule_id=rule.rule_id,
             cwe=rule.cwe,
             evidence=evidence,
+            origin="builtin_plugin",
+            provenance={
+                "source": "builtin_plugin",
+                "plugin_id": self.metadata.plugin_id,
+                "plugin_name": self.metadata.name,
+                "language": self.metadata.language,
+            },
         )

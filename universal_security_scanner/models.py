@@ -39,11 +39,40 @@ class Finding:
     rule_id: str
     cwe: str | None = None
     evidence: str | None = None
+    origin: str = ""
+    provenance: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["severity"] = self.severity.value
         return payload
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "Finding":
+        severity_raw = str(payload.get("severity") or Severity.INFO.value)
+        try:
+            severity = Severity(severity_raw)
+        except ValueError:
+            severity = Severity.INFO
+        provenance = payload.get("provenance")
+        if not isinstance(provenance, dict):
+            provenance = {}
+        return cls(
+            vulnerability_type=str(payload.get("vulnerability_type") or ""),
+            severity=severity,
+            file_path=str(payload.get("file_path") or ""),
+            line_number=int(payload.get("line_number") or 0),
+            business_impact=str(payload.get("business_impact") or ""),
+            recommendation=str(payload.get("recommendation") or ""),
+            reference=str(payload.get("reference") or ""),
+            owasp_category=str(payload.get("owasp_category") or ""),
+            description=str(payload.get("description") or ""),
+            rule_id=str(payload.get("rule_id") or ""),
+            cwe=str(payload.get("cwe") or "") or None,
+            evidence=str(payload.get("evidence") or "") or None,
+            origin=str(payload.get("origin") or ""),
+            provenance=provenance,
+        )
 
 
 @dataclass(slots=True)
@@ -71,6 +100,7 @@ class ScanResult:
     errors: list[str] = field(default_factory=list)
     existing_security_measures: list[SecurityControl] = field(default_factory=list)
     toolchain_status: dict[str, dict[str, Any]] = field(default_factory=dict)
+    quality_benchmark: dict[str, Any] = field(default_factory=dict)
 
     @property
     def duration_seconds(self) -> float:
@@ -87,6 +117,7 @@ class ScanResult:
             "errors": self.errors,
             "existing_security_measures": [item.to_dict() for item in self.existing_security_measures],
             "toolchain_status": self.toolchain_status,
+            "quality_benchmark": self.quality_benchmark,
         }
 
 

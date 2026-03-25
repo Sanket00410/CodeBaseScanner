@@ -8,6 +8,7 @@ import {
   EnterpriseAssuranceSummary,
   DataQualitySummary,
   ExportRequest,
+  QualityBenchmarkSummary,
   ScanView,
   ToolExecutionEvidence,
   ToolchainExecutionSummary,
@@ -134,8 +135,20 @@ function formatDisplayTimestamp(value: string): string {
   return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")} ${String(parsed.getHours()).padStart(2, "0")}:${String(parsed.getMinutes()).padStart(2, "0")}:${String(parsed.getSeconds()).padStart(2, "0")}.${String(parsed.getMilliseconds()).padStart(3, "0")}`;
 }
 
-function currentExportTimestamp(): string {
-  return new Date().toISOString();
+function resolveReportGeneratedAt(scan: ScanView, reportType: ExportRequest["reportType"] | "finding_details"): string {
+  const executiveGeneratedAt = String(scan.report.executive_summary.generated_at || "");
+  const existingGeneratedAt = String(scan.report.existing_implementation_report.generated_at || executiveGeneratedAt);
+  const vulnerabilityGeneratedAt = String(scan.report.vulnerability_fixed_code_report.generated_at || executiveGeneratedAt);
+  switch (reportType) {
+    case "existing":
+      return existingGeneratedAt || vulnerabilityGeneratedAt || executiveGeneratedAt;
+    case "vulnerability":
+    case "fixes":
+    case "finding_details":
+      return vulnerabilityGeneratedAt || executiveGeneratedAt || existingGeneratedAt;
+    default:
+      return executiveGeneratedAt || vulnerabilityGeneratedAt || existingGeneratedAt;
+  }
 }
 
 function exportReportTypeToken(
@@ -185,14 +198,21 @@ function resolveEnterpriseAssurance(
   summary: VulnerabilityFixedCodeReport["summary"],
 ): EnterpriseAssuranceSummary | null {
   const existing = summary.enterprise_assurance || scan.report.executive_summary.enterprise_assurance || null;
+  const benchmark =
+    summary.data_quality?.quality_benchmark ||
+    scan.report.executive_summary.data_quality?.quality_benchmark ||
+    existing?.quality_benchmark ||
+    null;
   const existingMeaningful =
     existing &&
     (Number(existing.required_tools_total || 0) > 0 ||
       Number(existing.readiness_score || 0) > 0 ||
       Boolean((existing.blockers || []).length) ||
-      Number(existing.toolchain_attempted_tools || 0) > 0);
+      Number(existing.toolchain_attempted_tools || 0) > 0 ||
+      Boolean(existing.quality_benchmark) ||
+      Boolean(benchmark));
   if (existingMeaningful) {
-    return existing;
+    return benchmark && !existing.quality_benchmark ? { ...existing, quality_benchmark: benchmark } : existing;
   }
   const toolchainExecution = resolveToolchainExecution(scan, summary);
   const findings = scan.report.vulnerability_fixed_code_report.findings || [];
@@ -250,7 +270,62 @@ function resolveEnterpriseAssurance(
         : status === "warning"
           ? "Increase analyzer coverage and close high-priority risks before production deployment."
           : "Release criteria met with current analyzer coverage.",
+    quality_benchmark: benchmark || undefined,
   };
+}
+
+function renderQualityBenchmarkRows(benchmark?: QualityBenchmarkSummary | null): string {
+  if (!benchmark || !benchmark.configured) {
+    return "";
+  }
+  const rows = [
+    ["Benchmark Status", String(benchmark.benchmark_status || "warning").toUpperCase()],
+    ["Benchmark Name", String(benchmark.benchmark_name || "Scanner Quality Benchmark")],
+    ["Benchmark File", String(benchmark.benchmark_file || "N/A")],
+    ["Description", String(benchmark.benchmark_description || "N/A")],
+    ["Cases", `${Number(benchmark.cases_total || 0)} total (${Number(benchmark.expected_present || 0)} expected-present, ${Number(benchmark.expected_absent || 0)} expected-absent)`],
+    ["Precision", `${Number(benchmark.precision_percent || 0).toFixed(2)}%`],
+    ["Recall", `${Number(benchmark.recall_percent || 0).toFixed(2)}%`],
+    ["F1", `${Number(benchmark.f1_percent || 0).toFixed(2)}%`],
+    ["False Positive Rate", `${Number(benchmark.false_positive_rate_percent || 0).toFixed(2)}%`],
+    ["Thresholds", `precision >= ${Number(benchmark.threshold_precision_percent || 0).toFixed(2)}%, recall >= ${Number(benchmark.threshold_recall_percent || 0).toFixed(2)}%, f1 >= ${Number(benchmark.threshold_f1_percent || 0).toFixed(2)}%`],
+    ["True Positives", String(Number(benchmark.true_positives || 0))],
+    ["False Positives", String(Number(benchmark.false_positives || 0))],
+    ["False Negatives", String(Number(benchmark.false_negatives || 0))],
+    ["True Negatives", String(Number(benchmark.true_negatives || 0))],
+  ];
+  return rows
+    .map(
+      ([key, value]) => `<tr><td>${escapeHtml(String(key))}</td><td align="center">${escapeHtml(String(value))}</td></tr>`,
+    )
+    .join("");
+}
+
+function renderQualityBenchmarkSection(benchmark?: QualityBenchmarkSummary | null): string {
+  if (!benchmark || !benchmark.configured) {
+    return "";
+  }
+  const blockerItems = (benchmark.gate_blockers || [])
+    .slice(0, 6)
+    .map((item) => `<li>${escapeHtml(String(item))}</li>`)
+    .join("");
+  const advisoryItems = (benchmark.gate_advisories || [])
+    .slice(0, 6)
+    .map((item) => `<li>${escapeHtml(String(item))}</li>`)
+    .join("");
+  return `
+    <section class="panel">
+      <h2>Scanner Quality Benchmark</h2>
+      <table>
+        <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+        <tbody>
+          ${renderQualityBenchmarkRows(benchmark)}
+        </tbody>
+      </table>
+      ${blockerItems ? `<h3>Benchmark Blockers</h3><ul>${blockerItems}</ul>` : ""}
+      ${advisoryItems ? `<h3>Benchmark Advisories</h3><ul>${advisoryItems}</ul>` : ""}
+    </section>
+  `;
 }
 
 function resolveToolchainExecution(
@@ -845,9 +920,16 @@ export class ExportService {
 
 function writeExistingPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
   const report = scan.report.existing_implementation_report;
-  const summary = report.summary;
+  const summary = report.summary as typeof report.summary & {
+    quality_benchmark?: QualityBenchmarkSummary | null;
+  };
   const profileCompliance = report.profile_compliance || scan.report.profile_compliance;
-  const exportedAt = formatDisplayTimestamp(currentExportTimestamp());
+  const qualityBenchmark =
+    summary.quality_benchmark ||
+    scan.report.executive_summary.data_quality?.quality_benchmark ||
+    scan.report.executive_summary.enterprise_assurance?.quality_benchmark ||
+    null;
+  const exportedAt = formatDisplayTimestamp(resolveReportGeneratedAt(scan, "existing"));
   writePdfHero(doc, "CodeSentinelX Existing Security Implementation Report", [
     `Target: ${report.target_path}`,
     `Generated: ${exportedAt}`,
@@ -945,12 +1027,34 @@ function writeExistingPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
       writeWrapped(doc, `... ${controlEvidenceRows.length - 80} additional evidence row(s) omitted in PDF.`, 8);
     }
   }
+  if (qualityBenchmark && qualityBenchmark.configured) {
+    writePdfSectionHeader(doc, "Scanner Quality Benchmark");
+    writePdfKeyValueTable(doc, [
+      { key: "Status", value: String(qualityBenchmark.benchmark_status || "warning").toUpperCase() },
+      { key: "Benchmark", value: String(qualityBenchmark.benchmark_name || "Scanner Quality Benchmark") },
+      { key: "Cases", value: `${Number(qualityBenchmark.cases_total || 0)} total (${Number(qualityBenchmark.expected_present || 0)} expected-present, ${Number(qualityBenchmark.expected_absent || 0)} expected-absent)` },
+      { key: "Precision", value: `${Number(qualityBenchmark.precision_percent || 0).toFixed(2)}%` },
+      { key: "Recall", value: `${Number(qualityBenchmark.recall_percent || 0).toFixed(2)}%` },
+      { key: "F1", value: `${Number(qualityBenchmark.f1_percent || 0).toFixed(2)}%` },
+      { key: "False Positive Rate", value: `${Number(qualityBenchmark.false_positive_rate_percent || 0).toFixed(2)}%` },
+      {
+        key: "Thresholds",
+        value: `precision >= ${Number(qualityBenchmark.threshold_precision_percent || 0).toFixed(2)}%, recall >= ${Number(qualityBenchmark.threshold_recall_percent || 0).toFixed(2)}%, f1 >= ${Number(qualityBenchmark.threshold_f1_percent || 0).toFixed(2)}%`,
+      },
+    ]);
+    for (const blocker of (qualityBenchmark.gate_blockers || []).slice(0, 6)) {
+      writeWrapped(doc, `- ${blocker}`, 8);
+    }
+    for (const advisory of (qualityBenchmark.gate_advisories || []).slice(0, 6)) {
+      writeWrapped(doc, `- ${advisory}`, 8);
+    }
+  }
 }
 
 function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
   const report = scan.report.vulnerability_fixed_code_report;
   const findings = sortedFindings(report.findings || []);
-  const exportedAt = formatDisplayTimestamp(currentExportTimestamp());
+  const exportedAt = formatDisplayTimestamp(resolveReportGeneratedAt(scan, "vulnerability"));
   const severityDistribution = buildSeverityDistribution(findings);
   const groups = groupByAlert(findings);
   const fileAgg = aggregateFiles(findings);
@@ -964,6 +1068,7 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     dataQualityRaw && Object.keys(dataQualityRaw).length > 0
       ? dataQualityRaw
       : deriveDataQuality(report.summary, scan.report.executive_summary, findings, toolchainExecution);
+  const qualityBenchmark = dataQuality?.quality_benchmark || enterprise?.quality_benchmark || null;
   const timingBreakdown = collectToolTimingRows(report.toolchain_status || {}, toolchainExecution);
   const timingSummary = summarizeTimingRows(timingBreakdown);
   const executionEvidence = collectExecutionEvidenceRows(report.toolchain_status || {});
@@ -1150,6 +1255,31 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     { key: "Unknown OWASP", value: String(dataQuality.unknown_owasp_count ?? 0) },
     { key: "Taxonomy Gaps", value: String(dataQuality.unknown_taxonomy_count ?? 0) },
   ]);
+  if (qualityBenchmark && qualityBenchmark.configured) {
+    writePdfSectionHeader(doc, "Scanner Quality Benchmark");
+    writePdfKeyValueTable(doc, [
+      { key: "Status", value: String(qualityBenchmark.benchmark_status || "warning").toUpperCase() },
+      { key: "Benchmark", value: String(qualityBenchmark.benchmark_name || "Scanner Quality Benchmark") },
+      {
+        key: "Cases",
+        value: `${Number(qualityBenchmark.cases_total || 0)} total (${Number(qualityBenchmark.expected_present || 0)} expected-present, ${Number(qualityBenchmark.expected_absent || 0)} expected-absent)`,
+      },
+      { key: "Precision", value: `${Number(qualityBenchmark.precision_percent || 0).toFixed(2)}%` },
+      { key: "Recall", value: `${Number(qualityBenchmark.recall_percent || 0).toFixed(2)}%` },
+      { key: "F1", value: `${Number(qualityBenchmark.f1_percent || 0).toFixed(2)}%` },
+      { key: "False Positive Rate", value: `${Number(qualityBenchmark.false_positive_rate_percent || 0).toFixed(2)}%` },
+      {
+        key: "Thresholds",
+        value: `precision >= ${Number(qualityBenchmark.threshold_precision_percent || 0).toFixed(2)}%, recall >= ${Number(qualityBenchmark.threshold_recall_percent || 0).toFixed(2)}%, f1 >= ${Number(qualityBenchmark.threshold_f1_percent || 0).toFixed(2)}%`,
+      },
+    ]);
+    for (const blocker of (qualityBenchmark.gate_blockers || []).slice(0, 6)) {
+      writeWrapped(doc, `- ${blocker}`, 8);
+    }
+    for (const advisory of (qualityBenchmark.gate_advisories || []).slice(0, 6)) {
+      writeWrapped(doc, `- ${advisory}`, 8);
+    }
+  }
 
   if (hasTimingData) {
     writePdfSectionHeader(doc, "Analyzer Runtime Breakdown");
@@ -1423,7 +1553,7 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
 function writeFixesPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
   const report = scan.report.vulnerability_fixed_code_report;
   const findings = sortedFindings(report.findings || []);
-  const exportedAt = formatDisplayTimestamp(currentExportTimestamp());
+  const exportedAt = formatDisplayTimestamp(resolveReportGeneratedAt(scan, "fixes"));
   const fixPdfLimit = Math.max(80, Number(process.env.USS_FIX_REPORT_PDF_DETAIL_LIMIT || 180));
   const enterprise = resolveEnterpriseAssurance(scan, report.summary);
   const toolchainExecution = resolveToolchainExecution(scan, report.summary);
@@ -1432,6 +1562,7 @@ function writeFixesPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     dataQualityRaw && Object.keys(dataQualityRaw).length > 0
       ? dataQualityRaw
       : deriveDataQuality(report.summary, scan.report.executive_summary, findings, toolchainExecution);
+  const qualityBenchmark = dataQuality?.quality_benchmark || enterprise?.quality_benchmark || null;
   const deterministicReplay =
     report.summary.deterministic_replay ||
     report.deterministic_replay ||
@@ -1504,6 +1635,31 @@ function writeFixesPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     { key: "Unknown OWASP", value: String(dataQuality.unknown_owasp_count ?? 0) },
     { key: "Taxonomy Gaps", value: String(dataQuality.unknown_taxonomy_count ?? 0) },
   ]);
+  if (qualityBenchmark && qualityBenchmark.configured) {
+    writePdfSectionHeader(doc, "Scanner Quality Benchmark");
+    writePdfKeyValueTable(doc, [
+      { key: "Status", value: String(qualityBenchmark.benchmark_status || "warning").toUpperCase() },
+      { key: "Benchmark", value: String(qualityBenchmark.benchmark_name || "Scanner Quality Benchmark") },
+      {
+        key: "Cases",
+        value: `${Number(qualityBenchmark.cases_total || 0)} total (${Number(qualityBenchmark.expected_present || 0)} expected-present, ${Number(qualityBenchmark.expected_absent || 0)} expected-absent)`,
+      },
+      { key: "Precision", value: `${Number(qualityBenchmark.precision_percent || 0).toFixed(2)}%` },
+      { key: "Recall", value: `${Number(qualityBenchmark.recall_percent || 0).toFixed(2)}%` },
+      { key: "F1", value: `${Number(qualityBenchmark.f1_percent || 0).toFixed(2)}%` },
+      { key: "False Positive Rate", value: `${Number(qualityBenchmark.false_positive_rate_percent || 0).toFixed(2)}%` },
+      {
+        key: "Thresholds",
+        value: `precision >= ${Number(qualityBenchmark.threshold_precision_percent || 0).toFixed(2)}%, recall >= ${Number(qualityBenchmark.threshold_recall_percent || 0).toFixed(2)}%, f1 >= ${Number(qualityBenchmark.threshold_f1_percent || 0).toFixed(2)}%`,
+      },
+    ]);
+    for (const blocker of (qualityBenchmark.gate_blockers || []).slice(0, 6)) {
+      writeWrapped(doc, `- ${blocker}`, 8);
+    }
+    for (const advisory of (qualityBenchmark.gate_advisories || []).slice(0, 6)) {
+      writeWrapped(doc, `- ${advisory}`, 8);
+    }
+  }
   if (hasReplaySummaryData(deterministicReplay)) {
     writePdfSectionHeader(doc, "Deterministic Evidence Replay Pack");
     const replayData = deterministicReplay as NonNullable<typeof deterministicReplay>;
@@ -1677,10 +1833,37 @@ function writeFixesPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
 }
 
 function writeCombinedPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
+  const qualityBenchmark =
+    scan.report.executive_summary.data_quality?.quality_benchmark ||
+    scan.report.executive_summary.enterprise_assurance?.quality_benchmark ||
+    scan.report.vulnerability_fixed_code_report.summary.data_quality?.quality_benchmark ||
+    scan.report.vulnerability_fixed_code_report.summary.enterprise_assurance?.quality_benchmark ||
+    null;
   doc.fontSize(18).text("CodeSentinelX Combined Security Report");
   doc.moveDown(0.3).fontSize(10).text(`Target: ${scan.report.executive_summary.target_path}`);
   doc.text(`Risk Score: ${scan.report.executive_summary.risk_score} (${scan.report.executive_summary.risk_rating})`);
   doc.moveDown(0.7).fontSize(11).text("Use separate Existing and Vulnerability reports for full evidence.");
+  if (qualityBenchmark && qualityBenchmark.configured) {
+    writePdfSectionHeader(doc, "Scanner Quality Benchmark");
+    writePdfKeyValueTable(doc, [
+      { key: "Status", value: String(qualityBenchmark.benchmark_status || "warning").toUpperCase() },
+      { key: "Benchmark", value: String(qualityBenchmark.benchmark_name || "Scanner Quality Benchmark") },
+      {
+        key: "Cases",
+        value: `${Number(qualityBenchmark.cases_total || 0)} total (${Number(qualityBenchmark.expected_present || 0)} expected-present, ${Number(qualityBenchmark.expected_absent || 0)} expected-absent)`,
+      },
+      { key: "Precision", value: `${Number(qualityBenchmark.precision_percent || 0).toFixed(2)}%` },
+      { key: "Recall", value: `${Number(qualityBenchmark.recall_percent || 0).toFixed(2)}%` },
+      { key: "F1", value: `${Number(qualityBenchmark.f1_percent || 0).toFixed(2)}%` },
+      { key: "False Positive Rate", value: `${Number(qualityBenchmark.false_positive_rate_percent || 0).toFixed(2)}%` },
+    ]);
+    for (const blocker of (qualityBenchmark.gate_blockers || []).slice(0, 4)) {
+      writeWrapped(doc, `- ${blocker}`, 8);
+    }
+    for (const advisory of (qualityBenchmark.gate_advisories || []).slice(0, 4)) {
+      writeWrapped(doc, `- ${advisory}`, 8);
+    }
+  }
 }
 
 function writeFindingDetailsPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
@@ -1688,7 +1871,7 @@ function writeFindingDetailsPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
   const report = scan.report.vulnerability_fixed_code_report;
   writePdfHero(doc, "CodeSentinelX Finding Details Report", [
     `Target: ${report.target_path}`,
-    `Generated: ${formatDisplayTimestamp(report.generated_at)}`,
+    `Generated: ${formatDisplayTimestamp(resolveReportGeneratedAt(scan, "finding_details"))}`,
     `Total Findings: ${findings.length}`,
   ]);
   writePdfSectionHeader(doc, "Finding Details");
@@ -1893,8 +2076,16 @@ function writePdfMetricStrip(
 function renderExistingHtml(scan: ScanView): string {
   const report = scan.report.existing_implementation_report;
   const profileCompliance = report.profile_compliance || scan.report.profile_compliance;
-  const exportedAt = formatDisplayTimestamp(currentExportTimestamp());
-  const summaryRows = Object.entries(report.summary).map(
+  const summary = report.summary as typeof report.summary & {
+    quality_benchmark?: QualityBenchmarkSummary | null;
+  };
+  const qualityBenchmark =
+    summary.quality_benchmark ||
+    scan.report.executive_summary.data_quality?.quality_benchmark ||
+    scan.report.executive_summary.enterprise_assurance?.quality_benchmark ||
+    null;
+  const exportedAt = formatDisplayTimestamp(resolveReportGeneratedAt(scan, "existing"));
+  const summaryRows = Object.entries(summary).map(
     ([key, value]) => `<tr><td>${escapeHtml(key.replaceAll("_", " "))}</td><td>${renderSummaryValue(value)}</td></tr>`,
   );
 
@@ -1960,7 +2151,6 @@ function renderExistingHtml(scan: ScanView): string {
         .join("")
     : "<p>No profile-based compliance coverage generated for this scan.</p>";
 
-  const summary = report.summary;
   const coverageCategoryBars = renderMetricBars(
     "Category Distribution",
     Object.entries(summary.category_distribution || {}).map(([label, value]) => ({
@@ -2082,6 +2272,7 @@ function renderExistingHtml(scan: ScanView): string {
               </table>
             </div>
           </div>
+          ${renderQualityBenchmarkSection(qualityBenchmark)}
         </div>
       </div>
       <p class="table-note">Design goal: leadership can see coverage posture quickly, while engineers can still drill into control names, mapped standards, and framework gaps in the same export.</p>
@@ -2114,7 +2305,7 @@ function renderExistingHtml(scan: ScanView): string {
 function renderVulnerabilityHtml(scan: ScanView): string {
   const report = scan.report.vulnerability_fixed_code_report;
   const findings = sortedFindings(report.findings || []);
-  const exportedAt = formatDisplayTimestamp(currentExportTimestamp());
+  const exportedAt = formatDisplayTimestamp(resolveReportGeneratedAt(scan, "vulnerability"));
   const EXEC_LIMIT = 60;
   const DETAIL_LIMIT = 120;
   const groupedAll = groupByAlert(findings);
@@ -2192,6 +2383,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       ? dataQualityRaw
       : deriveDataQuality(report.summary, scan.report.executive_summary, findings, toolchainExecution);
   const enterprise = resolveEnterpriseAssurance(scan, report.summary);
+  const qualityBenchmark = dataQuality?.quality_benchmark || enterprise?.quality_benchmark || null;
   const dataQualityRows = dataQuality
     ? `
       <tr><td>Raw Findings</td><td>${Number(dataQuality.raw_findings || 0)}</td></tr>
@@ -2204,6 +2396,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       <tr><td>Unknown CWE</td><td>${Number(dataQuality.unknown_cwe_count || 0)}</td></tr>
       <tr><td>Unknown OWASP</td><td>${Number(dataQuality.unknown_owasp_count || 0)}</td></tr>
       <tr><td>Findings with Taxonomy Gaps</td><td>${Number(dataQuality.unknown_taxonomy_count || 0)}</td></tr>
+      ${renderQualityBenchmarkRows(qualityBenchmark)}
     `
     : `<tr><td colspan="2" class="muted">No data quality metrics available.</td></tr>`;
   const executionEvidence = collectExecutionEvidenceRows(report.toolchain_status || {}).slice(0, EXEC_LIMIT);
@@ -3377,7 +3570,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
 function renderFixesHtml(scan: ScanView): string {
   const report = scan.report.vulnerability_fixed_code_report;
   const findings = sortedFindings(report.findings || []);
-  const exportedAt = formatDisplayTimestamp(currentExportTimestamp());
+  const exportedAt = formatDisplayTimestamp(resolveReportGeneratedAt(scan, "fixes"));
   const severityDistribution = buildSeverityDistribution(findings);
   const fixQueueLimit = Math.max(120, Number(process.env.USS_FIX_REPORT_QUEUE_LIMIT || 1200));
   const queueFindings = findings.slice(0, fixQueueLimit);
@@ -3394,6 +3587,7 @@ function renderFixesHtml(scan: ScanView): string {
     dataQualityRaw && Object.keys(dataQualityRaw).length > 0
       ? dataQualityRaw
       : deriveDataQuality(report.summary, scan.report.executive_summary, findings, toolchainExecution);
+  const qualityBenchmark = dataQuality?.quality_benchmark || enterprise?.quality_benchmark || null;
   const deterministicReplay =
     report.summary.deterministic_replay ||
     report.deterministic_replay ||
@@ -3439,6 +3633,7 @@ function renderFixesHtml(scan: ScanView): string {
       <tr><td>Unknown CWE</td><td>${Number(dataQuality.unknown_cwe_count || 0)}</td></tr>
       <tr><td>Unknown OWASP</td><td>${Number(dataQuality.unknown_owasp_count || 0)}</td></tr>
       <tr><td>Findings with Taxonomy Gaps</td><td>${Number(dataQuality.unknown_taxonomy_count || 0)}</td></tr>
+      ${renderQualityBenchmarkRows(qualityBenchmark)}
     `
     : `<tr><td colspan="2" class="muted">No data quality metrics available.</td></tr>`;
   const fixVerificationSummary = normalizedFixVerificationSummary(report.summary.fix_verification, findings);
@@ -3894,7 +4089,7 @@ function renderFixesHtml(scan: ScanView): string {
 function renderFindingDetailsHtml(scan: ScanView): string {
   const findings = sortedFindings(scan.report.vulnerability_fixed_code_report.findings || []);
   const report = scan.report.vulnerability_fixed_code_report;
-  const exportedAt = formatDisplayTimestamp(currentExportTimestamp());
+  const exportedAt = formatDisplayTimestamp(resolveReportGeneratedAt(scan, "finding_details"));
   const rows = findings
     .map(
       (item) => `<tr>
@@ -3963,6 +4158,38 @@ function renderFindingDetailsHtml(scan: ScanView): string {
 }
 
 function renderCombinedHtml(scan: ScanView): string {
+  const qualityBenchmark =
+    scan.report.executive_summary.data_quality?.quality_benchmark ||
+    scan.report.executive_summary.enterprise_assurance?.quality_benchmark ||
+    scan.report.vulnerability_fixed_code_report.summary.data_quality?.quality_benchmark ||
+    scan.report.vulnerability_fixed_code_report.summary.enterprise_assurance?.quality_benchmark ||
+    null;
+  const benchmarkSection =
+    qualityBenchmark && qualityBenchmark.configured
+      ? `<section class="card section">
+    <h2>Scanner Quality Benchmark</h2>
+    <table>
+      <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+      <tbody>${renderQualityBenchmarkRows(qualityBenchmark)}</tbody>
+    </table>
+    ${
+      (qualityBenchmark.gate_blockers || []).length
+        ? `<h3>Benchmark Blockers</h3><ul>${(qualityBenchmark.gate_blockers || [])
+            .slice(0, 4)
+            .map((item) => `<li>${escapeHtml(String(item))}</li>`)
+            .join("")}</ul>`
+        : ""
+    }
+    ${
+      (qualityBenchmark.gate_advisories || []).length
+        ? `<h3>Benchmark Advisories</h3><ul>${(qualityBenchmark.gate_advisories || [])
+            .slice(0, 4)
+            .map((item) => `<li>${escapeHtml(String(item))}</li>`)
+            .join("")}</ul>`
+        : ""
+    }
+  </section>`
+      : "";
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -3980,6 +4207,7 @@ function renderCombinedHtml(scan: ScanView): string {
     </div>
     <div class="callout" style="margin-top:14px">For full evidence, export separate Existing Security, Vulnerability, and Original/Suggested Fix reports. The combined export is intended only as a cover page and routing layer.</div>
   </div>
+  ${benchmarkSection}
 </body>
 </html>`;
 }

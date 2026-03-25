@@ -66,15 +66,51 @@ PY_SOURCE_PATTERNS = (
     "request.values",
     "request.get_json",
     "request.json",
+    "request.query_params",
+    "request.path_params",
+    "request.cookies",
+    "request.headers",
     "request.GET",
     "request.POST",
+    "self.request.GET",
+    "self.request.POST",
+    "self.request.query_params",
+    "self.request.path_params",
 )
-PY_SANITIZERS = {"int", "float", "bool", "html.escape", "escape", "shlex.quote", "os.path.basename"}
+PY_SANITIZERS = {
+    "int",
+    "float",
+    "bool",
+    "html.escape",
+    "escape",
+    "markupsafe.escape",
+    "bleach.clean",
+    "django.utils.html.escape",
+    "django.utils.http.url_has_allowed_host_and_scheme",
+    "fastapi.encoders.jsonable_encoder",
+    "shlex.quote",
+    "urllib.parse.quote",
+    "werkzeug.utils.secure_filename",
+    "os.path.basename",
+}
+PY_REDIRECT_SANITIZERS = {
+    "url_has_allowed_host_and_scheme",
+    "django.utils.http.url_has_allowed_host_and_scheme",
+    "is_safe_url",
+}
 
 JS_SOURCE_RE = re.compile(
-    r"\b(?:req|request)\.(?:query|body|params)\b|\b(?:location|window\.location)\.(?:search|hash)\b|\bprops\.[A-Za-z_$][\w$]*"
+    r"\b(?:req|request|ctx|context)\.(?:query|body|params)\b|"
+    r"\b(?:router|nextRouter)\.query\b|"
+    r"\b(?:location|window\.location)\.(?:search|hash)\b|"
+    r"\b(?:searchParams|params)\.get\s*\(|"
+    r"\buseSearchParams\s*\(|"
+    r"\bprops\.[A-Za-z_$][\w$]*"
 )
-JS_SANITIZER_RE = re.compile(r"\b(?:DOMPurify\.sanitize|escapeHtml|encodeURIComponent|sanitizeHtml)\s*\(")
+JS_SANITIZER_RE = re.compile(
+    r"\b(?:DOMPurify\.sanitize|escapeHtml|encodeURIComponent|sanitizeHtml|validator\.escape|he\.encode|xssFilters\.[A-Za-z_][\w$]*)\s*\("
+)
+JS_PATH_SANITIZER_RE = re.compile(r"\b(?:path\.(?:basename|normalize|resolve)|sanitizeFilename)\s*\(")
 JS_ASSIGN_RE = re.compile(r"^\s*(?:const|let|var)?\s*([A-Za-z_$][\w$]*)\s*=\s*(.+?);?\s*$")
 
 
@@ -139,6 +175,11 @@ def _expr_taint(node: ast.AST | None, env: dict[str, _TaintState]) -> _TaintStat
     if isinstance(node, ast.Call):
         name = _call_name(node)
         if name in PY_SANITIZERS and node.args:
+            inner = _expr_taint(node.args[0], env)
+            if inner:
+                inner.sanitized = True
+                return inner
+        if name in PY_REDIRECT_SANITIZERS and node.args:
             inner = _expr_taint(node.args[0], env)
             if inner:
                 inner.sanitized = True
@@ -364,6 +405,8 @@ def _expr_has_source(expr: str, env: dict[str, _TaintState]) -> _TaintState | No
             copied = _TaintState(set(state.source_vars), set(state.source_lines), state.sanitized, True)
             combined = copied if combined is None else combined.merge(copied)
     if JS_SANITIZER_RE.search(expr) and combined:
+        combined.sanitized = True
+    if JS_PATH_SANITIZER_RE.search(expr) and combined:
         combined.sanitized = True
     return combined
 

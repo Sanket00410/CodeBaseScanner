@@ -254,15 +254,14 @@ class ExistingSecurityMeasuresAnalyzer:
         }
         self._evidence: dict[str, list[dict[str, str | int]]] = {rule.control_id: [] for rule in CONTROL_RULES}
 
-    def observe_file(self, file_path: Path, content: str) -> None:
+    def collect_observations(self, file_path: Path, content: str) -> dict[str, list[dict[str, str | int]]]:
         lines = content.splitlines()
+        observations: dict[str, list[dict[str, str | int]]] = {rule.control_id: [] for rule in CONTROL_RULES}
         for rule in CONTROL_RULES:
-            if len(self._evidence[rule.control_id]) >= 12:
-                continue
             patterns = self._compiled[rule.control_id]
             for line_number, line in enumerate(lines, start=1):
                 if any(regex.search(line) for regex in patterns):
-                    self._evidence[rule.control_id].append(
+                    observations[rule.control_id].append(
                         {
                             "file_path": str(file_path),
                             "line_number": line_number,
@@ -270,6 +269,20 @@ class ExistingSecurityMeasuresAnalyzer:
                         }
                     )
                     break
+        return observations
+
+    def merge_observations(self, observations: dict[str, list[dict[str, str | int]]]) -> None:
+        for control_id, entries in observations.items():
+            if control_id not in self._evidence:
+                continue
+            current = self._evidence[control_id]
+            for entry in entries:
+                if len(current) >= 12:
+                    break
+                current.append(entry)
+
+    def observe_file(self, file_path: Path, content: str) -> None:
+        self.merge_observations(self.collect_observations(file_path, content))
 
     def finalize(self, total_files: int) -> list[SecurityControl]:
         controls: list[SecurityControl] = []

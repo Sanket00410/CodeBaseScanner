@@ -363,6 +363,7 @@ export interface EnterpriseAssuranceSummary {
   blockers: string[];
   advisories?: string[];
   recommendation: string;
+  quality_benchmark?: QualityBenchmarkSummary;
 }
 
 export interface FalsePositiveCandidate {
@@ -436,6 +437,35 @@ export interface DataQualitySummary {
   unknown_cwe_count: number;
   unknown_owasp_count: number;
   unknown_taxonomy_count: number;
+  quality_benchmark?: QualityBenchmarkSummary;
+}
+
+export interface QualityBenchmarkSummary {
+  enabled: boolean;
+  configured: boolean;
+  benchmark_status: "ready" | "warning" | "blocked" | "not_configured" | "disabled";
+  benchmark_name: string;
+  benchmark_file: string;
+  benchmark_description?: string;
+  cases_total: number;
+  expected_present: number;
+  expected_absent: number;
+  true_positives: number;
+  false_positives: number;
+  false_negatives: number;
+  true_negatives: number;
+  precision_percent: number;
+  recall_percent: number;
+  f1_percent: number;
+  false_positive_rate_percent: number;
+  threshold_precision_percent: number;
+  threshold_recall_percent: number;
+  threshold_f1_percent: number;
+  matched_case_ids: string[];
+  missing_case_ids: string[];
+  unexpected_finding_ids: string[];
+  gate_blockers: string[];
+  gate_advisories: string[];
 }
 
 export interface VulnerabilityFixedCodeReport {
