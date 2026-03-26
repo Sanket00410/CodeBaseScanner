@@ -4,6 +4,8 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from universal_security_scanner.scanner.role_scope import role_default_scan_preset
+
 DEFAULT_EXCLUDE_DIRS = {
     ".git",
     ".svn",
@@ -118,6 +120,58 @@ def _default_runtime_tools() -> list[str]:
     ]
 
 
+def _default_codebase_tools_for_preset(preset: str) -> list[str]:
+    normalized = preset.strip().lower()
+    presets: dict[str, list[str]] = {
+        "fast": [
+            "semgrep",
+            "gitleaks",
+            "bandit",
+            "trivy",
+            "checkov",
+        ],
+        "standard": [
+            "semgrep",
+            "gitleaks",
+            "bandit",
+            "trivy",
+            "checkov",
+            "gosec",
+            "govulncheck",
+            "eslint-security",
+            "cppcheck",
+            "spotbugs",
+            "findsecbugs",
+            "flawfinder",
+            "hadolint",
+            "tfsec",
+            "grype",
+        ],
+        "deep": [
+            "bandit",
+            "checkov",
+            "codeql",
+            "findsecbugs",
+            "flawfinder",
+            "gitleaks",
+            "gosec",
+            "govulncheck",
+            "grype",
+            "hadolint",
+            "osv-scanner",
+            "owasp-dependency-check",
+            "pip-audit",
+            "safety",
+            "semgrep",
+            "snyk",
+            "spotbugs",
+            "tfsec",
+            "trivy",
+        ],
+    }
+    return list(presets.get(normalized, _default_codebase_tools()))
+
+
 def _read_int(name: str, default: int, *, allow_zero: bool = False) -> int:
     value = os.getenv(name)
     if value is None:
@@ -190,6 +244,7 @@ class ScannerConfig:
     scan_cache_enabled: bool = True
     scan_cache_file: Path = Path("exports/.integrity/scan_cache.json")
     scan_cache_max_files: int = 50000
+    scan_preset: str = "standard"
     suppression_review_days: int = 30
     suppression_default_owner: str = "security-triage"
     suppression_require_expiry: bool = True
@@ -210,6 +265,11 @@ class ScannerConfig:
 
         export_dir = Path(os.getenv("USS_EXPORT_DIR", "exports"))
         log_level = os.getenv("USS_LOG_LEVEL", "INFO").upper()
+        resolved_role = (scan_role or os.getenv("USS_SCAN_ROLE", "Security Analyst")).strip() or "Security Analyst"
+        resolved_scan_preset = (os.getenv("USS_SCAN_PRESET", "").strip().lower() or role_default_scan_preset(resolved_role)).strip()
+        if resolved_scan_preset not in {"fast", "standard", "deep"}:
+            resolved_scan_preset = role_default_scan_preset(resolved_role)
+        default_codebase_tools = _default_codebase_tools_for_preset(resolved_scan_preset)
 
         return cls(
             max_file_size_kb=_read_int("USS_MAX_FILE_SIZE_KB", 1024),
@@ -220,10 +280,10 @@ class ScannerConfig:
             export_dir=export_dir,
             log_level=log_level,
             use_external_tools=_read_bool("USS_USE_EXTERNAL_TOOLS", True),
-            external_tools=_read_csv("USS_EXTERNAL_TOOLS", _default_codebase_tools()),
+            external_tools=_read_csv("USS_EXTERNAL_TOOLS", default_codebase_tools),
             codebase_external_tools=_read_csv(
                 "USS_CODEBASE_TOOLS",
-                _default_codebase_tools(),
+                default_codebase_tools,
             ),
             runtime_external_tools=_read_csv(
                 "USS_RUNTIME_TOOLS",
@@ -263,5 +323,6 @@ class ScannerConfig:
             quality_benchmark_min_recall=_read_float("USS_QUALITY_BENCHMARK_MIN_RECALL", 85.0),
             quality_benchmark_min_f1=_read_float("USS_QUALITY_BENCHMARK_MIN_F1", 88.0),
             quality_benchmark_strict_scope=_read_bool("USS_QUALITY_BENCHMARK_STRICT_SCOPE", True),
-            scan_role=(scan_role or os.getenv("USS_SCAN_ROLE", "Security Analyst")).strip() or "Security Analyst",
+            scan_preset=resolved_scan_preset,
+            scan_role=resolved_role,
         )

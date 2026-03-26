@@ -45,7 +45,7 @@ export class PythonScannerBridge {
     await this.setControlState(controlFile, "running");
 
     const normalizedTarget = normalizeTargetInput(request.projectPath);
-    const scanPreset = request.scanPreset || "standard";
+    const scanPreset = resolveRoleScanPreset(request.role);
     const scanEnv = buildScanEnvironment(this.scannerRoot, controlFile, scanPreset, request.role, request.scmContext);
 
     const args = [
@@ -434,6 +434,25 @@ function applyScanPreset(env: NodeJS.ProcessEnv, preset: "fast" | "standard" | "
   env.USS_MAX_FILE_SIZE_KB = "1024";
   env.USS_ACTIVE_POC_MODE = "1";
   env.USS_ACTIVE_POC_MAX_FINDINGS = "80";
+}
+
+function resolveRoleScanPreset(role?: ScanRequest["role"]): "fast" | "standard" | "deep" {
+  const normalized = String(role || "Security Analyst").trim().toLowerCase();
+  switch (normalized) {
+    case "admin":
+    case "administrator":
+      return "deep";
+    case "developer":
+    case "auditor":
+    case "management":
+    case "manager":
+    case "board":
+      return "fast";
+    case "security analyst":
+    case "securityanalyst":
+    default:
+      return "standard";
+  }
 }
 
 function resolvePythonExecutable(scannerRoot: string): string {

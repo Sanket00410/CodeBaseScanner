@@ -17,6 +17,14 @@ _ROLE_ALIASES = {
     "board": "Management",
 }
 
+_ROLE_DEFAULT_SCAN_PRESETS = {
+    "Admin": "deep",
+    "Security Analyst": "standard",
+    "Developer": "fast",
+    "Auditor": "fast",
+    "Management": "fast",
+}
+
 
 @dataclass(frozen=True, slots=True)
 class RoleScope:
@@ -208,6 +216,11 @@ def role_runs_active_poc(role: str | None) -> bool:
 
 def role_runs_fix_verification(role: str | None) -> bool:
     return resolve_role_scope(role).run_fix_verification
+
+
+def role_default_scan_preset(role: str | None) -> str:
+    normalized = normalize_role(role)
+    return _ROLE_DEFAULT_SCAN_PRESETS.get(normalized, "standard")
 
 
 def _redact_finding_for_audit(finding: dict[str, Any]) -> dict[str, Any]:

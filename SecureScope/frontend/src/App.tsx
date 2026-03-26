@@ -86,6 +86,14 @@ const SCAN_PRESETS: Array<{ key: ScanPreset; label: string; helper: string }> = 
   { key: "deep", label: "Deep", helper: "Maximum depth. Full file budget and uncapped active PoC checks." },
 ];
 
+const ROLE_SCAN_PRESETS: Record<UserRole, ScanPreset> = {
+  Admin: "deep",
+  "Security Analyst": "standard",
+  Developer: "fast",
+  Auditor: "fast",
+  Management: "fast",
+};
+
 const TOOL_PROFILE_META: Record<ToolScanProfile, { label: string; icon: string; helper: string }> = {
   codebase: {
     label: "Codebase Tools",
@@ -618,6 +626,7 @@ export default function App(): React.JSX.Element {
   const [activeWindowMenu, setActiveWindowMenu] = useState<WindowMenuKey | null>(null);
   const roleCaps = useMemo(() => ROLE_CAPABILITIES[role], [role]);
   const selectedRoleExport = useMemo(() => ROLE_EXPORT_PRESETS[role], [role]);
+  const roleScanPreset = useMemo(() => ROLE_SCAN_PRESETS[role], [role]);
   const toolAuthEnabled = Boolean(toolAuthConfig?.enabled);
   const toolSessionValid = !toolAuthEnabled || Boolean(toolAuthToken);
   const toolAuthOtpRequired = Boolean(toolAuthConfig?.otpRequired);
@@ -638,6 +647,10 @@ export default function App(): React.JSX.Element {
     () => TABS.filter((item) => item.key !== "tools" || isToolManagerVisible),
     [isToolManagerVisible],
   );
+
+  useEffect(() => {
+    setScanPreset(roleScanPreset);
+  }, [roleScanPreset]);
 
   const findings = useMemo(() => {
     if (!scan) {
@@ -1202,6 +1215,7 @@ export default function App(): React.JSX.Element {
       return;
     }
     const roleForScan = role;
+    const presetForScan = roleScanPreset;
     setScanStatus("running");
     setProgress(0);
     setLastProgressUpdateTs(Date.now());
@@ -1221,7 +1235,7 @@ export default function App(): React.JSX.Element {
         projectPath: targetPath,
         requestedBy: "local-user",
         role: roleForScan,
-        scanPreset,
+        scanPreset: presetForScan,
         scmContext,
       });
       let loadedResult = result;
@@ -3375,9 +3389,9 @@ export default function App(): React.JSX.Element {
             </button>
             <select
               value={scanPreset}
-              onChange={(event) => setScanPreset(event.target.value as ScanPreset)}
-              aria-label="Scan preset"
-              title={SCAN_PRESETS.find((item) => item.key === scanPreset)?.helper || "Scan preset"}
+              aria-label="Role-controlled scan preset"
+              title={`Role-controlled preset: ${SCAN_PRESETS.find((item) => item.key === roleScanPreset)?.helper || "Scan preset"}`}
+              disabled
             >
               {SCAN_PRESETS.map((item) => (
                 <option key={item.key} value={item.key}>
@@ -3465,7 +3479,7 @@ export default function App(): React.JSX.Element {
           )}
           <p className="target-mode">Mode: Codebase Secure Analysis</p>
           <p className="role-hint">
-            Scan preset ({scanPreset}): {SCAN_PRESETS.find((item) => item.key === scanPreset)?.helper}
+            Scan preset ({roleScanPreset}): {SCAN_PRESETS.find((item) => item.key === roleScanPreset)?.helper}
           </p>
           <p className="role-hint">
             Role Drill-Down ({role}): {roleDrilldownSummary(role)}
