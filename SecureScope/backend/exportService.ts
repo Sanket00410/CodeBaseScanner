@@ -1080,7 +1080,15 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     {};
   const summaryExtras = report.summary as VulnerabilityFixedCodeReport["summary"] & {
     release_gate_distribution?: Record<string, number>;
-    risk_intelligence?: { findings_with_cve?: number; findings_cvss_ge_7?: number; known_exploited_findings?: number };
+    risk_intelligence?: {
+      findings_with_cve?: number;
+      findings_cvss_ge_7?: number;
+      known_exploited_findings?: number;
+      kev_catalog_source?: string;
+      kev_catalog_version?: string;
+      kev_catalog_retrieved_at?: string;
+      kev_catalog_count?: number;
+    };
     auth_abuse_session_security?: {
       total_findings?: number;
       severity_distribution?: Record<string, number>;
@@ -1206,16 +1214,22 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     writeWrapped(doc, "No risk-intelligence or release-gate artifacts were captured for this scan.", 9);
   } else {
     const riskIntelRows = [
-      { key: "Findings with CVE", value: String(riskIntel ? riskIntel.findings_with_cve : 0) },
-      { key: "Findings with CVSS >= 7.0", value: String(riskIntel ? riskIntel.findings_cvss_ge_7 : 0) },
-      { key: "Release Gate: Block release", value: String(Number(releaseGateDistribution["Block release"] || 0)) },
-      { key: "Release Gate: Fix before prod", value: String(Number(releaseGateDistribution["Fix before prod"] || 0)) },
-      { key: "Release Gate: Scheduled fix", value: String(Number(releaseGateDistribution["Scheduled fix"] || 0)) },
-      { key: "Release Gate: Track", value: String(Number(releaseGateDistribution["Track"] || 0)) },
+      { key: "Findings with CVE", value: riskIntel && Number(riskIntel.findings_with_cve || 0) > 0 ? String(riskIntel.findings_with_cve) : "No advisory-backed findings" },
+      { key: "Findings with CVSS >= 7.0", value: riskIntel && Number(riskIntel.findings_cvss_ge_7 || 0) > 0 ? String(riskIntel.findings_cvss_ge_7) : "No high-CVSS findings" },
+      { key: "Known Exploited Findings (CISA KEV)", value: knownExploitedMetricText(riskIntel) },
+      {
+        key: "CISA KEV Catalog Version",
+        value: String(riskIntel?.kev_catalog_version || "N/A"),
+      },
+      {
+        key: "CISA KEV Catalog Retrieved",
+        value: riskIntel?.kev_catalog_retrieved_at ? formatDisplayTimestamp(String(riskIntel.kev_catalog_retrieved_at)) : "N/A",
+      },
+      { key: "Release Gate: Block release", value: Number(releaseGateDistribution["Block release"] || 0) > 0 ? String(Number(releaseGateDistribution["Block release"] || 0)) : "No matches" },
+      { key: "Release Gate: Fix before prod", value: Number(releaseGateDistribution["Fix before prod"] || 0) > 0 ? String(Number(releaseGateDistribution["Fix before prod"] || 0)) : "No matches" },
+      { key: "Release Gate: Scheduled fix", value: Number(releaseGateDistribution["Scheduled fix"] || 0) > 0 ? String(Number(releaseGateDistribution["Scheduled fix"] || 0)) : "No matches" },
+      { key: "Release Gate: Track", value: Number(releaseGateDistribution["Track"] || 0) > 0 ? String(Number(releaseGateDistribution["Track"] || 0)) : "No matches" },
     ];
-    if (Number(riskIntel?.known_exploited_findings || 0) > 0) {
-      riskIntelRows.splice(2, 0, { key: "Known Exploited Findings (CISA KEV)", value: knownExploitedMetricText(riskIntel) });
-    }
     writePdfKeyValueTable(doc, riskIntelRows);
   }
 
@@ -1498,7 +1512,7 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     if (cveJoined) {
       writeWrapped(doc, `CVEs: ${cveJoined}`, 8);
     }
-    writeWrapped(doc, `Known Exploited: ${leadExtended.known_exploited ? "Yes" : "No"}`, 8);
+    writeWrapped(doc, `Known Exploited: ${knownExploitedFindingText(leadExtended)}`, 8);
     if (leadExtended.exploitability_context) {
       writeWrapped(doc, `Exploitability: ${singleLine(leadExtended.exploitability_context)}`, 8);
     }
@@ -2541,7 +2555,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       <tr><th>Business Impact</th><td>${escapeHtml(lead.business_impact || "N/A")}</td></tr>
       <tr><th>Release Gate</th><td>${escapeHtml(leadExtended.release_gate_action || "Track")}</td></tr>
       <tr><th>Exploit Maturity</th><td>${escapeHtml(leadExtended.exploit_maturity || "Unconfirmed")}</td></tr>
-      ${cveList.length ? `<tr><th>Known Exploited (CISA KEV)</th><td>${leadExtended.known_exploited ? "Yes" : "No"}</td></tr>` : ""}
+      <tr><th>Known Exploited (CISA KEV)</th><td>${escapeHtml(knownExploitedFindingText(leadExtended))}</td></tr>
       ${cveList.length ? `<tr><th>CVEs</th><td>${renderCveLinks(cveList)}</td></tr>` : ""}
       <tr><th>Exploitability Context</th><td>${escapeHtml(leadExtended.exploitability_context || "N/A")}</td></tr>
       <tr><th>Recommendation</th><td>${escapeHtml(lead.recommendation || "N/A")}</td></tr>
@@ -2791,16 +2805,12 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       tone: "critical",
       sub: "Findings mapped to hard release stop",
     },
-    ...(Number(riskIntel?.known_exploited_findings || 0) > 0
-      ? [
-          {
-            label: "Known Exploited",
-            value: knownExploitedMetricText(riskIntel),
-            tone: "info" as const,
-            sub: knownExploitedMetricSubtext(riskIntel),
-          },
-        ]
-      : []),
+    {
+      label: "Known Exploited",
+      value: knownExploitedMetricText(riskIntel),
+      tone: "info" as const,
+      sub: knownExploitedMetricSubtext(riskIntel),
+    },
   ]);
   const hasEnterpriseData = Boolean(
     enterprise &&
@@ -2834,7 +2844,8 @@ function renderVulnerabilityHtml(scan: ScanView): string {
   const hasAuthAbuseData = hasMeaningfulAuthAbuse(authAbuse);
   const hasTimingData = Boolean(timingRows);
   const hasRiskIntelData = Boolean(
-    (hasRiskIntel && riskIntel && (riskIntel.findings_with_cve || riskIntel.findings_cvss_ge_7 || riskIntel.known_exploited_findings)) ||
+    findings.length ||
+      (hasRiskIntel && riskIntel && (riskIntel.findings_with_cve || riskIntel.findings_cvss_ge_7 || riskIntel.known_exploited_findings)) ||
       hasReleaseGate ||
       (gitDiffTracking && (gitDiffTracking.enabled || gitDiffTracking.findings_on_changed_files || gitDiffTracking.findings_on_changed_lines)),
   );
@@ -2845,16 +2856,18 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       <table class="summary">
         <thead><tr><th>Metric</th><th>Value</th></tr></thead>
         <tbody>
-        <tr><td>Findings with CVE</td><td align="center">${hasAdvisoryContext ? Number(riskIntel?.findings_with_cve || 0) : "N/A"}</td></tr>
-        <tr><td>Findings with CVSS &gt;= 7.0</td><td align="center">${hasAdvisoryContext ? Number(riskIntel?.findings_cvss_ge_7 || 0) : "N/A"}</td></tr>
-        ${Number(riskIntel?.known_exploited_findings || 0) > 0 ? `<tr><td>Known Exploited Findings (CISA KEV)</td><td align="center">${escapeHtml(knownExploitedMetricText(riskIntel))}</td></tr>` : ""}
-        <tr><td>Release Gate: Block release</td><td align="center">${hasReleaseGate ? Number(releaseGateDistribution["Block release"] || 0) : "0"}</td></tr>
-        <tr><td>Release Gate: Fix before prod</td><td align="center">${hasReleaseGate ? Number(releaseGateDistribution["Fix before prod"] || 0) : "0"}</td></tr>
-        <tr><td>Release Gate: Scheduled fix</td><td align="center">${hasReleaseGate ? Number(releaseGateDistribution["Scheduled fix"] || 0) : "0"}</td></tr>
-        <tr><td>Release Gate: Track</td><td align="center">${hasReleaseGate ? Number(releaseGateDistribution["Track"] || 0) : "0"}</td></tr>
+        <tr><td>Findings with CVE</td><td align="center">${hasAdvisoryContext ? (Number(riskIntel?.findings_with_cve || 0) > 0 ? Number(riskIntel?.findings_with_cve || 0) : "No advisory-backed findings") : "N/A"}</td></tr>
+        <tr><td>Findings with CVSS &gt;= 7.0</td><td align="center">${hasAdvisoryContext ? (Number(riskIntel?.findings_cvss_ge_7 || 0) > 0 ? Number(riskIntel?.findings_cvss_ge_7 || 0) : "No high-CVSS findings") : "N/A"}</td></tr>
+        <tr><td>Known Exploited Findings (CISA KEV)</td><td align="center">${escapeHtml(knownExploitedMetricText(riskIntel))}</td></tr>
+        ${riskIntel?.kev_catalog_version ? `<tr><td>CISA KEV Catalog Version</td><td align="center">${escapeHtml(String(riskIntel.kev_catalog_version))}</td></tr>` : ""}
+        ${riskIntel?.kev_catalog_retrieved_at ? `<tr><td>CISA KEV Catalog Retrieved</td><td align="center">${escapeHtml(formatDisplayTimestamp(String(riskIntel.kev_catalog_retrieved_at)))}</td></tr>` : ""}
+        <tr><td>Release Gate: Block release</td><td align="center">${hasReleaseGate ? (Number(releaseGateDistribution["Block release"] || 0) > 0 ? Number(releaseGateDistribution["Block release"] || 0) : "No matches") : "N/A"}</td></tr>
+        <tr><td>Release Gate: Fix before prod</td><td align="center">${hasReleaseGate ? (Number(releaseGateDistribution["Fix before prod"] || 0) > 0 ? Number(releaseGateDistribution["Fix before prod"] || 0) : "No matches") : "N/A"}</td></tr>
+        <tr><td>Release Gate: Scheduled fix</td><td align="center">${hasReleaseGate ? (Number(releaseGateDistribution["Scheduled fix"] || 0) > 0 ? Number(releaseGateDistribution["Scheduled fix"] || 0) : "No matches") : "N/A"}</td></tr>
+        <tr><td>Release Gate: Track</td><td align="center">${hasReleaseGate ? (Number(releaseGateDistribution["Track"] || 0) > 0 ? Number(releaseGateDistribution["Track"] || 0) : "No matches") : "N/A"}</td></tr>
         <tr><td>Git diff tracking enabled</td><td align="center">${gitDiffTracking?.enabled ? "Yes" : "No"}</td></tr>
-        <tr><td>Findings on changed files</td><td align="center">${gitDiffTracking?.findings_on_changed_files || 0}</td></tr>
-        <tr><td>Findings on changed lines</td><td align="center">${gitDiffTracking?.findings_on_changed_lines || 0}</td></tr>
+        <tr><td>Findings on changed files</td><td align="center">${Number(gitDiffTracking?.findings_on_changed_files || 0) > 0 ? Number(gitDiffTracking?.findings_on_changed_files || 0) : "No matches"}</td></tr>
+        <tr><td>Findings on changed lines</td><td align="center">${Number(gitDiffTracking?.findings_on_changed_lines || 0) > 0 ? Number(gitDiffTracking?.findings_on_changed_lines || 0) : "No matches"}</td></tr>
         </tbody>
       </table>
     </div>
@@ -5054,12 +5067,13 @@ function knownExploitedMetricText(
         findings_with_cve?: number;
         findings_cvss_ge_7?: number;
         known_exploited_findings?: number;
+        kev_catalog_version?: string;
       }
     | null
     | undefined,
 ): string {
   const count = Number(riskIntel?.known_exploited_findings || 0);
-  return Number.isFinite(count) && count > 0 ? String(count) : "N/A";
+  return Number.isFinite(count) && count > 0 ? String(count) : "No CISA KEV match found";
 }
 
 function knownExploitedMetricSubtext(
@@ -5068,13 +5082,50 @@ function knownExploitedMetricSubtext(
         findings_with_cve?: number;
         findings_cvss_ge_7?: number;
         known_exploited_findings?: number;
+        kev_catalog_version?: string;
       }
     | null
     | undefined,
 ): string {
-  return hasAdvisoryRiskContext(riskIntel)
-    ? "CISA KEV-backed findings"
-    : "No advisory-backed KEV correlation in this scan";
+  const version = String(riskIntel?.kev_catalog_version || "").trim();
+  return version ? `Official CISA KEV catalog v${version}` : "Official CISA KEV catalog";
+}
+
+function knownExploitedSummaryText(
+  riskIntel:
+    | {
+        findings_with_cve?: number;
+        findings_cvss_ge_7?: number;
+        known_exploited_findings?: number;
+        kev_catalog_version?: string;
+      }
+    | null
+    | undefined,
+): string {
+  const count = Number(riskIntel?.known_exploited_findings || 0);
+  const catalogLabel = knownExploitedMetricSubtext(riskIntel);
+  return Number.isFinite(count) && count > 0
+    ? `${count} finding(s) matched the ${catalogLabel}.`
+    : `No finding matched the ${catalogLabel}.`;
+}
+
+function knownExploitedFindingText(
+  finding: {
+    known_exploited?: boolean;
+    known_exploited_cves?: string[];
+    kev_catalog_version?: string;
+  } | null | undefined,
+): string {
+  if (!finding) {
+    return "No CISA KEV match found";
+  }
+  const kevCves = Array.isArray(finding.known_exploited_cves)
+    ? finding.known_exploited_cves.filter((value) => String(value || "").trim())
+    : [];
+  if (kevCves.length > 0) {
+    return `Matched official CISA KEV catalog: ${kevCves.join(", ")}`;
+  }
+  return finding.known_exploited ? "Matched official CISA KEV catalog" : "No CISA KEV match found";
 }
 
 function hasFalsePositiveCandidates(falsePositiveReport: unknown): boolean {
@@ -5103,7 +5154,10 @@ function deriveRiskIntelligenceFromFindings(findings: VulnerabilityFinding[]): {
     if (Number(finding.cvss_score || 0) >= 7) {
       findingsCvssGe7 += 1;
     }
-    if (Boolean((finding as VulnerabilityFinding & { known_exploited?: boolean }).known_exploited)) {
+    if (
+      Boolean((finding as VulnerabilityFinding & { known_exploited?: boolean }).known_exploited) ||
+      ((finding as VulnerabilityFinding & { known_exploited_cves?: string[] }).known_exploited_cves || []).length > 0
+    ) {
       knownExploitedFindings += 1;
     }
   }
@@ -5323,19 +5377,43 @@ function rankedFindings(findings: VulnerabilityFinding[], limit = findings.lengt
 
 function resolveRiskIntelligence(
   summary: VulnerabilityFixedCodeReport["summary"] & {
-    risk_intelligence?: { findings_with_cve?: number; findings_cvss_ge_7?: number; known_exploited_findings?: number };
+    risk_intelligence?: {
+      findings_with_cve?: number;
+      findings_cvss_ge_7?: number;
+      known_exploited_findings?: number;
+      kev_catalog_source?: string;
+      kev_catalog_version?: string;
+      kev_catalog_retrieved_at?: string;
+      kev_catalog_count?: number;
+    };
   },
   findings: VulnerabilityFinding[],
-): { findings_with_cve: number; findings_cvss_ge_7: number; known_exploited_findings: number } {
+): {
+  findings_with_cve: number;
+  findings_cvss_ge_7: number;
+  known_exploited_findings: number;
+  kev_catalog_source?: string;
+  kev_catalog_version?: string;
+  kev_catalog_retrieved_at?: string;
+  kev_catalog_count?: number;
+} {
   const existing = summary.risk_intelligence;
   if (existing) {
     return {
       findings_with_cve: Number(existing.findings_with_cve || 0),
       findings_cvss_ge_7: Number(existing.findings_cvss_ge_7 || 0),
       known_exploited_findings: Number(existing.known_exploited_findings || 0),
+      kev_catalog_source: existing.kev_catalog_source ? String(existing.kev_catalog_source) : undefined,
+      kev_catalog_version: existing.kev_catalog_version ? String(existing.kev_catalog_version) : undefined,
+      kev_catalog_retrieved_at: existing.kev_catalog_retrieved_at ? String(existing.kev_catalog_retrieved_at) : undefined,
+      kev_catalog_count: Number(existing.kev_catalog_count || 0) || undefined,
     };
   }
-  return deriveRiskIntelligenceFromFindings(findings);
+  const derived = deriveRiskIntelligenceFromFindings(findings);
+  return {
+    ...derived,
+    kev_catalog_source: "official_cisa",
+  };
 }
 
 function resolveAuthAbuse(
@@ -5402,8 +5480,12 @@ function resolveCtoBoardView(
       business_impact: finding.business_impact || "Material engineering and service risk.",
     })),
     ai_summary_plain_language: [
-      `${activeRisk} high-priority finding(s) are still open across ${Number(summary.files_impacted || 0)} impacted file(s).`,
-      `${riskIntel.findings_with_cve} finding(s) carry advisory identifiers and ${riskIntel.known_exploited_findings} map to known exploited intelligence.`,
+      activeRisk > 0
+        ? `${activeRisk} high-priority finding(s) are still open across ${Number(summary.files_impacted || 0)} impacted file(s).`
+        : `No critical or high-priority findings remain open across ${Number(summary.files_impacted || 0)} impacted file(s).`,
+      riskIntel.findings_with_cve > 0
+        ? `${riskIntel.findings_with_cve} finding(s) carry advisory identifiers. ${knownExploitedSummaryText(riskIntel)}`
+        : `No advisory-backed findings were identified. ${knownExploitedSummaryText(riskIntel)}`,
       `Release pressure remains ${activeRisk > 0 ? "elevated" : "controlled"} based on current critical/high finding volume and analyzer coverage.`,
     ],
   };
@@ -5767,10 +5849,13 @@ function buildFallbackFixWindowPlan(findings: VulnerabilityFinding[]): Record<st
       const rightSeverity = SEVERITY_ORDER.indexOf(right.severity || "Info");
       return leftSeverity - rightSeverity;
     });
+  if (ranked.length === 0) {
+    return {};
+  }
   const windows: Record<string, number> = { "8_hours": 2, "24_hours": 6, "72_hours": 15 };
   const plan: Record<string, Array<Record<string, unknown>>> = {};
   for (const [window, limit] of Object.entries(windows)) {
-    plan[window] = ranked.slice(0, limit).map((finding) => ({
+    const entries = ranked.slice(0, limit).map((finding) => ({
       finding_uid: finding.finding_uid,
       title: normalizedFindingTitle(finding),
       severity: finding.severity || "Info",
@@ -5784,6 +5869,9 @@ function buildFallbackFixWindowPlan(findings: VulnerabilityFinding[]): Record<st
       fix_confidence_label: aiFixConfidenceLabel(finding),
       fix_confidence_score: aiFixConfidenceScore(finding),
     }));
+    if (entries.length > 0) {
+      plan[window] = entries;
+    }
   }
   return plan;
 }

@@ -12,6 +12,7 @@ from tempfile import TemporaryDirectory
 from universal_security_scanner.models import Finding, ScanResult, SecurityControl
 from universal_security_scanner.poc_verify import ValidationContext, verify_finding
 from universal_security_scanner.risk import risk_rating
+from universal_security_scanner.scanner.kev_catalog import find_kev_matches, load_kev_catalog, normalize_cve_id
 from universal_security_scanner.scanner.ai_provider import (
     build_provider_status,
     generate_grounded_remediation,
@@ -1310,6 +1311,35 @@ def _dependency_reachability(findings: list[dict], target_path: str) -> None:
         }
 
 
+def _apply_kev_correlation(findings: list[dict]) -> dict[str, object]:
+    kev_ids, kev_meta = load_kev_catalog()
+    matched_findings = 0
+    matched_cves = 0
+    for item in findings:
+        cve_ids = [
+            normalized
+            for normalized in (normalize_cve_id(cve) for cve in (item.get("cve_ids") or []))
+            if normalized
+        ]
+        matches = find_kev_matches(cve_ids, kev_ids)
+        item["known_exploited"] = bool(matches)
+        item["known_exploited_cves"] = matches
+        item["kev_catalog_source"] = kev_meta.get("source") or "official_cisa"
+        item["kev_catalog_version"] = kev_meta.get("catalog_version")
+        item["kev_catalog_retrieved_at"] = kev_meta.get("retrieved_at")
+        if matches:
+            matched_findings += 1
+            matched_cves += len(matches)
+    return {
+        "known_exploited_findings": matched_findings,
+        "known_exploited_cves": matched_cves,
+        "kev_catalog_source": kev_meta.get("source") or "official_cisa",
+        "kev_catalog_version": kev_meta.get("catalog_version"),
+        "kev_catalog_retrieved_at": kev_meta.get("retrieved_at"),
+        "kev_catalog_count": len(kev_ids),
+    }
+
+
 def _folder_name(file_path: str) -> str:
     normalized = str(file_path or "").replace("\\", "/").strip("./")
     if not normalized or "/" not in normalized:
@@ -1487,7 +1517,7 @@ def _build_toolchain_execution_summary(toolchain_status: dict[str, dict[str, obj
     }
 
 
-def _build_risk_intelligence(findings: list[dict]) -> dict[str, int]:
+def _build_risk_intelligence(findings: list[dict]) -> dict[str, object]:
     findings_with_cve = 0
     findings_cvss_ge_7 = 0
     known_exploited_findings = 0
@@ -2020,7 +2050,16 @@ def build_report(scan_result: ScanResult) -> dict:
     profile_compliance = build_profile_compliance(scan_result.target_path, enriched_findings, controls_payload)
     autofix = _autofix_recommendations(enriched_findings)
     toolchain_execution = _build_toolchain_execution_summary(scan_result.toolchain_status)
+    kev_catalog = _apply_kev_correlation(enriched_findings)
     risk_intelligence = _build_risk_intelligence(enriched_findings)
+    risk_intelligence.update(
+        {
+            "kev_catalog_source": kev_catalog.get("kev_catalog_source"),
+            "kev_catalog_version": kev_catalog.get("kev_catalog_version"),
+            "kev_catalog_retrieved_at": kev_catalog.get("kev_catalog_retrieved_at"),
+            "kev_catalog_count": kev_catalog.get("kev_catalog_count"),
+        }
+    )
     auth_abuse_session_security = _build_auth_abuse_session_security(enriched_findings)
     false_positive_report = _build_false_positive_report(enriched_findings)
     data_quality = _build_data_quality(
