@@ -39,12 +39,14 @@ declare global {
       generatePatch: (payload: { scanId: string; findingId: string }) => Promise<string | null>;
       exportReport: (request: {
         scanId: string;
+        role?: UserRole;
         reportType: "existing" | "vulnerability" | "fixes" | "finding_details" | "combined";
         format: "json" | "xml" | "html" | "pdf" | "sarif" | "csv" | "patch";
         reportStyle?: "classic" | "modern";
       }) => Promise<string>;
       renderReportHtml: (payload: {
         scanId: string;
+        role?: UserRole;
         reportType: "existing" | "vulnerability" | "fixes" | "finding_details" | "combined";
         reportStyle?: "classic" | "modern";
       }) => Promise<string>;

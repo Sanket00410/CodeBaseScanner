@@ -46,6 +46,20 @@ type RoleCapabilities = {
   canProvisionTools: boolean;
 };
 
+type RoleExportPreset = {
+  title: string;
+  description: string;
+  reportType: ExportType;
+  previewLabel: string;
+  scopeLabel: string;
+  scopeDetails: string[];
+  formats: Array<{
+    format: ExportFormat;
+    label: string;
+    helper: string;
+  }>;
+};
+
 const TABS: Array<{ key: AppTab; label: string; icon: string }> = [
   { key: "dashboard", label: "Code Risk Overview", icon: "CM" },
   { key: "existing", label: "Secure Coding Controls", icon: "ES" },
@@ -63,7 +77,7 @@ const WINDOW_MENU_ITEMS: Array<{ key: WindowMenuKey; label: string }> = [
   { key: "help", label: "Help" },
 ];
 
-const ROLES: UserRole[] = ["Admin", "Security Analyst", "Developer", "Auditor"];
+const ROLES: UserRole[] = ["Admin", "Security Analyst", "Developer", "Auditor", "Management"];
 const SEVERITY_ORDER: Severity[] = ["Critical", "High", "Medium", "Low", "Info"];
 const TOOL_PROFILES: ToolScanProfile[] = ["codebase"];
 const SCAN_PRESETS: Array<{ key: ScanPreset; label: string; helper: string }> = [
@@ -105,6 +119,12 @@ const ROLE_DRILLDOWN: Array<{ role: UserRole; purpose: string; drillDownUse: str
     drillDownUse: "Trace each metric back to concrete findings, ownership, and export artifacts.",
     primaryActions: "Audit evidence capture, control verification, export sign-off packages.",
   },
+  {
+    role: "Management",
+    purpose: "Review executive risk posture and release readiness.",
+    drillDownUse: "Read board-level summaries, release gates, and high-signal risk trends without noisy detail.",
+    primaryActions: "Executive review, risk acceptance, release oversight, portfolio decisions.",
+  },
 ];
 
 const ROLE_CAPABILITIES: Record<UserRole, RoleCapabilities> = {
@@ -124,17 +144,117 @@ const ROLE_CAPABILITIES: Record<UserRole, RoleCapabilities> = {
   },
   Developer: {
     canRunScan: true,
-    canReviewFindings: false,
+    canReviewFindings: true,
     canCopyFixes: true,
     canManageTools: false,
     canProvisionTools: false,
   },
   Auditor: {
-    canRunScan: false,
+    canRunScan: true,
+    canReviewFindings: true,
+    canCopyFixes: false,
+    canManageTools: false,
+    canProvisionTools: false,
+  },
+  Management: {
+    canRunScan: true,
     canReviewFindings: false,
     canCopyFixes: false,
     canManageTools: false,
     canProvisionTools: false,
+  },
+};
+
+const ROLE_EXPORT_PRESETS: Record<UserRole, RoleExportPreset> = {
+  Admin: {
+    title: "Full Scope Export",
+    description: "Complete role-scoped report with all permitted sections and evidence.",
+    reportType: "combined",
+    previewLabel: "Preview Full Scope",
+    scopeLabel: "Full scope",
+    scopeDetails: [
+      "Role-scoped combined report",
+      "HTML, PDF, JSON, XML",
+      "Backend enforces Admin-only export scope",
+    ],
+    formats: [
+      { format: "html", label: "HTML", helper: "Open the full scope report in a browser." },
+      { format: "pdf", label: "PDF", helper: "Generate a board-friendly PDF." },
+      { format: "json", label: "JSON", helper: "Export structured evidence for automation." },
+      { format: "xml", label: "XML", helper: "Export structured evidence for integrations." },
+    ],
+  },
+  "Security Analyst": {
+    title: "Security Analysis Export",
+    description: "Findings-first export for triage, validation, and security operations.",
+    reportType: "vulnerability",
+    previewLabel: "Preview Findings",
+    scopeLabel: "Security analysis",
+    scopeDetails: [
+      "Vulnerability-focused export",
+      "HTML, PDF, JSON, XML, SARIF, CSV",
+      "Backend enforces security-analysis scope",
+    ],
+    formats: [
+      { format: "html", label: "HTML", helper: "Open the findings report in a browser." },
+      { format: "pdf", label: "PDF", helper: "Generate a shareable findings PDF." },
+      { format: "json", label: "JSON", helper: "Export findings for downstream tooling." },
+      { format: "xml", label: "XML", helper: "Export findings for integrations." },
+      { format: "sarif", label: "SARIF", helper: "Export for code-scanning integrations." },
+      { format: "csv", label: "CSV", helper: "Export a tabular triage queue." },
+    ],
+  },
+  Developer: {
+    title: "Remediation Export",
+    description: "Fix-centric export for implementation, review, and patching.",
+    reportType: "fixes",
+    previewLabel: "Preview Fixes",
+    scopeLabel: "Remediation",
+    scopeDetails: [
+      "Fix-oriented export",
+      "HTML, PDF, Patch bundle",
+      "Backend enforces remediation scope",
+    ],
+    formats: [
+      { format: "html", label: "HTML", helper: "Open the fixes report in a browser." },
+      { format: "pdf", label: "PDF", helper: "Generate a shareable remediation PDF." },
+      { format: "patch", label: "Patch", helper: "Download patch previews only." },
+    ],
+  },
+  Auditor: {
+    title: "Audit / Compliance Export",
+    description: "Redacted evidence and control view for audit sign-off.",
+    reportType: "existing",
+    previewLabel: "Preview Audit View",
+    scopeLabel: "Audit / compliance",
+    scopeDetails: [
+      "Redacted control and assurance export",
+      "HTML, PDF, JSON, XML",
+      "Backend enforces audit-only scope",
+    ],
+    formats: [
+      { format: "html", label: "HTML", helper: "Open the redacted audit view in a browser." },
+      { format: "pdf", label: "PDF", helper: "Generate an audit-ready PDF." },
+      { format: "json", label: "JSON", helper: "Export structured audit evidence." },
+      { format: "xml", label: "XML", helper: "Export structured audit evidence." },
+    ],
+  },
+  Management: {
+    title: "Executive Summary Export",
+    description: "Board-level summary with risk and assurance only.",
+    reportType: "combined",
+    previewLabel: "Preview Executive Summary",
+    scopeLabel: "Executive",
+    scopeDetails: [
+      "Board-facing summary",
+      "HTML, PDF, JSON",
+      "Backend enforces management-only scope",
+    ],
+    formats: [
+      { format: "html", label: "HTML", helper: "Open the executive summary in a browser." },
+      { format: "pdf", label: "PDF", helper: "Generate a board-ready PDF." },
+      { format: "json", label: "JSON", helper: "Export structured board data." },
+    ],
   },
 };
 
@@ -343,6 +463,28 @@ function roleDrilldownSummary(role: UserRole): string {
   return `${item.purpose} ${item.drillDownUse}`;
 }
 
+function normalizeRoleLabel(value: string | undefined): UserRole {
+  const label = String(value || "").trim().toLowerCase();
+  switch (label) {
+    case "admin":
+    case "administrator":
+      return "Admin";
+    case "security analyst":
+    case "securityanalyst":
+      return "Security Analyst";
+    case "developer":
+      return "Developer";
+    case "auditor":
+      return "Auditor";
+    case "management":
+    case "manager":
+    case "board":
+      return "Management";
+    default:
+      return "Security Analyst";
+  }
+}
+
 function enterpriseStatusClass(status: string | undefined): string {
   if (status === "ready") {
     return "enterprise-ready";
@@ -475,12 +617,23 @@ export default function App(): React.JSX.Element {
   const [showOwnerAccessPanel, setShowOwnerAccessPanel] = useState(false);
   const [activeWindowMenu, setActiveWindowMenu] = useState<WindowMenuKey | null>(null);
   const roleCaps = useMemo(() => ROLE_CAPABILITIES[role], [role]);
+  const selectedRoleExport = useMemo(() => ROLE_EXPORT_PRESETS[role], [role]);
   const toolAuthEnabled = Boolean(toolAuthConfig?.enabled);
   const toolSessionValid = !toolAuthEnabled || Boolean(toolAuthToken);
   const toolAuthOtpRequired = Boolean(toolAuthConfig?.otpRequired);
   const toolAuthTotpOnly = toolAuthConfig?.authMode === "totp_only";
   const canOpenOwnerLogin = role === "Admin" || role === "Security Analyst";
   const isToolManagerVisible = !toolAuthEnabled || toolSessionValid;
+  const scanRole = useMemo(
+    () =>
+      normalizeRoleLabel(
+        scan?.report.executive_summary.scan_role ||
+          scan?.report.vulnerability_fixed_code_report.scan_role ||
+          role,
+      ),
+    [role, scan],
+  );
+  const roleMatchesScan = !scan || scanRole === role;
   const visibleTabs = useMemo(
     () => TABS.filter((item) => item.key !== "tools" || isToolManagerVisible),
     [isToolManagerVisible],
@@ -1292,46 +1445,58 @@ export default function App(): React.JSX.Element {
     setStatusText("Fix code copied to clipboard.");
   };
 
-  const exportReport = async (reportType: ExportType, format: ExportFormat): Promise<void> => {
+  const exportReport = async (format: ExportFormat): Promise<void> => {
     if (!scan) {
       setStatusText("No scan loaded for export.");
       return;
     }
+    if (!roleMatchesScan) {
+      setStatusText(`Role mismatch: scan role is ${scanRole}, but the selected export role is ${role}. Rerun the scan for this role first.`);
+      return;
+    }
     setIsExporting(true);
+    const reportType = selectedRoleExport.reportType;
     const styleLabel = reportType === "vulnerability" ? ` (${vulnerabilityReportStyle})` : "";
-    setStatusText(`Preparing ${reportType}${styleLabel} ${format.toUpperCase()} export...`);
+    setStatusText(`Preparing ${selectedRoleExport.title} ${format.toUpperCase()} export...`);
     await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
     try {
       const output = await window.codeSentinelX.exportReport({
         scanId: scan.scanId,
+        role,
         reportType,
         format,
         reportStyle: reportType === "vulnerability" ? vulnerabilityReportStyle : undefined,
       });
       setLastExport(output);
-      setStatusText(`Exported ${reportType}${styleLabel} report as ${format}`);
+      setStatusText(`Exported ${selectedRoleExport.title} as ${format}${styleLabel}`);
       await loadAudits(scan.scanId);
     } finally {
       setIsExporting(false);
     }
   };
 
-  const previewReport = async (reportType: ExportType): Promise<void> => {
+  const previewReport = async (): Promise<void> => {
     if (!scan) {
       setStatusText("Run a scan before previewing reports.");
       return;
     }
+    if (!roleMatchesScan) {
+      setStatusText(`Role mismatch: scan role is ${scanRole}, but the selected export role is ${role}. Rerun the scan for this role first.`);
+      return;
+    }
     setIsPreviewLoading(true);
+    const reportType = selectedRoleExport.reportType;
     setPreviewReportType(reportType);
     try {
       const html = await window.codeSentinelX.renderReportHtml({
         scanId: scan.scanId,
+        role,
         reportType,
         reportStyle: reportType === "vulnerability" ? vulnerabilityReportStyle : undefined,
       });
       setReportPreviewHtml(html);
       const styleLabel = reportType === "vulnerability" ? ` (${vulnerabilityReportStyle})` : "";
-      setStatusText(`Loaded ${reportType}${styleLabel} report preview.`);
+      setStatusText(`Loaded ${selectedRoleExport.title} preview${styleLabel}.`);
       setTab("dashboard");
     } catch (error) {
       setPreviewReportType("");
@@ -1450,7 +1615,7 @@ export default function App(): React.JSX.Element {
       ],
       help: [
         { label: "Show Keyboard Shortcuts", onSelect: showShortcutHelp },
-        { label: "Preview Vulnerability Report", disabled: !scan, onSelect: () => previewReport("vulnerability") },
+        { label: `Preview ${selectedRoleExport.title}`, disabled: !scan || !roleMatchesScan, onSelect: () => previewReport() },
         { label: "Analyzer Policy", onSelect: openPolicyView },
         { label: "Welcome Screen", onSelect: reopenLanding },
       ],
@@ -1459,13 +1624,15 @@ export default function App(): React.JSX.Element {
       lastExport,
       openLastExport,
       openLastExportFolder,
-      previewReport,
       projectPath,
       reopenLanding,
+      previewReport,
+      roleMatchesScan,
       roleCaps.canRunScan,
       runScan,
       scan,
       searchText,
+      selectedRoleExport,
     ],
   );
 
@@ -2094,16 +2261,10 @@ export default function App(): React.JSX.Element {
             </div>
 
             <div className="subpanel">
-              <h3>Report Preview Controls</h3>
+              <h3>Role Export Preview</h3>
               <div className="button-row">
-                <button type="button" onClick={() => previewReport("vulnerability")}>
-                  Preview Vulnerability
-                </button>
-                <button type="button" onClick={() => previewReport("existing")}>
-                  Preview Existing
-                </button>
-                <button type="button" onClick={() => previewReport("fixes")}>
-                  Preview Fixes
+                <button type="button" onClick={() => previewReport()}>
+                  Preview {selectedRoleExport.title}
                 </button>
                 <button type="button" onClick={openLastExport} disabled={!lastExport}>
                   Open Last Export
@@ -3115,82 +3276,78 @@ export default function App(): React.JSX.Element {
 
         <section className="panel exports">
           <h3>Exports</h3>
-          <div className="report-style-row">
-            <span className="muted-text">Vulnerability Report Style</span>
-            <div className="report-style-toggle">
-              <button
-                type="button"
-                className={vulnerabilityReportStyle === "classic" ? "active" : ""}
-                onClick={() => setVulnerabilityReportStyle("classic")}
-              >
-                Classic
+          <div className="role-export-card">
+            <div className="role-export-header">
+              <div>
+                <p className="muted-text">Role-selected export scope</p>
+                <h4>{selectedRoleExport.title}</h4>
+                <p>{selectedRoleExport.description}</p>
+              </div>
+              <div className="role-export-badge">
+                <span>Role</span>
+                <strong>{role}</strong>
+                <small>{selectedRoleExport.scopeLabel}</small>
+              </div>
+            </div>
+
+            <ul className="role-export-notes">
+              {selectedRoleExport.scopeDetails.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+
+            {!roleMatchesScan && (
+              <p className="status-warning">
+                Selected role does not match the loaded scan role ({scanRole}). Rerun the scan with the selected role before exporting.
+              </p>
+            )}
+
+            {selectedRoleExport.reportType === "vulnerability" && (
+              <div className="report-style-row">
+                <span className="muted-text">Findings Report Style</span>
+                <div className="report-style-toggle">
+                  <button
+                    type="button"
+                    className={vulnerabilityReportStyle === "classic" ? "active" : ""}
+                    onClick={() => setVulnerabilityReportStyle("classic")}
+                  >
+                    Classic
+                  </button>
+                  <button
+                    type="button"
+                    className={vulnerabilityReportStyle === "modern" ? "active" : ""}
+                    onClick={() => setVulnerabilityReportStyle("modern")}
+                  >
+                    Modern (Beta)
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="role-export-actions">
+              {selectedRoleExport.formats.map((item) => (
+                <button
+                  key={item.format}
+                  type="button"
+                  className="role-export-action"
+                  title={item.helper}
+                  onClick={() => exportReport(item.format)}
+                  disabled={!scan || isExporting || !roleMatchesScan}
+                >
+                  <span>{item.label}</span>
+                  <small>{item.helper}</small>
+                </button>
+              ))}
+            </div>
+
+            <div className="button-row role-export-footer">
+              <button type="button" onClick={() => previewReport()} disabled={!scan || !roleMatchesScan || isPreviewLoading}>
+                {selectedRoleExport.previewLabel}
               </button>
-              <button
-                type="button"
-                className={vulnerabilityReportStyle === "modern" ? "active" : ""}
-                onClick={() => setVulnerabilityReportStyle("modern")}
-              >
-                Modern (Beta)
+              <button type="button" onClick={openLastExport} disabled={!lastExport}>
+                Open Last Export
               </button>
             </div>
-          </div>
-          <div className="button-grid">
-            <button type="button" onClick={() => exportReport("existing", "html")} disabled={!scan || isExporting}>
-              Controls HTML
-            </button>
-            <button type="button" onClick={() => exportReport("existing", "pdf")} disabled={!scan || isExporting}>
-              Controls PDF
-            </button>
-            <button type="button" onClick={() => exportReport("vulnerability", "html")} disabled={!scan || isExporting}>
-              Findings HTML
-            </button>
-            <button type="button" onClick={() => exportReport("vulnerability", "pdf")} disabled={!scan || isExporting}>
-              Findings PDF
-            </button>
-            <button type="button" onClick={() => exportReport("fixes", "html")} disabled={!scan || isExporting}>
-              Fixes HTML
-            </button>
-            <button type="button" onClick={() => exportReport("fixes", "pdf")} disabled={!scan || isExporting}>
-              Fixes PDF
-            </button>
-            <button type="button" onClick={() => exportReport("finding_details", "html")} disabled={!scan || isExporting}>
-              Finding Details HTML
-            </button>
-            <button type="button" onClick={() => exportReport("finding_details", "pdf")} disabled={!scan || isExporting}>
-              Finding Details PDF
-            </button>
-            <button type="button" onClick={() => exportReport("vulnerability", "json")} disabled={!scan || isExporting}>
-              Vulnerability JSON
-            </button>
-            <button type="button" onClick={() => exportReport("vulnerability", "xml")} disabled={!scan || isExporting}>
-              Vulnerability XML
-            </button>
-            <button type="button" onClick={() => exportReport("vulnerability", "sarif")} disabled={!scan || isExporting}>
-              Vulnerability SARIF
-            </button>
-            <button type="button" onClick={() => exportReport("vulnerability", "csv")} disabled={!scan || isExporting}>
-              Vulnerability CSV
-            </button>
-            <button type="button" onClick={() => exportReport("vulnerability", "patch")} disabled={!scan || isExporting}>
-              Patch Bundle
-            </button>
-          </div>
-          <div className="button-row">
-            <button type="button" onClick={() => previewReport("vulnerability")} disabled={!scan}>
-              Preview Findings
-            </button>
-            <button type="button" onClick={() => previewReport("existing")} disabled={!scan}>
-              Preview Controls
-            </button>
-            <button type="button" onClick={() => previewReport("fixes")} disabled={!scan}>
-              Preview Fixes
-            </button>
-            <button type="button" onClick={() => previewReport("finding_details")} disabled={!scan}>
-              Preview Finding Details
-            </button>
-            <button type="button" onClick={openLastExport} disabled={!lastExport}>
-              Open Last Export
-            </button>
           </div>
         </section>
       </aside>

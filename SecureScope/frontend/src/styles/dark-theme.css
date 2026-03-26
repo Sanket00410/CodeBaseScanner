@@ -1435,6 +1435,105 @@ select {
   color: #dff8ff;
 }
 
+.role-export-card {
+  display: grid;
+  gap: 12px;
+}
+
+.role-export-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+
+.role-export-header h4 {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+
+.role-export-header p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.role-export-badge {
+  display: grid;
+  gap: 2px;
+  justify-items: end;
+  align-content: start;
+  min-width: 140px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(84, 131, 170, 0.28);
+  background: rgba(10, 21, 36, 0.34);
+}
+
+.role-export-badge span {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.role-export-badge strong {
+  font-size: 14px;
+}
+
+.role-export-badge small {
+  color: var(--muted);
+  font-size: 11px;
+  text-align: right;
+}
+
+.role-export-notes {
+  margin: 0;
+  padding-left: 18px;
+  color: #cae3f5;
+  display: grid;
+  gap: 6px;
+}
+
+.role-export-notes li {
+  margin: 0;
+}
+
+.status-warning {
+  margin: 0;
+  color: #ffd8a8;
+  font-size: 12px;
+}
+
+.role-export-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.role-export-action {
+  display: grid;
+  gap: 3px;
+  text-align: left;
+  align-content: start;
+  min-height: 58px;
+}
+
+.role-export-action span {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.role-export-action small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.role-export-footer {
+  justify-content: space-between;
+}
+
 .header .header-row {
   display: grid;
   grid-template-columns: auto 1fr auto auto auto auto auto;
@@ -2365,6 +2464,15 @@ li {
     grid-template-columns: 1fr 1fr;
   }
 
+  .role-export-header {
+    grid-template-columns: 1fr;
+  }
+
+  .role-export-badge {
+    justify-items: start;
+    width: fit-content;
+  }
+
   .landing-feature-grid,
   .landing-advantage-grid,
   .landing-story-grid {
@@ -2406,6 +2514,10 @@ li {
   }
 
   .exports .button-row {
+    grid-template-columns: 1fr;
+  }
+
+  .role-export-actions {
     grid-template-columns: 1fr;
   }
 

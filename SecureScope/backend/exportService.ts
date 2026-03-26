@@ -165,6 +165,42 @@ function exportFormatExtension(format: ExportRequest["format"]): string {
   return format === "sarif" ? "sairf" : format;
 }
 
+type ReportRole = NonNullable<ExportRequest["role"]>;
+
+interface RoleExportProfile {
+  reportType: ExportRequest["reportType"];
+  formats: ReadonlySet<ExportRequest["format"]>;
+  label: string;
+}
+
+const ROLE_EXPORT_PROFILES: Record<ReportRole, RoleExportProfile> = {
+  Admin: {
+    reportType: "combined",
+    formats: new Set<ExportRequest["format"]>(["html", "pdf", "json", "xml"]),
+    label: "Full Scope Export",
+  },
+  "Security Analyst": {
+    reportType: "vulnerability",
+    formats: new Set<ExportRequest["format"]>(["html", "pdf", "json", "xml", "sarif", "csv"]),
+    label: "Security Analysis Export",
+  },
+  Developer: {
+    reportType: "fixes",
+    formats: new Set<ExportRequest["format"]>(["html", "pdf", "patch"]),
+    label: "Remediation Export",
+  },
+  Auditor: {
+    reportType: "existing",
+    formats: new Set<ExportRequest["format"]>(["html", "pdf", "json", "xml"]),
+    label: "Audit / Compliance Export",
+  },
+  Management: {
+    reportType: "combined",
+    formats: new Set<ExportRequest["format"]>(["html", "pdf", "json"]),
+    label: "Executive Summary Export",
+  },
+};
+
 function normalizeReportRole(value: unknown): string {
   const label = String(value || "").trim().toLowerCase();
   switch (label) {
@@ -198,6 +234,49 @@ function resolveReportRole(scan: ScanView): string {
       metadata.scan_role ||
       "Security Analyst",
   );
+}
+
+function resolveExportRole(scan: ScanView, requestedRole?: ExportRequest["role"]): ReportRole {
+  const scanRole = normalizeReportRole(resolveReportRole(scan)) as ReportRole;
+  const selectedRole = normalizeReportRole(requestedRole ?? scanRole) as ReportRole;
+  if (selectedRole !== scanRole) {
+    throw new Error(`Export role mismatch: scan role is ${scanRole}, requested export role is ${selectedRole}.`);
+  }
+  return selectedRole;
+}
+
+function resolveExportProfile(scan: ScanView, requestedRole?: ExportRequest["role"]): RoleExportProfile {
+  const role = resolveExportRole(scan, requestedRole);
+  return ROLE_EXPORT_PROFILES[role] || ROLE_EXPORT_PROFILES["Security Analyst"];
+}
+
+function assertExportAllowed(scan: ScanView, request: ExportRequest): RoleExportProfile {
+  const profile = resolveExportProfile(scan, request.role);
+  if (profile.reportType !== request.reportType) {
+    throw new Error(
+      `Export report type ${request.reportType} is not allowed for role ${resolveReportRole(scan)}. Allowed export preset: ${profile.label} (${profile.reportType}).`,
+    );
+  }
+  if (!profile.formats.has(request.format)) {
+    throw new Error(
+      `Export format ${request.format} is not allowed for role ${resolveReportRole(scan)} and export preset ${profile.label}.`,
+    );
+  }
+  return profile;
+}
+
+function assertPreviewAllowed(
+  scan: ScanView,
+  reportType: ExportRequest["reportType"],
+  requestedRole?: ExportRequest["role"],
+): RoleExportProfile {
+  const profile = resolveExportProfile(scan, requestedRole);
+  if (profile.reportType !== reportType) {
+    throw new Error(
+      `Preview report type ${reportType} is not allowed for role ${resolveReportRole(scan)}. Allowed export preset: ${profile.label} (${profile.reportType}).`,
+    );
+  }
+  return profile;
 }
 
 function resolveAllowedSections(scan: ScanView): Set<string> {
@@ -627,11 +706,14 @@ export class ExportService {
     scan: ScanView,
     reportType: ExportRequest["reportType"],
     reportStyle?: ExportRequest["reportStyle"],
+    role?: ExportRequest["role"],
   ): string {
+    assertPreviewAllowed(scan, reportType, role);
     return this.toHtml(scan, reportType, reportStyle);
   }
 
   async exportReport(scan: ScanView, request: ExportRequest): Promise<string> {
+    const profile = assertExportAllowed(scan, request);
     const destination = this.resolveOutputPath(scan, request.reportType, request.format, request.reportStyle);
 
     if (request.format === "json") {
@@ -662,7 +744,7 @@ export class ExportService {
       return destination;
     }
     if (request.format === "pdf") {
-      await this.writePdf(scan, destination, request.reportType);
+      await this.writePdf(scan, destination, profile.reportType);
       return destination;
     }
     throw new Error(`Unsupported export format: ${request.format}`);

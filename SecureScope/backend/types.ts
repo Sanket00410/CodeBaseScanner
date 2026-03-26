@@ -1,5 +1,5 @@
 export type Severity = "Critical" | "High" | "Medium" | "Low" | "Info";
-export type UserRole = "Admin" | "Security Analyst" | "Developer" | "Auditor";
+export type UserRole = "Admin" | "Security Analyst" | "Developer" | "Auditor" | "Management";
 export type ScanPreset = "fast" | "standard" | "deep";
 
 export interface ScmDiffContext {
@@ -36,6 +36,7 @@ export interface ScanControlActionResult {
 
 export interface ExportRequest {
   scanId: string;
+  role?: UserRole;
   reportType: "existing" | "vulnerability" | "fixes" | "finding_details" | "combined";
   format: "json" | "xml" | "html" | "pdf" | "sarif" | "csv" | "patch";
   reportStyle?: "classic" | "modern";

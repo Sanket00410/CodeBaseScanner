@@ -42,7 +42,7 @@ const MAX_PATCH_LENGTH = 4800;
 const MAX_AUTOFIX_RECOMMENDATIONS = 300;
 const MAX_AUTOFIX_RECOMMENDATIONS_AGGRESSIVE = 80;
 const MIN_FINDINGS_AFTER_SHRINK = 100;
-const USER_ROLE_SET = new Set<UserRole>(["Admin", "Security Analyst", "Developer", "Auditor"]);
+const USER_ROLE_SET = new Set<UserRole>(["Admin", "Security Analyst", "Developer", "Auditor", "Management"]);
 const SEVERITY_SET = new Set<Severity>(["Critical", "High", "Medium", "Low", "Info"]);
 
 export class ScanStore {

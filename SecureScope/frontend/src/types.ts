@@ -1,4 +1,4 @@
-export type UserRole = "Admin" | "Security Analyst" | "Developer" | "Auditor";
+export type UserRole = "Admin" | "Security Analyst" | "Developer" | "Auditor" | "Management";
 export type Severity = "Critical" | "High" | "Medium" | "Low" | "Info";
 export type ScanPreset = "fast" | "standard" | "deep";
 export type ToolScanProfile = "codebase";

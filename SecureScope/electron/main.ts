@@ -399,7 +399,7 @@ ipcMain.handle("scan:export", async (_event, request: ExportRequest) => {
   }
   let outputPath = "";
   if (request.format === "pdf") {
-    const html = exportService.renderReportHtml(scan, request.reportType, request.reportStyle);
+    const html = exportService.renderReportHtml(scan, request.reportType, request.reportStyle, request.role);
     const destination = exportService.resolveOutputPath(scan, request.reportType, request.format, request.reportStyle);
     try {
       await renderHtmlAsPdf(html, destination);
@@ -415,7 +415,7 @@ ipcMain.handle("scan:export", async (_event, request: ExportRequest) => {
     scanId: request.scanId,
     action: "report.exported",
     actor: "local-user",
-    role: "Auditor",
+    role: (request.role || scan.report.executive_summary.scan_role || "Security Analyst") as UserRole,
     details: `Exported ${request.reportType} report in ${request.format} format`,
   });
   return outputPath;
@@ -423,15 +423,18 @@ ipcMain.handle("scan:export", async (_event, request: ExportRequest) => {
 
 ipcMain.handle(
   "scan:renderHtml",
-  (_event, payload: { scanId: string; reportType: ExportRequest["reportType"]; reportStyle?: ExportRequest["reportStyle"] }) => {
-  if (!store || !exportService) {
-    throw new Error("Report renderer is unavailable.");
-  }
-  const scan = store.getScanView(payload.scanId);
-  if (!scan) {
-    throw new Error(`Scan ${payload.scanId} not found.`);
-  }
-    return exportService.renderReportHtml(scan, payload.reportType, payload.reportStyle);
+  (
+    _event,
+    payload: { scanId: string; reportType: ExportRequest["reportType"]; reportStyle?: ExportRequest["reportStyle"]; role?: ExportRequest["role"] },
+  ) => {
+    if (!store || !exportService) {
+      throw new Error("Report renderer is unavailable.");
+    }
+    const scan = store.getScanView(payload.scanId);
+    if (!scan) {
+      throw new Error(`Scan ${payload.scanId} not found.`);
+    }
+    return exportService.renderReportHtml(scan, payload.reportType, payload.reportStyle, payload.role);
   },
 );
 

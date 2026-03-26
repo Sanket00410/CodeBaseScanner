@@ -18,7 +18,7 @@ const api = {
     ipcRenderer.invoke("scan:markReviewed", payload),
   generatePatch: async (payload: { scanId: string; findingId: string }) => ipcRenderer.invoke("scan:generatePatch", payload),
   exportReport: async (request: ExportRequest) => ipcRenderer.invoke("scan:export", request),
-  renderReportHtml: async (payload: { scanId: string; reportType: ExportRequest["reportType"]; reportStyle?: ExportRequest["reportStyle"] }) =>
+  renderReportHtml: async (payload: { scanId: string; role?: UserRole; reportType: ExportRequest["reportType"]; reportStyle?: ExportRequest["reportStyle"] }) =>
     ipcRenderer.invoke("scan:renderHtml", payload),
   openPath: async (targetPath: string) => ipcRenderer.invoke("shell:openPath", targetPath),
   listAuditLogs: async (scanId?: string) => ipcRenderer.invoke("audit:list", scanId),
