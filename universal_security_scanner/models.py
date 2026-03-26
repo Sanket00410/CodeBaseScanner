@@ -96,6 +96,7 @@ class ScanResult:
     started_at: datetime
     completed_at: datetime
     files_scanned: int
+    scan_role: str = "Security Analyst"
     findings: list[Finding] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     existing_security_measures: list[SecurityControl] = field(default_factory=list)
@@ -113,6 +114,7 @@ class ScanResult:
             "completed_at": self.completed_at.isoformat(),
             "duration_seconds": self.duration_seconds,
             "files_scanned": self.files_scanned,
+            "scan_role": self.scan_role,
             "findings": [item.to_dict() for item in self.findings],
             "errors": self.errors,
             "existing_security_measures": [item.to_dict() for item in self.existing_security_measures],

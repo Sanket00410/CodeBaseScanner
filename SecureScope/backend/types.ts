@@ -473,6 +473,7 @@ export interface VulnerabilityFixedCodeReport {
   title: string;
   target_path: string;
   generated_at: string;
+  scan_role?: string;
   summary: {
     total_findings: number;
     raw_findings_total: number;
@@ -547,6 +548,7 @@ export interface VulnerabilityFixedCodeReport {
 export interface ExecutiveSummary {
   target_path: string;
   generated_at: string;
+  scan_role?: string;
   files_scanned: number;
   total_vulnerabilities: number;
   deduplicated_vulnerabilities?: number;

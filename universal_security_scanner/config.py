@@ -199,9 +199,10 @@ class ScannerConfig:
     quality_benchmark_min_recall: float = 85.0
     quality_benchmark_min_f1: float = 88.0
     quality_benchmark_strict_scope: bool = True
+    scan_role: str = "Security Analyst"
 
     @classmethod
-    def from_env(cls) -> "ScannerConfig":
+    def from_env(cls, scan_role: str | None = None) -> "ScannerConfig":
         exclude_dirs = set(DEFAULT_EXCLUDE_DIRS)
         user_excludes = os.getenv("USS_EXCLUDE_DIRS", "")
         if user_excludes.strip():
@@ -262,4 +263,5 @@ class ScannerConfig:
             quality_benchmark_min_recall=_read_float("USS_QUALITY_BENCHMARK_MIN_RECALL", 85.0),
             quality_benchmark_min_f1=_read_float("USS_QUALITY_BENCHMARK_MIN_F1", 88.0),
             quality_benchmark_strict_scope=_read_bool("USS_QUALITY_BENCHMARK_STRICT_SCOPE", True),
+            scan_role=(scan_role or os.getenv("USS_SCAN_ROLE", "Security Analyst")).strip() or "Security Analyst",
         )

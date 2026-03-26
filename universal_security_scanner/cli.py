@@ -54,8 +54,9 @@ def run_scan(
     auth_cookie: str | None = None,
     auth_header_name: str | None = None,
     auth_header_value: str | None = None,
+    role: str | None = None,
 ) -> int:
-    config = ScannerConfig.from_env()
+    config = ScannerConfig.from_env(role)
     configure_logging(config.log_level)
 
     progress = _cli_progress if show_progress else None
@@ -252,6 +253,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Report content type to export",
     )
     scan_parser.add_argument(
+        "--role",
+        default=os.getenv("USS_SCAN_ROLE", "Security Analyst"),
+        choices=["Admin", "Security Analyst", "Developer", "Auditor", "Management"],
+        help="Role scope to apply to scan execution and report output",
+    )
+    scan_parser.add_argument(
         "--split-reports",
         action="store_true",
         help="Export three separate reports (existing + vulnerability + fixes) in one run",
@@ -308,6 +315,7 @@ def main(argv: list[str] | None = None) -> int:
             auth_cookie=args.auth_cookie,
             auth_header_name=args.auth_header_name,
             auth_header_value=args.auth_header_value,
+            role=args.role,
         )
 
     if args.command == "serve":

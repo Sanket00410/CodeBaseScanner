@@ -21,6 +21,7 @@ from universal_security_scanner.scanner.external import (
 from universal_security_scanner.scanner.file_discovery import discover_files
 from universal_security_scanner.scanner.native_analysis import NativeCodeScanner
 from universal_security_scanner.scanner.native_dependency_analysis import NativeDependencyScanner
+from universal_security_scanner.scanner.role_scope import role_allows_tool, resolve_role_scope
 from universal_security_scanner.scanner.quality_benchmark import evaluate_quality_benchmark
 from universal_security_scanner.scanner.scan_cache import FileScanCache, content_sha256
 from universal_security_scanner.scanner.scan_control import honor_pause_control
@@ -99,6 +100,7 @@ def _is_tool_relevant(tool_name: str, extensions: set[str], filenames: set[str])
 class ScanEngine:
     def __init__(self, config: ScannerConfig) -> None:
         self.config = config
+        self.role_scope = resolve_role_scope(config.scan_role)
         self.file_rules = build_file_rules()
         self.project_rules = build_project_rules()
         self.plugins = load_builtin_language_plugins()
@@ -295,8 +297,16 @@ class ScanEngine:
         findings: list[Finding] = []
         errors: list[str] = []
         seen: set[tuple[str, str, int, str | None]] = set()
-        active_external_tools = external_tool_names(self.config, target_mode="codebase")
-        catalog_tools = external_tool_names(self.config, target_mode="codebase", include_catalog=True)
+        active_external_tools = [
+            tool
+            for tool in external_tool_names(self.config, target_mode="codebase")
+            if role_allows_tool(self.role_scope.role, tool)
+        ]
+        catalog_tools = [
+            tool
+            for tool in external_tool_names(self.config, target_mode="codebase", include_catalog=True)
+            if role_allows_tool(self.role_scope.role, tool)
+        ]
         runner_supported = set(supported_runner_tools("codebase"))
         selected_runner_tools = [tool for tool in active_external_tools if tool in runner_supported]
         control_analyzer = ExistingSecurityMeasuresAnalyzer()
@@ -660,6 +670,7 @@ class ScanEngine:
             started_at=started_at,
             completed_at=completed_at,
             files_scanned=len(files),
+            scan_role=self.role_scope.role,
             findings=findings,
             errors=errors,
             existing_security_measures=control_analyzer.finalize(total_files=len(files)),

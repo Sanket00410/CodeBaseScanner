@@ -46,7 +46,7 @@ export class PythonScannerBridge {
 
     const normalizedTarget = normalizeTargetInput(request.projectPath);
     const scanPreset = request.scanPreset || "standard";
-    const scanEnv = buildScanEnvironment(this.scannerRoot, controlFile, scanPreset, request.scmContext);
+    const scanEnv = buildScanEnvironment(this.scannerRoot, controlFile, scanPreset, request.role, request.scmContext);
 
     const args = [
       "-m",
@@ -308,12 +308,14 @@ function buildScanEnvironment(
   scannerRoot: string,
   controlFile: string,
   scanPreset: "fast" | "standard" | "deep",
+  role?: ScanRequest["role"],
   scmContext?: ScanRequest["scmContext"],
 ): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     PYTHONUTF8: "1",
     USS_SCAN_CONTROL_FILE: controlFile,
+    USS_SCAN_ROLE: role || process.env.USS_SCAN_ROLE || "Security Analyst",
     USS_MAX_FINDINGS: "0",
     USS_USE_EXTERNAL_TOOLS: process.env.USS_USE_EXTERNAL_TOOLS || "1",
     USS_AUTO_BOOTSTRAP_TOOLS: "0",

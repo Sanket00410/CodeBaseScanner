@@ -130,7 +130,7 @@ function formatDisplayTimestamp(value: string): string {
   const raw = String(value || "").trim();
   const parsed = new Date(raw);
   if (Number.isNaN(parsed.getTime())) {
-    return raw || "N/A";
+    return raw || "";
   }
   return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")} ${String(parsed.getHours()).padStart(2, "0")}:${String(parsed.getMinutes()).padStart(2, "0")}:${String(parsed.getSeconds()).padStart(2, "0")}.${String(parsed.getMilliseconds()).padStart(3, "0")}`;
 }
@@ -163,6 +163,65 @@ function exportReportTypeToken(
 
 function exportFormatExtension(format: ExportRequest["format"]): string {
   return format === "sarif" ? "sairf" : format;
+}
+
+function normalizeReportRole(value: unknown): string {
+  const label = String(value || "").trim().toLowerCase();
+  switch (label) {
+    case "admin":
+    case "administrator":
+      return "Admin";
+    case "security analyst":
+    case "securityanalyst":
+      return "Security Analyst";
+    case "developer":
+      return "Developer";
+    case "auditor":
+      return "Auditor";
+    case "management":
+    case "manager":
+    case "board":
+      return "Management";
+    default:
+      return "Security Analyst";
+  }
+}
+
+function resolveReportRole(scan: ScanView): string {
+  const roleAware = scan.report.role_aware_report || scan.report.vulnerability_fixed_code_report.role_aware_report || {};
+  const metadata = (roleAware as { metadata?: Record<string, unknown> }).metadata || {};
+  const executiveSummary = scan.report.executive_summary as unknown as Record<string, unknown>;
+  const vulnerabilityReport = scan.report.vulnerability_fixed_code_report as unknown as Record<string, unknown>;
+  return normalizeReportRole(
+    executiveSummary.scan_role ||
+      vulnerabilityReport.scan_role ||
+      metadata.scan_role ||
+      "Security Analyst",
+  );
+}
+
+function resolveAllowedSections(scan: ScanView): Set<string> {
+  const roleAware = scan.report.role_aware_report || scan.report.vulnerability_fixed_code_report.role_aware_report || {};
+  const metadata = (roleAware as { metadata?: Record<string, unknown> }).metadata || {};
+  const fromMetadata = Array.isArray(metadata.allowed_sections)
+    ? metadata.allowed_sections.map((item) => String(item || "").trim().toLowerCase()).filter(Boolean)
+    : [];
+  if (fromMetadata.length > 0) {
+    return new Set(fromMetadata);
+  }
+  const role = resolveReportRole(scan);
+  const fallback: Record<string, string[]> = {
+    Admin: ["all"],
+    "Security Analyst": ["all"],
+    Developer: ["developer_devops_view", "risk_story_mode", "advanced_features", "data_quality", "tool_evidence", "deterministic_replay", "report_integrity_chain"],
+    Auditor: ["enterprise_assurance", "false_positive_report", "data_quality", "tool_evidence", "deterministic_replay", "report_integrity_chain"],
+    Management: ["cto_board_view", "risk_story_mode", "enterprise_assurance", "data_quality", "deterministic_replay", "report_integrity_chain"],
+  };
+  return new Set((fallback[role] || ["all"]).map((item) => String(item).trim().toLowerCase()));
+}
+
+function reportSectionAllowed(allowedSections: Set<string>, section: string): boolean {
+  return allowedSections.has("all") || allowedSections.has(String(section || "").trim().toLowerCase());
 }
 
 function resolveReportGlobeTexturePath(): string | null {
@@ -293,7 +352,7 @@ function renderQualityBenchmarkRows(benchmark?: QualityBenchmarkSummary | null):
     ["False Positives", String(Number(benchmark.false_positives || 0))],
     ["False Negatives", String(Number(benchmark.false_negatives || 0))],
     ["True Negatives", String(Number(benchmark.true_negatives || 0))],
-  ];
+  ].filter(([, value]) => isRenderableDisplayValue(value));
   return rows
     .map(
       ([key, value]) => `<tr><td>${escapeHtml(String(key))}</td><td align="center">${escapeHtml(String(value))}</td></tr>`,
@@ -1056,6 +1115,8 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
   const findings = sortedFindings(report.findings || []);
   const exportedAt = formatDisplayTimestamp(resolveReportGeneratedAt(scan, "vulnerability"));
   const severityDistribution = buildSeverityDistribution(findings);
+  const allowedSections = resolveAllowedSections(scan);
+  const sectionAllowed = (section: string): boolean => reportSectionAllowed(allowedSections, section);
   const groups = groupByAlert(findings);
   const fileAgg = aggregateFiles(findings);
   const moduleAgg = aggregateModules(findings);
@@ -1141,12 +1202,12 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
   const ctoDowntimeText = formatBestLikelyWorst((ctoBoard.downtime_estimate as Record<string, unknown>) || {});
   const hasEnterpriseData = Boolean(
     enterprise &&
-      (Number(enterprise.required_tools_total || 0) > 0 ||
-        Number(enterprise.readiness_score || 0) > 0 ||
+      (Number(enterprise.readiness_score || 0) > 0 ||
+        Number(enterprise.required_tools_ready || 0) > 0 ||
         Boolean((enterprise.blockers || []).length) ||
         Number(toolchainExecution?.attempted_tools || 0) > 0),
   );
-  const hasCtoData = Boolean(urgentRisks.length || aiExecutiveSummary.length || ctoFinancialText !== "N/A" || ctoDowntimeText !== "N/A");
+  const hasCtoData = Boolean(urgentRisks.length || aiExecutiveSummary.length || ctoFinancialText || ctoDowntimeText);
   const aiSolutionEngine = (advanced.ai_solution_engine as Record<string, unknown>) || {};
   const findingByUid = new Map(findings.map((finding) => [String(finding.finding_uid || ""), finding]));
   const fixWindowPlan =
@@ -1512,7 +1573,10 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     if (cveJoined) {
       writeWrapped(doc, `CVEs: ${cveJoined}`, 8);
     }
-    writeWrapped(doc, `Known Exploited: ${knownExploitedFindingText(leadExtended)}`, 8);
+    const leadKnownExploited = knownExploitedFindingText(leadExtended);
+    if (leadKnownExploited) {
+      writeWrapped(doc, `Known Exploited: ${leadKnownExploited}`, 8);
+    }
     if (leadExtended.exploitability_context) {
       writeWrapped(doc, `Exploitability: ${singleLine(leadExtended.exploitability_context)}`, 8);
     }
@@ -2010,7 +2074,8 @@ function writePdfKeyValueTable(
   rows: Array<{ key: string; value: string }>,
   options?: { keyWidthRatio?: number; rowHeight?: number },
 ): void {
-  if (!rows.length) {
+  const visibleRows = rows.filter((row) => isRenderableDisplayValue(row.value));
+  if (!visibleRows.length) {
     return;
   }
   const keyWidthRatio = Math.max(0.2, Math.min(0.7, Number(options?.keyWidthRatio || 0.48)));
@@ -2019,7 +2084,7 @@ function writePdfKeyValueTable(
   const width = doc.page.width - doc.page.margins.left - doc.page.margins.right;
   const keyWidth = Math.floor(width * keyWidthRatio);
   const valueWidth = width - keyWidth;
-  const totalRows = rows.length + 1;
+  const totalRows = visibleRows.length + 1;
   const totalHeight = totalRows * rowHeight + 8;
   ensurePdfSpace(doc, totalHeight);
 
@@ -2037,8 +2102,8 @@ function writePdfKeyValueTable(
     .text("Value", x + keyWidth + 10, cursorY + 6, { width: valueWidth - 16, ellipsis: true });
   cursorY += rowHeight;
   doc.moveTo(x + keyWidth, startY).lineTo(x + keyWidth, startY + totalRows * rowHeight).strokeColor("#264867").lineWidth(0.8).stroke();
-  for (let i = 0; i < rows.length; i += 1) {
-    const row = rows[i];
+  for (let i = 0; i < visibleRows.length; i += 1) {
+    const row = visibleRows[i];
     const shade = i % 2 === 0 ? "#0d2238" : "#102840";
     doc.rect(x, cursorY, width, rowHeight).fillAndStroke(shade, "#1f3c5a");
     doc
@@ -2059,7 +2124,8 @@ function writePdfMetricStrip(
   doc: PDFKit.PDFDocument,
   metrics: Array<{ label: string; value: string; tone?: "critical" | "high" | "medium" | "low" | "info" | "accent" }>,
 ): void {
-  if (!metrics.length) {
+  const visibleMetrics = metrics.filter((metric) => isRenderableDisplayValue(metric.value));
+  if (!visibleMetrics.length) {
     return;
   }
   const colors: Record<string, string> = {
@@ -2073,13 +2139,13 @@ function writePdfMetricStrip(
   const x = doc.page.margins.left;
   const width = doc.page.width - doc.page.margins.left - doc.page.margins.right;
   const gap = 8;
-  const columns = Math.max(1, Math.min(3, metrics.length));
+  const columns = Math.max(1, Math.min(3, visibleMetrics.length));
   const cardWidth = (width - gap * (columns - 1)) / columns;
   const rowHeight = 48;
-  const rows = Math.ceil(metrics.length / columns);
+  const rows = Math.ceil(visibleMetrics.length / columns);
   ensurePdfSpace(doc, rows * (rowHeight + gap));
   const startY = doc.y;
-  metrics.forEach((metric, index) => {
+  visibleMetrics.forEach((metric, index) => {
     const row = Math.floor(index / columns);
     const col = index % columns;
     const cardX = x + col * (cardWidth + gap);
@@ -2112,14 +2178,22 @@ function renderExistingHtml(scan: ScanView): string {
     scan.report.executive_summary.enterprise_assurance?.quality_benchmark ||
     null;
   const exportedAt = formatDisplayTimestamp(resolveReportGeneratedAt(scan, "existing"));
-  const summaryRows = Object.entries(summary).map(
-    ([key, value]) => `<tr><td>${escapeHtml(key.replaceAll("_", " "))}</td><td>${renderSummaryValue(value)}</td></tr>`,
-  );
+  const summaryRows = Object.entries(summary)
+    .map(([key, value]) => {
+      const rendered = renderSummaryValue(value);
+      return rendered ? `<tr><td>${escapeHtml(key.replaceAll("_", " "))}</td><td>${rendered}</td></tr>` : "";
+    })
+    .filter(Boolean);
+  const hasSummaryRows = summaryRows.length > 0;
 
-  const controlRows = report.controls.map(
-    (control) =>
-      `<tr><td>${escapeHtml(control.name)}</td><td>${escapeHtml(control.category)}</td><td>${escapeHtml(control.coverage_level)}</td><td>${escapeHtml(control.standard_mappings.join(", "))}</td></tr>`,
-  );
+  const controlRows = report.controls
+    .map(
+      (control) =>
+        `<tr><td>${escapeHtml(control.name)}</td><td>${escapeHtml(control.category)}</td><td>${escapeHtml(control.coverage_level)}</td><td>${escapeHtml(control.standard_mappings.join(", "))}</td></tr>`,
+    )
+    .filter(Boolean);
+  const hasControlRows = controlRows.length > 0;
+
   const controlEvidenceRows = report.controls
     .flatMap((control) => {
       const evidence = Array.isArray((control as { evidence?: Array<Record<string, unknown>> }).evidence)
@@ -2127,18 +2201,23 @@ function renderExistingHtml(scan: ScanView): string {
         : [];
       return evidence.slice(0, 8).map((row) => {
         const rec = row as Record<string, unknown>;
-        const file = normalizePath(String(rec.file_path || "N/A"));
+        const file = normalizePath(String(rec.file_path || ""));
         const line = Number(rec.line_number || 1);
         const snippet = String(rec.snippet || "").trim();
+        if (!isRenderableDisplayValue(file) || !isRenderableDisplayValue(snippet)) {
+          return "";
+        }
         return `<tr>
       <td>${escapeHtml(control.name)}</td>
       <td>${escapeHtml(file)}</td>
       <td align="center">${line}</td>
-      <td><code>${escapeHtml(snippet || "N/A")}</code></td>
+      <td><code>${escapeHtml(snippet)}</code></td>
     </tr>`;
       });
     })
+    .filter(Boolean)
     .join("");
+  const hasControlEvidenceRows = Boolean(controlEvidenceRows.trim());
 
   const profileHeader = profileCompliance
     ? `<p class="meta"><strong>Profile:</strong> ${escapeHtml(profileCompliance.scan_profile_label)} (${escapeHtml(profileCompliance.scan_profile)})</p>
@@ -2167,16 +2246,22 @@ function renderExistingHtml(scan: ScanView): string {
       <td>${Number.isFinite(total) ? total : 0}</td>
     </tr>`;
             })
+            .filter(Boolean)
             .join("");
+          if (!rows) {
+            return "";
+          }
           return `<h3>${escapeHtml(framework.label)} (${framework.applicable ? "Applicable" : "Not Applicable"})</h3>
     <p class="meta">Covered: ${framework.summary.covered} | Gap: ${framework.summary.gap} | Not Applicable: ${framework.summary.not_applicable}</p>
     <table class="profile-coverage-table">
       <thead><tr><th>ID</th><th>Category</th><th>Status</th><th>Findings</th><th>Controls</th><th>Total</th></tr></thead>
-      <tbody>${rows || "<tr><td colspan='6'>No mapping rows available.</td></tr>"}</tbody>
+      <tbody>${rows}</tbody>
     </table>`;
         })
+        .filter(Boolean)
         .join("")
-    : "<p>No profile-based compliance coverage generated for this scan.</p>";
+    : "";
+  const hasProfileFrameworks = Boolean(profileFrameworks.trim());
 
   const coverageCategoryBars = renderMetricBars(
     "Category Distribution",
@@ -2220,6 +2305,66 @@ function renderExistingHtml(scan: ScanView): string {
       sub: "Framework families referenced by the detected controls",
     },
   ]);
+  const summarySection = hasSummaryRows
+    ? `<div class="table-frame">
+            <h2 style="padding:12px 14px 0">Coverage Summary</h2>
+            <div class="table-scroll">
+              <table>
+                <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+                <tbody>${summaryRows.join("")}</tbody>
+              </table>
+            </div>
+            <div style="padding:10px 14px 14px">
+              ${coverageCategoryBars}
+              <hr class="section-divider" />
+              ${coverageLevelBars}
+            </div>
+          </div>`
+    : "";
+  const controlsSection = hasControlRows
+    ? `<div class="table-frame">
+            <h2 style="padding:12px 14px 0">Implemented Controls</h2>
+            <div class="toolbar" style="padding:0 14px 8px"><input id="controlSearch" type="search" placeholder="Search control, category, coverage, or standards" /></div>
+            <div class="table-scroll">
+              <table id="implementedControlsTable">
+                <thead><tr><th>Control</th><th>Category</th><th>Coverage</th><th>Standards</th></tr></thead>
+                <tbody>${controlRows.join("")}</tbody>
+              </table>
+            </div>
+          </div>`
+    : "";
+  const controlEvidenceSection = hasControlEvidenceRows
+    ? `<div class="table-frame">
+            <h2 style="padding:12px 14px 0">Control Evidence (File/Line)</h2>
+            <div class="toolbar" style="padding:0 14px 8px"><input id="controlEvidenceSearch" type="search" placeholder="Search control evidence by file, line, or snippet" /></div>
+            <div class="table-scroll">
+              <table id="controlEvidenceTable">
+                <thead><tr><th>Control</th><th>File</th><th>Line</th><th>Evidence Snippet</th></tr></thead>
+                <tbody>${controlEvidenceRows}</tbody>
+              </table>
+            </div>
+          </div>`
+    : "";
+  const profileCoverageSection = hasProfileFrameworks
+    ? `<div class="table-frame">
+            <h2 style="padding:12px 14px 0">Profile-Based Coverage</h2>
+            <div class="toolbar" style="padding:0 14px 8px"><input id="profileSearch" type="search" placeholder="Search profile IDs, categories, statuses, findings, or controls" /></div>
+            <div style="padding:0 14px 14px">${profileFrameworks}</div>
+          </div>`
+    : "";
+  const complianceRows = renderComplianceMatrixRows(report.compliance_matrix || []);
+  const complianceSection = complianceRows
+    ? `<div class="table-frame">
+            <h2 style="padding:12px 14px 0">Compliance Matrix</h2>
+            <div class="toolbar" style="padding:0 14px 8px"><input id="complianceSearch" type="search" placeholder="Search standard, control count, or status" /></div>
+            <div class="table-scroll">
+              <table id="complianceMatrixTable">
+                <thead><tr><th>Standard</th><th>Control Count</th><th>Status</th></tr></thead>
+                <tbody>${complianceRows}</tbody>
+              </table>
+            </div>
+          </div>`
+    : "";
 
   return `<!doctype html>
 <html lang="en">
@@ -2248,57 +2393,13 @@ function renderExistingHtml(scan: ScanView): string {
     <section class="section">
       <div class="section-grid">
         <div class="stack">
-          <div class="table-frame">
-            <h2 style="padding:12px 14px 0">Coverage Summary</h2>
-            <div class="table-scroll">
-              <table>
-                <thead><tr><th>Metric</th><th>Value</th></tr></thead>
-                <tbody>${summaryRows.join("") || "<tr><td colspan='2'>No summary data available.</td></tr>"}</tbody>
-              </table>
-            </div>
-            <div style="padding:10px 14px 14px">
-              ${coverageCategoryBars}
-              <hr class="section-divider" />
-              ${coverageLevelBars}
-            </div>
-          </div>
-          <div class="table-frame">
-            <h2 style="padding:12px 14px 0">Implemented Controls</h2>
-            <div class="toolbar" style="padding:0 14px 8px"><input id="controlSearch" type="search" placeholder="Search control, category, coverage, or standards" /></div>
-            <div class="table-scroll">
-              <table id="implementedControlsTable">
-                <thead><tr><th>Control</th><th>Category</th><th>Coverage</th><th>Standards</th></tr></thead>
-                <tbody>${controlRows.join("") || "<tr><td colspan='4'>No controls detected.</td></tr>"}</tbody>
-              </table>
-            </div>
-          </div>
-          <div class="table-frame">
-            <h2 style="padding:12px 14px 0">Control Evidence (File/Line)</h2>
-            <div class="toolbar" style="padding:0 14px 8px"><input id="controlEvidenceSearch" type="search" placeholder="Search control evidence by file, line, or snippet" /></div>
-            <div class="table-scroll">
-              <table id="controlEvidenceTable">
-                <thead><tr><th>Control</th><th>File</th><th>Line</th><th>Evidence Snippet</th></tr></thead>
-                <tbody>${controlEvidenceRows || "<tr><td colspan='4'>No control-level evidence captured.</td></tr>"}</tbody>
-              </table>
-            </div>
-          </div>
+          ${summarySection}
+          ${controlsSection}
+          ${controlEvidenceSection}
         </div>
         <div class="stack">
-          <div class="table-frame">
-            <h2 style="padding:12px 14px 0">Profile-Based Coverage</h2>
-            <div class="toolbar" style="padding:0 14px 8px"><input id="profileSearch" type="search" placeholder="Search profile IDs, categories, statuses, findings, or controls" /></div>
-            <div style="padding:0 14px 14px">${profileFrameworks}</div>
-          </div>
-          <div class="table-frame">
-            <h2 style="padding:12px 14px 0">Compliance Matrix</h2>
-            <div class="toolbar" style="padding:0 14px 8px"><input id="complianceSearch" type="search" placeholder="Search standard, control count, or status" /></div>
-            <div class="table-scroll">
-              <table id="complianceMatrixTable">
-                <thead><tr><th>Standard</th><th>Control Count</th><th>Status</th></tr></thead>
-                <tbody>${renderComplianceMatrixRows(report.compliance_matrix || []) || "<tr><td colspan='3'>No compliance mapping data.</td></tr>"}</tbody>
-              </table>
-            </div>
-          </div>
+          ${profileCoverageSection}
+          ${complianceSection}
           ${renderQualityBenchmarkSection(qualityBenchmark)}
         </div>
       </div>
@@ -2411,21 +2512,28 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       : deriveDataQuality(report.summary, scan.report.executive_summary, findings, toolchainExecution);
   const enterprise = resolveEnterpriseAssurance(scan, report.summary);
   const qualityBenchmark = dataQuality?.quality_benchmark || enterprise?.quality_benchmark || null;
+  const allowedSections = resolveAllowedSections(scan);
+  const sectionAllowed = (section: string): boolean => reportSectionAllowed(allowedSections, section);
   const dataQualityRows = dataQuality
-    ? `
-      <tr><td>Raw Findings</td><td>${Number(dataQuality.raw_findings || 0)}</td></tr>
-      <tr><td>Deduplicated Findings</td><td>${Number(dataQuality.deduplicated_findings || 0)}</td></tr>
-      <tr><td>Duplicates Removed</td><td>${Number(dataQuality.duplicate_findings_removed || 0)} (${Number(dataQuality.dedup_ratio_percent || 0).toFixed(2)}%)</td></tr>
-      <tr><td>Suppressed Findings</td><td>${Number(dataQuality.suppressed_findings || 0)} (${Number(dataQuality.suppression_rate_percent || 0).toFixed(2)}%)</td></tr>
-      <tr><td>Tool Success Rate</td><td>${Number(dataQuality.tool_success_rate_percent || 0).toFixed(2)}%</td></tr>
-      <tr><td>Coverage Confidence</td><td>${escapeHtml(String(dataQuality.coverage_confidence || "N/A"))} (${Number(dataQuality.coverage_confidence_score || 0).toFixed(1)})</td></tr>
-      <tr><td>Unknown Rule IDs</td><td>${Number(dataQuality.unknown_rule_count || 0)}</td></tr>
-      <tr><td>Unknown CWE</td><td>${Number(dataQuality.unknown_cwe_count || 0)}</td></tr>
-      <tr><td>Unknown OWASP</td><td>${Number(dataQuality.unknown_owasp_count || 0)}</td></tr>
-      <tr><td>Findings with Taxonomy Gaps</td><td>${Number(dataQuality.unknown_taxonomy_count || 0)}</td></tr>
-      ${renderQualityBenchmarkRows(qualityBenchmark)}
-    `
+    ? [
+        Number(dataQuality.raw_findings || 0) > 0 ? `<tr><td>Raw Findings</td><td>${Number(dataQuality.raw_findings || 0)}</td></tr>` : "",
+        Number(dataQuality.deduplicated_findings || 0) > 0 ? `<tr><td>Deduplicated Findings</td><td>${Number(dataQuality.deduplicated_findings || 0)}</td></tr>` : "",
+        Number(dataQuality.duplicate_findings_removed || 0) > 0 ? `<tr><td>Duplicates Removed</td><td>${Number(dataQuality.duplicate_findings_removed || 0)} (${Number(dataQuality.dedup_ratio_percent || 0).toFixed(2)}%)</td></tr>` : "",
+        Number(dataQuality.suppressed_findings || 0) > 0 ? `<tr><td>Suppressed Findings</td><td>${Number(dataQuality.suppressed_findings || 0)} (${Number(dataQuality.suppression_rate_percent || 0).toFixed(2)}%)</td></tr>` : "",
+        Number(dataQuality.tool_success_rate_percent || 0) > 0 ? `<tr><td>Tool Success Rate</td><td>${Number(dataQuality.tool_success_rate_percent || 0).toFixed(2)}%</td></tr>` : "",
+        isRenderableDisplayValue(dataQuality.coverage_confidence) || Number(dataQuality.coverage_confidence_score || 0) > 0
+          ? `<tr><td>Coverage Confidence</td><td>${escapeHtml(String(dataQuality.coverage_confidence || ""))} (${Number(dataQuality.coverage_confidence_score || 0).toFixed(1)})</td></tr>`
+          : "",
+        Number(dataQuality.unknown_rule_count || 0) > 0 ? `<tr><td>Unknown Rule IDs</td><td>${Number(dataQuality.unknown_rule_count || 0)}</td></tr>` : "",
+        Number(dataQuality.unknown_cwe_count || 0) > 0 ? `<tr><td>Unknown CWE</td><td>${Number(dataQuality.unknown_cwe_count || 0)}</td></tr>` : "",
+        Number(dataQuality.unknown_owasp_count || 0) > 0 ? `<tr><td>Unknown OWASP</td><td>${Number(dataQuality.unknown_owasp_count || 0)}</td></tr>` : "",
+        Number(dataQuality.unknown_taxonomy_count || 0) > 0 ? `<tr><td>Findings with Taxonomy Gaps</td><td>${Number(dataQuality.unknown_taxonomy_count || 0)}</td></tr>` : "",
+        renderQualityBenchmarkRows(qualityBenchmark),
+      ]
+        .filter(Boolean)
+        .join("")
     : "";
+  const hasDataQualityData = Boolean(dataQualityRows.trim());
   const executionEvidence = collectExecutionEvidenceRows(report.toolchain_status || {}).slice(0, EXEC_LIMIT);
   const roleAware = report.role_aware_report || scan.report.role_aware_report || {};
   const roleAwareRecord = roleAware as unknown as Record<string, unknown>;
@@ -2458,8 +2566,11 @@ function renderVulnerabilityHtml(scan: ScanView): string {
 
   const summaryRows = SEVERITY_ORDER.map((severity) => {
     const count = severityDistribution[severity] || 0;
-    return `<tr><td class="risk-${severity.toLowerCase()}">${severity}</td><td align="center">${count}</td></tr>`;
-  }).join("");
+    return count > 0 ? `<tr><td class="risk-${severity.toLowerCase()}">${severity}</td><td align="center">${count}</td></tr>` : "";
+  })
+    .filter(Boolean)
+    .join("");
+  const hasSeveritySummaryData = Boolean(summaryRows.trim());
 
   const alertRows = grouped
     .map(
@@ -2472,6 +2583,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
   </tr>`,
     )
     .join("");
+  const hasAlertRows = Boolean(alertRows.trim());
 
   const fileRows = fileAgg
     .map(
@@ -2487,6 +2599,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
   </tr>`,
     )
     .join("");
+  const hasFileRows = Boolean(fileRows.trim());
 
   const moduleRows = moduleAgg
     .map(
@@ -2498,6 +2611,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
   </tr>`,
     )
     .join("");
+  const hasModuleRows = Boolean(moduleRows.trim());
 
   const owaspRows = owaspAgg
     .map(
@@ -2507,8 +2621,10 @@ function renderVulnerabilityHtml(scan: ScanView): string {
   </tr>`,
     )
     .join("");
+  const hasOwaspData = Boolean(owaspRows.trim());
 
   const actionRows = actionPlan.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+  const hasActionPlanData = Boolean(actionRows.trim());
   const enterpriseBlockers = (enterprise?.blockers || [])
     .slice(0, 12)
     .map((item) => `<li>${escapeHtml(item)}</li>`)
@@ -2528,8 +2644,8 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       };
       const cveList =
         Array.isArray(leadExtended.cve_ids) && leadExtended.cve_ids.length
-          ? leadExtended.cve_ids
-          : "N/A";
+          ? leadExtended.cve_ids.filter((value) => isRenderableDisplayValue(value))
+          : [];
       const instanceRows = group.findings
         .slice(0, DETAIL_LIMIT)
         .map(
@@ -2551,25 +2667,25 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       <tr><th width="20%">CWE</th><td>${renderCweLink(group.cwe)}</td></tr>
       <tr><th>OWASP</th><td>${escapeHtml(group.owasp)}</td></tr>
       <tr><th>CVSS</th><td>${renderCvssLink(lead.cvss_score)}</td></tr>
-      <tr><th>Description</th><td>${escapeHtml(leadExtended.description || "N/A")}</td></tr>
-      <tr><th>Business Impact</th><td>${escapeHtml(lead.business_impact || "N/A")}</td></tr>
+      ${isRenderableDisplayValue(leadExtended.description) ? `<tr><th>Description</th><td>${escapeHtml(String(leadExtended.description || ""))}</td></tr>` : ""}
+      ${isRenderableDisplayValue(lead.business_impact) ? `<tr><th>Business Impact</th><td>${escapeHtml(String(lead.business_impact || ""))}</td></tr>` : ""}
       <tr><th>Release Gate</th><td>${escapeHtml(leadExtended.release_gate_action || "Track")}</td></tr>
       <tr><th>Exploit Maturity</th><td>${escapeHtml(leadExtended.exploit_maturity || "Unconfirmed")}</td></tr>
-      <tr><th>Known Exploited (CISA KEV)</th><td>${escapeHtml(knownExploitedFindingText(leadExtended))}</td></tr>
+      ${knownExploitedFindingText(leadExtended)
+        ? `<tr><th>Known Exploited (CISA KEV)</th><td>${escapeHtml(knownExploitedFindingText(leadExtended))}</td></tr>`
+        : ""}
       ${cveList.length ? `<tr><th>CVEs</th><td>${renderCveLinks(cveList)}</td></tr>` : ""}
-      <tr><th>Exploitability Context</th><td>${escapeHtml(leadExtended.exploitability_context || "N/A")}</td></tr>
-      <tr><th>Recommendation</th><td>${escapeHtml(lead.recommendation || "N/A")}</td></tr>
+      ${isRenderableDisplayValue(leadExtended.exploitability_context) ? `<tr><th>Exploitability Context</th><td>${escapeHtml(String(leadExtended.exploitability_context || ""))}</td></tr>` : ""}
+      ${isRenderableDisplayValue(lead.recommendation) ? `<tr><th>Recommendation</th><td>${escapeHtml(String(lead.recommendation || ""))}</td></tr>` : ""}
       ${dependencyAuthenticitySummary(lead) ? `<tr><th>Dependency Authenticity</th><td>${escapeHtml(dependencyAuthenticitySummary(lead))}<br><span class="muted">${escapeHtml(dependencyAuthenticityDetail(lead))}</span></td></tr>` : ""}
-      <tr><th>Attack Scenario</th><td>${escapeHtml(lead.attack_scenario || "N/A")}</td></tr>
-      <tr><th>Exploitation Path</th><td>${escapeHtml(lead.exploitation_example || "N/A")}</td></tr>
+      ${isRenderableDisplayValue(lead.attack_scenario) ? `<tr><th>Attack Scenario</th><td>${escapeHtml(String(lead.attack_scenario || ""))}</td></tr>` : ""}
+      ${isRenderableDisplayValue(lead.exploitation_example) ? `<tr><th>Exploitation Path</th><td>${escapeHtml(String(lead.exploitation_example || ""))}</td></tr>` : ""}
       <tr><th>Source Tool</th><td>${escapeHtml(leadExtended.tool || "scanner")}</td></tr>
-      <tr><th>Active PoC Status</th><td>${escapeHtml(activePocStatusText(lead.active_poc))}</td></tr>
-      <tr><th>Active PoC Command</th><td><code>${escapeHtml(activePocCommandText(lead.active_poc))}</code></td></tr>
+      ${String(activePocStatusText(lead.active_poc) || "").trim() && activePocStatusText(lead.active_poc) !== "not_executed" ? `<tr><th>Active PoC Status</th><td>${escapeHtml(activePocStatusText(lead.active_poc))}</td></tr>` : ""}
+      ${String(lead.active_poc?.command || "").trim() ? `<tr><th>Active PoC Command</th><td><code>${escapeHtml(activePocCommandText(lead.active_poc))}</code></td></tr>` : ""}
     </table>
-    <h4>PoC Validation</h4>
-    <pre>${escapeHtml(lead.proof_of_concept || "N/A")}</pre>
-    <h4>Active PoC Output</h4>
-    <pre>${escapeHtml(activePocOutputText(lead.active_poc))}</pre>
+    ${String(lead.proof_of_concept || "").trim() ? `<h4>PoC Validation</h4><pre>${escapeHtml(lead.proof_of_concept || "")}</pre>` : ""}
+    ${String(lead.active_poc?.output || "").trim() && activePocStatusText(lead.active_poc) !== "not_executed" ? `<h4>Active PoC Output</h4><pre>${escapeHtml(activePocOutputText(lead.active_poc))}</pre>` : ""}
     <h4>Instances</h4>
     <table class="results">
       <thead>
@@ -2613,6 +2729,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
   </details>`;
     })
     .join("");
+  const hasModuleEvidenceData = Boolean(moduleEvidenceSections.trim());
   const moduleEvidenceOverflow = Math.max(0, moduleSeverityCatalog.length - 220);
   const hasRiskIntel = hasRiskIntelligenceData(riskIntel, releaseGateDistribution);
   const hasAdvisoryContext = hasAdvisoryRiskContext(riskIntel);
@@ -2698,6 +2815,10 @@ function renderVulnerabilityHtml(scan: ScanView): string {
     })
     .join("");
   const riskStoryOutcomeRows = objectSummaryRows(riskStory.likely_outcome);
+  const riskStoryTitle = String(riskStory.scenario_title || "").trim();
+  const riskStoryNarrative = String(riskStory.narrative || "").trim();
+  const hasRiskStoryNarrative = Boolean(riskStoryNarrative) && !["no chained attack story generated.", "n/a"].includes(riskStoryNarrative.toLowerCase());
+  const hasRiskStoryContent = Boolean(riskStoryTitle || hasRiskStoryNarrative || riskStoryOutcomeRows);
   const maturityMetrics = (advanced.security_maturity_scoring as Record<string, unknown>) || {};
   const maturityRows = objectSummaryRows(maturityMetrics);
   const aiSolutionEngine = (advanced.ai_solution_engine as Record<string, unknown>) || {};
@@ -2766,15 +2887,17 @@ function renderVulnerabilityHtml(scan: ScanView): string {
   </tr>`;
     })
     .join("");
+  const hasDevRows = Boolean(devRows.trim());
   const aiSummaryRows = (Array.isArray(ctoBoard.ai_summary_plain_language) ? ctoBoard.ai_summary_plain_language : [])
     .slice(0, 6)
     .map((item) => `<li>${escapeHtml(String(item))}</li>`)
     .join("");
+  const hasAiSummaryRows = Boolean(aiSummaryRows.trim());
   const fpRows = fpGroupedRows;
   const trendMeta = (ctoBoard.trend as Record<string, unknown>) || {};
   const trendText =
     trendMeta.available === false
-      ? "Unavailable (no prior scan in report chain)"
+      ? ""
       : `${escapeHtml(String(trendMeta.direction || "stable"))} (delta=${escapeHtml(String(trendMeta.delta_points || 0))})`;
   const financialText = formatBestLikelyWorst((ctoBoard.financial_exposure_usd as Record<string, unknown>) || {});
   const downtimeText = formatBestLikelyWorst((ctoBoard.downtime_estimate as Record<string, unknown>) || {});
@@ -2812,43 +2935,97 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       sub: knownExploitedMetricSubtext(riskIntel),
     },
   ]);
+  const enterpriseRows = [
+    isRenderableDisplayValue(enterprise?.status) ? `<tr><td>Status</td><td align="center">${escapeHtml(String(enterprise?.status || "").toUpperCase())}</td></tr>` : "",
+    isRenderableDisplayValue(enterprise?.readiness_score) ? `<tr><td>Readiness Score</td><td align="center">${formatMetricNumber(enterprise?.readiness_score, 0)}</td></tr>` : "",
+    isRenderableDisplayValue(enterprise?.required_tools_ready) || isRenderableDisplayValue(enterprise?.required_tools_total)
+      ? `<tr><td>Required Tools Ready</td><td align="center">${Number(enterprise?.required_tools_ready || 0)}/${Number(enterprise?.required_tools_total || 0)}</td></tr>`
+      : "",
+    isRenderableDisplayValue(enterprise?.required_tools_coverage_percent)
+      ? `<tr><td>Required Tool Coverage</td><td align="center">${Number(enterprise?.required_tools_coverage_percent || 0).toFixed(2)}%</td></tr>`
+      : "",
+    isRenderableDisplayValue(toolchainExecution?.success_rate_percent)
+      ? `<tr><td>Tool Success Rate</td><td align="center">${Number(toolchainExecution?.success_rate_percent || 0).toFixed(2)}%</td></tr>`
+      : "",
+    isRenderableDisplayValue(toolchainExecution?.attempted_tools)
+      ? `<tr><td>Attempted Tools</td><td align="center">${toolchainExecution?.attempted_tools || 0}</td></tr>`
+      : "",
+    isRenderableDisplayValue(toolchainExecution?.failed_tools)
+      ? `<tr><td>Failed Tools</td><td align="center">${toolchainExecution?.failed_tools || 0}</td></tr>`
+      : "",
+    isRenderableDisplayValue(enterprise?.recommendation) ? `<tr><td>Recommendation</td><td>${escapeHtml(String(enterprise?.recommendation || ""))}</td></tr>` : "",
+  ]
+    .filter(Boolean)
+    .join("");
   const hasEnterpriseData = Boolean(
-    enterprise &&
-      (Number(enterprise.required_tools_total || 0) > 0 ||
-        Number(enterprise.readiness_score || 0) > 0 ||
-        Boolean((enterprise.blockers || []).length) ||
+    sectionAllowed("enterprise_assurance") &&
+      enterprise &&
+      ((enterprise.blockers || []).length > 0 ||
+        Number(enterprise?.readiness_score || 0) > 0 ||
+        Number(enterprise?.required_tools_ready || 0) > 0 ||
+        Number(enterprise?.required_tools_total || 0) > 0 ||
         Number(toolchainExecution?.attempted_tools || 0) > 0),
   );
-  const hasCtoData = Boolean(
-    ctoUrgentRows ||
-      aiSummaryRows ||
-      financialText !== "N/A" ||
-      downtimeText !== "N/A",
-  );
-  const hasCisoData = Boolean(cisoRows);
-  const hasDevData = Boolean(devRows);
-  const riskStoryTitle = String(riskStory.scenario_title || "").trim();
-  const riskStoryNarrative = String(riskStory.narrative || "").trim();
-  const hasRiskStoryData = Boolean(
-    riskStoryTitle ||
-      (riskStoryNarrative &&
-        !["no chained attack story generated.", "n/a"].includes(riskStoryNarrative.toLowerCase())) ||
-      riskStoryOutcomeRows,
-  );
+  const ctoRows = [
+    isRenderableDisplayValue(ctoBoard.business_risk_exposure_score ?? report.summary.risk_score)
+      ? `<tr><td>Business Risk Exposure Score</td><td align="center">${formatMetricNumber(ctoBoard.business_risk_exposure_score ?? report.summary.risk_score, 2)}</td></tr>`
+      : "",
+    trendText ? `<tr><td>Trend</td><td>${trendText}</td></tr>` : "",
+    financialText ? `<tr><td>Financial Exposure (Best / Likely / Worst USD)</td><td>${financialText}</td></tr>` : "",
+    downtimeText ? `<tr><td>Downtime Estimate (Best / Likely / Worst Hours)</td><td>${downtimeText}</td></tr>` : "",
+  ]
+    .filter(Boolean)
+    .join("");
+  const hasCtoData = Boolean(sectionAllowed("cto_board_view") && (ctoRows.trim() || ctoUrgentRows || aiSummaryRows));
+  const hasCisoData = Boolean(sectionAllowed("ciso_security_view") && cisoRows.trim().length > 0);
+  const hasDevData = Boolean(sectionAllowed("developer_devops_view") && devRows.trim().length > 0);
+  const hasRiskStoryData = Boolean(sectionAllowed("risk_story_mode") && hasRiskStoryContent);
   const hasMaturityData = Object.values(maturityMetrics).some((value) => Number(value) > 0);
-  const hasAdvancedData = Boolean(hasMaturityData || hasMeaningfulFixPlan);
-  const hasFalsePositiveData = Boolean(fpRows);
-  const hasToolEvidenceData = Boolean(evidenceRows);
-  const hasReplayData = hasReplaySummaryData(deterministicReplay);
-  const hasIntegrityData = hasIntegrityChainData(reportIntegrity);
-  const hasAuthAbuseData = hasMeaningfulAuthAbuse(authAbuse);
-  const hasTimingData = Boolean(timingRows);
-  const hasRiskIntelData = Boolean(
-    findings.length ||
-      (hasRiskIntel && riskIntel && (riskIntel.findings_with_cve || riskIntel.findings_cvss_ge_7 || riskIntel.known_exploited_findings)) ||
-      hasReleaseGate ||
-      (gitDiffTracking && (gitDiffTracking.enabled || gitDiffTracking.findings_on_changed_files || gitDiffTracking.findings_on_changed_lines)),
-  );
+  const hasAdvancedData = Boolean(sectionAllowed("advanced_features") && (hasMaturityData || hasMeaningfulFixPlan));
+  const hasFalsePositiveData = Boolean(sectionAllowed("false_positive_report") && fpRows.trim().length > 0);
+  const hasToolEvidenceData = Boolean(sectionAllowed("tool_evidence") && evidenceRows.trim().length > 0);
+  const hasReplayData = Boolean(sectionAllowed("deterministic_replay") && hasReplaySummaryData(deterministicReplay));
+  const hasIntegrityData = Boolean(sectionAllowed("report_integrity_chain") && hasIntegrityChainData(reportIntegrity));
+  const hasAuthAbuseData = Boolean(sectionAllowed("auth_abuse_session_security") && hasMeaningfulAuthAbuse(authAbuse));
+  const hasTimingData = Boolean(sectionAllowed("data_quality") && timingRows.trim().length > 0);
+  const riskIntelRows: string[] = [];
+  if (hasAdvisoryContext && Number(riskIntel?.findings_with_cve || 0) > 0) {
+    riskIntelRows.push(`<tr><td>Findings with CVE</td><td align="center">${Number(riskIntel?.findings_with_cve || 0)}</td></tr>`);
+  }
+  if (hasAdvisoryContext && Number(riskIntel?.findings_cvss_ge_7 || 0) > 0) {
+    riskIntelRows.push(`<tr><td>Findings with CVSS &gt;= 7.0</td><td align="center">${Number(riskIntel?.findings_cvss_ge_7 || 0)}</td></tr>`);
+  }
+  if (knownExploitedMetricText(riskIntel)) {
+    riskIntelRows.push(`<tr><td>Known Exploited Findings (CISA KEV)</td><td align="center">${escapeHtml(knownExploitedMetricText(riskIntel))}</td></tr>`);
+  }
+  if (riskIntel?.kev_catalog_version) {
+    riskIntelRows.push(`<tr><td>CISA KEV Catalog Version</td><td align="center">${escapeHtml(String(riskIntel.kev_catalog_version))}</td></tr>`);
+  }
+  if (riskIntel?.kev_catalog_retrieved_at) {
+    riskIntelRows.push(`<tr><td>CISA KEV Catalog Retrieved</td><td align="center">${escapeHtml(formatDisplayTimestamp(String(riskIntel.kev_catalog_retrieved_at)))}</td></tr>`);
+  }
+  if (hasReleaseGate && Number(releaseGateDistribution["Block release"] || 0) > 0) {
+    riskIntelRows.push(`<tr><td>Release Gate: Block release</td><td align="center">${Number(releaseGateDistribution["Block release"] || 0)}</td></tr>`);
+  }
+  if (hasReleaseGate && Number(releaseGateDistribution["Fix before prod"] || 0) > 0) {
+    riskIntelRows.push(`<tr><td>Release Gate: Fix before prod</td><td align="center">${Number(releaseGateDistribution["Fix before prod"] || 0)}</td></tr>`);
+  }
+  if (hasReleaseGate && Number(releaseGateDistribution["Scheduled fix"] || 0) > 0) {
+    riskIntelRows.push(`<tr><td>Release Gate: Scheduled fix</td><td align="center">${Number(releaseGateDistribution["Scheduled fix"] || 0)}</td></tr>`);
+  }
+  if (hasReleaseGate && Number(releaseGateDistribution["Track"] || 0) > 0) {
+    riskIntelRows.push(`<tr><td>Release Gate: Track</td><td align="center">${Number(releaseGateDistribution["Track"] || 0)}</td></tr>`);
+  }
+  if (gitDiffTracking?.enabled) {
+    riskIntelRows.push(`<tr><td>Git diff tracking enabled</td><td align="center">Yes</td></tr>`);
+  }
+  if (Number(gitDiffTracking?.findings_on_changed_files || 0) > 0) {
+    riskIntelRows.push(`<tr><td>Findings on changed files</td><td align="center">${Number(gitDiffTracking?.findings_on_changed_files || 0)}</td></tr>`);
+  }
+  if (Number(gitDiffTracking?.findings_on_changed_lines || 0) > 0) {
+    riskIntelRows.push(`<tr><td>Findings on changed lines</td><td align="center">${Number(gitDiffTracking?.findings_on_changed_lines || 0)}</td></tr>`);
+  }
+  const hasRiskIntelData = riskIntelRows.length > 0;
   const riskIntelSection = hasRiskIntelData
     ? `<section class="panel">
     <h2>Risk Intelligence and Release Gates</h2>
@@ -2856,18 +3033,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       <table class="summary">
         <thead><tr><th>Metric</th><th>Value</th></tr></thead>
         <tbody>
-        <tr><td>Findings with CVE</td><td align="center">${hasAdvisoryContext ? (Number(riskIntel?.findings_with_cve || 0) > 0 ? Number(riskIntel?.findings_with_cve || 0) : "No advisory-backed findings") : "N/A"}</td></tr>
-        <tr><td>Findings with CVSS &gt;= 7.0</td><td align="center">${hasAdvisoryContext ? (Number(riskIntel?.findings_cvss_ge_7 || 0) > 0 ? Number(riskIntel?.findings_cvss_ge_7 || 0) : "No high-CVSS findings") : "N/A"}</td></tr>
-        <tr><td>Known Exploited Findings (CISA KEV)</td><td align="center">${escapeHtml(knownExploitedMetricText(riskIntel))}</td></tr>
-        ${riskIntel?.kev_catalog_version ? `<tr><td>CISA KEV Catalog Version</td><td align="center">${escapeHtml(String(riskIntel.kev_catalog_version))}</td></tr>` : ""}
-        ${riskIntel?.kev_catalog_retrieved_at ? `<tr><td>CISA KEV Catalog Retrieved</td><td align="center">${escapeHtml(formatDisplayTimestamp(String(riskIntel.kev_catalog_retrieved_at)))}</td></tr>` : ""}
-        <tr><td>Release Gate: Block release</td><td align="center">${hasReleaseGate ? (Number(releaseGateDistribution["Block release"] || 0) > 0 ? Number(releaseGateDistribution["Block release"] || 0) : "No matches") : "N/A"}</td></tr>
-        <tr><td>Release Gate: Fix before prod</td><td align="center">${hasReleaseGate ? (Number(releaseGateDistribution["Fix before prod"] || 0) > 0 ? Number(releaseGateDistribution["Fix before prod"] || 0) : "No matches") : "N/A"}</td></tr>
-        <tr><td>Release Gate: Scheduled fix</td><td align="center">${hasReleaseGate ? (Number(releaseGateDistribution["Scheduled fix"] || 0) > 0 ? Number(releaseGateDistribution["Scheduled fix"] || 0) : "No matches") : "N/A"}</td></tr>
-        <tr><td>Release Gate: Track</td><td align="center">${hasReleaseGate ? (Number(releaseGateDistribution["Track"] || 0) > 0 ? Number(releaseGateDistribution["Track"] || 0) : "No matches") : "N/A"}</td></tr>
-        <tr><td>Git diff tracking enabled</td><td align="center">${gitDiffTracking?.enabled ? "Yes" : "No"}</td></tr>
-        <tr><td>Findings on changed files</td><td align="center">${Number(gitDiffTracking?.findings_on_changed_files || 0) > 0 ? Number(gitDiffTracking?.findings_on_changed_files || 0) : "No matches"}</td></tr>
-        <tr><td>Findings on changed lines</td><td align="center">${Number(gitDiffTracking?.findings_on_changed_lines || 0) > 0 ? Number(gitDiffTracking?.findings_on_changed_lines || 0) : "No matches"}</td></tr>
+        ${riskIntelRows.join("")}
         </tbody>
       </table>
     </div>
@@ -2917,11 +3083,11 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       <table class="summary">
         <thead><tr><th>Metric</th><th>Value</th></tr></thead>
         <tbody>
-        <tr><td>Mode</td><td>${escapeHtml(String(deterministicReplay?.mode || "N/A"))}</td></tr>
-        <tr><td>Replay Coverage</td><td align="center">${deterministicReplay ? `${Number(deterministicReplay.replay_coverage_percent || 0).toFixed(2)}%` : "N/A"}</td></tr>
-        <tr><td>Findings with Replay</td><td align="center">${deterministicReplay ? `${Number(deterministicReplay.findings_with_replay || 0)}/${Number(deterministicReplay.findings_total || 0)}` : "N/A"}</td></tr>
-        <tr><td>Evidence Records</td><td align="center">${deterministicReplay ? Number(deterministicReplay.tool_evidence_records || 0) : "N/A"}</td></tr>
-        <tr><td>Tools with Evidence</td><td>${deterministicReplay?.tools_with_evidence?.length ? escapeHtml(deterministicReplay.tools_with_evidence.join(", ")) : "N/A"}</td></tr>
+        <tr><td>Mode</td><td>${escapeHtml(String(deterministicReplay?.mode || ""))}</td></tr>
+        <tr><td>Replay Coverage</td><td align="center">${deterministicReplay && Number(deterministicReplay.replay_coverage_percent || 0) > 0 ? `${Number(deterministicReplay.replay_coverage_percent || 0).toFixed(2)}%` : ""}</td></tr>
+        <tr><td>Findings with Replay</td><td align="center">${deterministicReplay && Number(deterministicReplay.findings_with_replay || 0) > 0 ? `${Number(deterministicReplay.findings_with_replay || 0)}/${Number(deterministicReplay.findings_total || 0)}` : ""}</td></tr>
+        <tr><td>Evidence Records</td><td align="center">${deterministicReplay && Number(deterministicReplay.tool_evidence_records || 0) > 0 ? Number(deterministicReplay.tool_evidence_records || 0) : ""}</td></tr>
+        <tr><td>Tools with Evidence</td><td>${deterministicReplay?.tools_with_evidence?.length ? escapeHtml(deterministicReplay.tools_with_evidence.join(", ")) : ""}</td></tr>
       </tbody>
       </table>
     </div>
@@ -3020,7 +3186,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
     ${heroCards}
   </section>
 
-  <section class="panel">
+  ${hasSeveritySummaryData ? `<section class="panel">
     <div class="layout">
       <div>
         <h2>Severity Summary</h2>
@@ -3039,9 +3205,9 @@ function renderVulnerabilityHtml(scan: ScanView): string {
         </div>
       </div>
     </div>
-  </section>
+  </section>` : ""}
 
-  <section class="panel">
+  ${hasOwaspData ? `<section class="panel">
     <h2>OWASP Category Counts</h2>
     <div class="layout">
       <div>
@@ -3049,7 +3215,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
         <div class="table-scroll">
           <table id="owaspTable" class="summary">
             <thead><tr><th data-sort-index="0" data-sort-type="text">OWASP Category</th><th data-sort-index="1" data-sort-type="number" align="center">Count</th></tr></thead>
-            <tbody>${owaspRows || "<tr><td colspan='2' class='muted'>No OWASP category data.</td></tr>"}</tbody>
+            <tbody>${owaspRows}</tbody>
           </table>
         </div>
       </div>
@@ -3058,32 +3224,23 @@ function renderVulnerabilityHtml(scan: ScanView): string {
         <div id="owaspBars" class="bars"></div>
       </div>
     </div>
-  </section>
+  </section>` : ""}
 
   ${riskIntelSection}
 
   ${hasEnterpriseData ? `<section class="panel">
     <h2>Enterprise Assurance</h2>
     <p class="muted">Status meaning: READY=release criteria met, WARNING=partial readiness, BLOCKED=release gate not satisfied.</p>
-    <div class="table-scroll">
+    ${enterpriseRows.trim() ? `<div class="table-scroll">
       <table class="summary">
         <thead><tr><th>Metric</th><th>Value</th></tr></thead>
-        <tbody>
-        <tr><td>Status</td><td align="center">${escapeHtml(String(enterprise?.status || "blocked").toUpperCase())}</td></tr>
-        <tr><td>Readiness Score</td><td align="center">${enterprise?.readiness_score || 0}</td></tr>
-        <tr><td>Required Tools Ready</td><td align="center">${enterprise?.required_tools_ready || 0}/${enterprise?.required_tools_total || 0}</td></tr>
-        <tr><td>Required Tool Coverage</td><td align="center">${(enterprise?.required_tools_coverage_percent || 0).toFixed(2)}%</td></tr>
-        <tr><td>Tool Success Rate</td><td align="center">${(toolchainExecution?.success_rate_percent || 0).toFixed(2)}%</td></tr>
-        <tr><td>Attempted Tools</td><td align="center">${toolchainExecution?.attempted_tools || 0}</td></tr>
-        <tr><td>Failed Tools</td><td align="center">${toolchainExecution?.failed_tools || 0}</td></tr>
-        <tr><td>Recommendation</td><td>${escapeHtml(enterprise?.recommendation || "N/A")}</td></tr>
-        </tbody>
+        <tbody>${enterpriseRows}</tbody>
       </table>
-    </div>
+    </div>` : ""}
     ${enterpriseBlockers ? `<h3>Enterprise Blockers</h3><ul>${enterpriseBlockers}</ul>` : ""}
   </section>` : ""}
 
-  <section class="panel">
+  ${hasDataQualityData ? `<section class="panel">
     <h2>Data Quality</h2>
     <div class="table-scroll">
       <table class="summary">
@@ -3091,21 +3248,16 @@ function renderVulnerabilityHtml(scan: ScanView): string {
         <tbody>${dataQualityRows}</tbody>
       </table>
     </div>
-  </section>
+  </section>` : ""}
 
   ${hasCtoData ? `<section class="panel">
     <h2>CTO / Board View</h2>
-    <div class="table-scroll">
+    ${ctoRows.trim() ? `<div class="table-scroll">
       <table class="summary">
         <thead><tr><th>Metric</th><th>Value</th></tr></thead>
-        <tbody>
-        <tr><td>Business Risk Exposure Score</td><td align="center">${formatMetricNumber(ctoBoard.business_risk_exposure_score ?? report.summary.risk_score, 2)}</td></tr>
-        <tr><td>Trend</td><td>${trendText}</td></tr>
-        <tr><td>Financial Exposure (Best / Likely / Worst USD)</td><td>${financialText}</td></tr>
-        <tr><td>Downtime Estimate (Best / Likely / Worst Hours)</td><td>${downtimeText}</td></tr>
-        </tbody>
+        <tbody>${ctoRows}</tbody>
       </table>
-    </div>
+    </div>` : ""}
     ${ctoUrgentRows ? `<h3>Top 5 Urgent Risks</h3>
     <div class="table-scroll">
       <table>
@@ -3113,7 +3265,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
         <tbody>${ctoUrgentRows}</tbody>
       </table>
     </div>` : ""}
-    ${aiSummaryRows ? `<h3>AI Executive Summary</h3><ul>${aiSummaryRows}</ul>` : ""}
+    ${hasAiSummaryRows ? `<h3>AI Executive Summary</h3><ul>${aiSummaryRows}</ul>` : ""}
   </section>` : ""}
 
   ${hasCisoData ? `<section class="panel">
@@ -3122,7 +3274,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
     <div class="table-scroll">
       <table>
         <thead><tr><th>Issue</th><th>Severity</th><th>CVSS</th><th>Exploitability</th><th>Business Impact</th><th>Priority</th><th>Active Exploit</th><th>Release Gate</th><th>SLA (h)</th></tr></thead>
-        <tbody>${cisoRows || "<tr><td colspan='9' class='muted'>No CISO operational rows available.</td></tr>"}</tbody>
+        <tbody>${cisoRows}</tbody>
       </table>
     </div>
   </section>` : ""}
@@ -3132,15 +3284,15 @@ function renderVulnerabilityHtml(scan: ScanView): string {
     <div class="table-scroll">
       <table>
         <thead><tr><th>Issue</th><th>Severity</th><th>Location</th><th>CWE</th><th>OWASP</th><th>Secure Fix Snippet</th></tr></thead>
-        <tbody>${devRows || "<tr><td colspan='6' class='muted'>No tactical remediation rows available.</td></tr>"}</tbody>
+        <tbody>${devRows}</tbody>
       </table>
     </div>
   </section>` : ""}
 
   ${hasRiskStoryData ? `<section class="panel">
     <h2>Risk Story Mode</h2>
-    <p><strong>Scenario:</strong> ${escapeHtml(String(riskStory.scenario_title || "N/A"))}</p>
-    <p>${escapeHtml(String(riskStory.narrative || "No chained attack story generated."))}</p>
+    ${riskStoryTitle ? `<p><strong>Scenario:</strong> ${escapeHtml(riskStoryTitle)}</p>` : ""}
+    ${hasRiskStoryNarrative ? `<p>${escapeHtml(riskStoryNarrative)}</p>` : ""}
     ${riskStoryOutcomeRows ? `<div class="table-scroll">
       <table class="summary">
         <thead><tr><th>Likely Outcome</th><th>Value</th></tr></thead>
@@ -3155,7 +3307,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
     <div class="table-scroll">
       <table class="summary">
         <thead><tr><th>Metric</th><th>Value</th></tr></thead>
-        <tbody>${maturityRows || "<tr><td colspan='2' class='muted'>No maturity data.</td></tr>"}</tbody>
+        <tbody>${maturityRows}</tbody>
       </table>
     </div>
     <h3>AI Solution Engine</h3>
@@ -3218,10 +3370,10 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       <table class="summary">
         <thead><tr><th>Metric</th><th>Value</th></tr></thead>
         <tbody>
-        <tr><td>Total Findings</td><td align="center">${authAbuse ? Number(authAbuse.total_findings || 0) : "N/A"}</td></tr>
-        <tr><td>Critical</td><td align="center">${authAbuse ? Number(authAbuse.severity_distribution?.Critical || 0) : "N/A"}</td></tr>
-        <tr><td>High</td><td align="center">${authAbuse ? Number(authAbuse.severity_distribution?.High || 0) : "N/A"}</td></tr>
-        <tr><td>Medium</td><td align="center">${authAbuse ? Number(authAbuse.severity_distribution?.Medium || 0) : "N/A"}</td></tr>
+        <tr><td>Total Findings</td><td align="center">${Number(authAbuse?.total_findings || 0)}</td></tr>
+        <tr><td>Critical</td><td align="center">${Number(authAbuse?.severity_distribution?.Critical || 0)}</td></tr>
+        <tr><td>High</td><td align="center">${Number(authAbuse?.severity_distribution?.High || 0)}</td></tr>
+        <tr><td>Medium</td><td align="center">${Number(authAbuse?.severity_distribution?.Medium || 0)}</td></tr>
         </tbody>
       </table>
     </div>
@@ -3231,7 +3383,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
         <div class="table-scroll">
           <table>
             <thead><tr><th>Issue Type</th><th>Count</th></tr></thead>
-            <tbody>${authTypeRows || "<tr><td colspan='2' class='muted'>No auth/session findings.</td></tr>"}</tbody>
+            <tbody>${authTypeRows}</tbody>
           </table>
         </div>
       </div>
@@ -3240,7 +3392,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
         <div class="table-scroll">
           <table>
             <thead><tr><th>File</th><th>Total</th><th>Critical</th><th>High</th></tr></thead>
-            <tbody>${authFileRows || "<tr><td colspan='4' class='muted'>No affected files.</td></tr>"}</tbody>
+            <tbody>${authFileRows}</tbody>
           </table>
         </div>
       </div>
@@ -3250,67 +3402,67 @@ function renderVulnerabilityHtml(scan: ScanView): string {
     <div class="table-scroll">
       <table id="authMappingTable">
         <thead><tr><th data-sort-index="0" data-sort-type="text">Issue Type</th><th data-sort-index="1" data-sort-type="text">File</th><th data-sort-index="2" data-sort-type="text">Folder</th><th data-sort-index="3" data-sort-type="number">Total</th><th data-sort-index="4" data-sort-type="number">Critical</th><th data-sort-index="5" data-sort-type="number">High</th></tr></thead>
-        <tbody>${authIssueMappingRows || "<tr><td colspan='6' class='muted'>No auth/session issue mapping available.</td></tr>"}</tbody>
+        <tbody>${authIssueMappingRows}</tbody>
       </table>
     </div>
   </section>` : ""}
 
-  <section class="panel">
+  ${hasModuleRows ? `<section class="panel">
     <h2>Affected Modules</h2>
     <div class="toolbar"><input id="moduleSearch" type="search" placeholder="Search module (click severity counts for exact issues)" /></div>
     <div class="table-scroll">
       <table id="moduleTable">
         <thead><tr><th data-sort-index="0" data-sort-type="text">Module</th><th data-sort-index="1" data-sort-type="number">Total</th><th data-sort-index="2" data-sort-type="number">Critical</th><th data-sort-index="3" data-sort-type="number">High</th></tr></thead>
-        <tbody>${moduleRows || "<tr><td colspan='4' class='muted'>No affected modules.</td></tr>"}</tbody>
+        <tbody>${moduleRows}</tbody>
       </table>
     </div>
-  </section>
+  </section>` : ""}
 
-  <section class="panel">
+  ${hasAlertRows ? `<section class="panel">
     <h2>Alerts by Type</h2>
     <div class="toolbar"><input id="alertSearch" type="search" placeholder="Search alert, CWE, OWASP, or severity" /></div>
     <table id="alertTable">
       <thead><tr><th data-sort-index="0" data-sort-type="text">Risk</th><th data-sort-index="1" data-sort-type="text">Alert</th><th data-sort-index="2" data-sort-type="number" align="center">Instances</th><th data-sort-index="3" data-sort-type="text">CWE</th><th data-sort-index="4" data-sort-type="text">OWASP</th></tr></thead>
-      <tbody>${alertRows || "<tr><td colspan='5' class='muted'>No findings.</td></tr>"}</tbody>
+      <tbody>${alertRows}</tbody>
     </table>
     <p class="muted">Click an alert title to jump directly to its detailed finding section below.</p>
-  </section>
+  </section>` : ""}
 
-  <section class="panel">
+  ${hasFileRows ? `<section class="panel">
     <h2>Affected Files and Folders</h2>
     <div class="toolbar"><input id="fileSearch" type="search" placeholder="Search file or folder (click severity counts for exact issues)" /></div>
     <table id="fileTable">
       <thead><tr><th data-sort-index="0" data-sort-type="text">File</th><th data-sort-index="1" data-sort-type="text">Folder</th><th data-sort-index="2" data-sort-type="number">Critical</th><th data-sort-index="3" data-sort-type="number">High</th><th data-sort-index="4" data-sort-type="number">Medium</th><th data-sort-index="5" data-sort-type="number">Low</th><th data-sort-index="6" data-sort-type="number">Info</th><th data-sort-index="7" data-sort-type="number">Total</th></tr></thead>
-      <tbody>${fileRows || "<tr><td colspan='8' class='muted'>No affected files.</td></tr>"}</tbody>
+      <tbody>${fileRows}</tbody>
     </table>
-  </section>
+  </section>` : ""}
 
-  <section class="panel">
+  ${hasModuleRows || hasFileRows ? `<section class="panel">
     <h2>Module/File Severity Drill-down</h2>
-    <p class="drill-state" id="drillState">Click any count in Affected Modules or Affected Files to list exact findings.</p>
+    <p class="drill-state" id="drillState">Select a module or file count to list exact findings.</p>
     <p class="muted">Workflow Status: Open = pending triage/remediation, Reviewed = triaged by analyst.</p>
     <table id="drillTable">
       <thead><tr><th>Severity</th><th>Issue</th><th>File</th><th>Module</th><th>Line</th><th>CWE</th><th>OWASP</th><th>Workflow Status</th></tr></thead>
-      <tbody><tr><td colspan="8" class="muted">No drill-down selection.</td></tr></tbody>
+      <tbody></tbody>
     </table>
-  </section>
+  </section>` : ""}
 
-  <section class="panel">
+  ${hasModuleEvidenceData ? `<section class="panel">
     <h2>Module Severity Evidence (PDF-ready)</h2>
     <p class="muted">This section enumerates exact findings for each module severity count and is included in PDF exports.</p>
-    ${moduleEvidenceSections || "<p class='muted'>No module severity evidence available.</p>"}
+    ${moduleEvidenceSections}
     ${moduleEvidenceOverflow > 0 ? `<p class="muted">${moduleEvidenceOverflow} additional module/severity groups not shown in this export.</p>` : ""}
-  </section>
+  </section>` : ""}
 
-  <section class="panel">
+  ${hasActionPlanData ? `<section class="panel">
     <h2>Action Plan</h2>
-    <ol>${actionRows || "<li>No action plan available.</li>"}</ol>
-  </section>
+    <ol>${actionRows}</ol>
+  </section>` : ""}
 
   <section class="panel">
     <h2>Detailed Findings</h2>
     <div class="toolbar"><input id="detailSearch" type="search" placeholder="Search detailed findings by issue, file, CWE, or recommendation" /></div>
-    ${details || "<p class='muted'>No findings available.</p>"}
+    ${details}
   </section>
 
   <script>
@@ -3652,22 +3804,28 @@ function renderFixesHtml(scan: ScanView): string {
 
   const severityRows = SEVERITY_ORDER.map((severity) => {
     const count = severityDistribution[severity] || 0;
-    return `<tr><td>${severity}</td><td align="center">${count}</td></tr>`;
-  }).join("");
+    return count > 0 ? `<tr><td>${severity}</td><td align="center">${count}</td></tr>` : "";
+  })
+    .filter(Boolean)
+    .join("");
   const dataQualityRows = dataQuality
-    ? `
-      <tr><td>Raw Findings</td><td>${Number(dataQuality.raw_findings || 0)}</td></tr>
-      <tr><td>Deduplicated Findings</td><td>${Number(dataQuality.deduplicated_findings || 0)}</td></tr>
-      <tr><td>Duplicates Removed</td><td>${Number(dataQuality.duplicate_findings_removed || 0)} (${Number(dataQuality.dedup_ratio_percent || 0).toFixed(2)}%)</td></tr>
-      <tr><td>Suppressed Findings</td><td>${Number(dataQuality.suppressed_findings || 0)} (${Number(dataQuality.suppression_rate_percent || 0).toFixed(2)}%)</td></tr>
-      <tr><td>Tool Success Rate</td><td>${Number(dataQuality.tool_success_rate_percent || 0).toFixed(2)}%</td></tr>
-      <tr><td>Coverage Confidence</td><td>${escapeHtml(String(dataQuality.coverage_confidence || "N/A"))} (${Number(dataQuality.coverage_confidence_score || 0).toFixed(1)})</td></tr>
-      <tr><td>Unknown Rule IDs</td><td>${Number(dataQuality.unknown_rule_count || 0)}</td></tr>
-      <tr><td>Unknown CWE</td><td>${Number(dataQuality.unknown_cwe_count || 0)}</td></tr>
-      <tr><td>Unknown OWASP</td><td>${Number(dataQuality.unknown_owasp_count || 0)}</td></tr>
-      <tr><td>Findings with Taxonomy Gaps</td><td>${Number(dataQuality.unknown_taxonomy_count || 0)}</td></tr>
-      ${renderQualityBenchmarkRows(qualityBenchmark)}
-    `
+    ? [
+        Number(dataQuality.raw_findings || 0) > 0 ? `<tr><td>Raw Findings</td><td>${Number(dataQuality.raw_findings || 0)}</td></tr>` : "",
+        Number(dataQuality.deduplicated_findings || 0) > 0 ? `<tr><td>Deduplicated Findings</td><td>${Number(dataQuality.deduplicated_findings || 0)}</td></tr>` : "",
+        Number(dataQuality.duplicate_findings_removed || 0) > 0 ? `<tr><td>Duplicates Removed</td><td>${Number(dataQuality.duplicate_findings_removed || 0)} (${Number(dataQuality.dedup_ratio_percent || 0).toFixed(2)}%)</td></tr>` : "",
+        Number(dataQuality.suppressed_findings || 0) > 0 ? `<tr><td>Suppressed Findings</td><td>${Number(dataQuality.suppressed_findings || 0)} (${Number(dataQuality.suppression_rate_percent || 0).toFixed(2)}%)</td></tr>` : "",
+        Number(dataQuality.tool_success_rate_percent || 0) > 0 ? `<tr><td>Tool Success Rate</td><td>${Number(dataQuality.tool_success_rate_percent || 0).toFixed(2)}%</td></tr>` : "",
+        Number(dataQuality.coverage_confidence_score || 0) > 0 || isRenderableDisplayValue(dataQuality.coverage_confidence)
+          ? `<tr><td>Coverage Confidence</td><td>${escapeHtml(String(dataQuality.coverage_confidence || ""))} (${Number(dataQuality.coverage_confidence_score || 0).toFixed(1)})</td></tr>`
+          : "",
+        Number(dataQuality.unknown_rule_count || 0) > 0 ? `<tr><td>Unknown Rule IDs</td><td>${Number(dataQuality.unknown_rule_count || 0)}</td></tr>` : "",
+        Number(dataQuality.unknown_cwe_count || 0) > 0 ? `<tr><td>Unknown CWE</td><td>${Number(dataQuality.unknown_cwe_count || 0)}</td></tr>` : "",
+        Number(dataQuality.unknown_owasp_count || 0) > 0 ? `<tr><td>Unknown OWASP</td><td>${Number(dataQuality.unknown_owasp_count || 0)}</td></tr>` : "",
+        Number(dataQuality.unknown_taxonomy_count || 0) > 0 ? `<tr><td>Findings with Taxonomy Gaps</td><td>${Number(dataQuality.unknown_taxonomy_count || 0)}</td></tr>` : "",
+        renderQualityBenchmarkRows(qualityBenchmark),
+      ]
+        .filter(Boolean)
+        .join("")
     : "";
   const fixVerificationSummary = normalizedFixVerificationSummary(report.summary.fix_verification, findings);
   const severityBars = renderMetricBars(
@@ -3702,31 +3860,28 @@ function renderFixesHtml(scan: ScanView): string {
       { label: "Skipped", value: Number(fixVerificationSummary.skipped || 0), tone: "low" },
     ],
   );
-  const verificationNote =
-    Number(fixVerificationSummary.performed || 0) === 0
-      ? "<p class='table-note'>No post-fix verification was executed in this scan. Active PoC sections below are pre-fix validation evidence only.</p>"
-      : "";
+  const hasFixVerificationData = Number(fixVerificationSummary.performed || 0) > 0;
   const verificationSection =
-    Number(fixVerificationSummary.performed || 0) > 0
+    hasFixVerificationData
       ? `<div class="table-scroll">
               <table>
                 <thead><tr><th>Metric</th><th>Value</th></tr></thead>
                 <tbody>
-                <tr><td>Performed</td><td align="center">${fixVerificationSummary.performed}</td></tr>
-                <tr><td>Verified Fixed</td><td align="center">${fixVerificationSummary.verified_fixed}</td></tr>
-                <tr><td>Verification Failed</td><td align="center">${fixVerificationSummary.verification_failed}</td></tr>
-                <tr><td>Inconclusive</td><td align="center">${fixVerificationSummary.inconclusive}</td></tr>
-                <tr><td>Workspace Build Passed</td><td align="center">${fixVerificationSummary.build_verified}</td></tr>
-                <tr><td>Workspace Build Failed</td><td align="center">${fixVerificationSummary.build_failed}</td></tr>
-                <tr><td>Workspace Tests Passed</td><td align="center">${fixVerificationSummary.test_verified}</td></tr>
-                <tr><td>Workspace Tests Failed</td><td align="center">${fixVerificationSummary.test_failed}</td></tr>
-                <tr><td>Not Applicable</td><td align="center">${fixVerificationSummary.not_applicable}</td></tr>
-                <tr><td>Skipped</td><td align="center">${fixVerificationSummary.skipped}</td></tr>
+                ${Number(fixVerificationSummary.performed || 0) > 0 ? `<tr><td>Performed</td><td align="center">${fixVerificationSummary.performed}</td></tr>` : ""}
+                ${Number(fixVerificationSummary.verified_fixed || 0) > 0 ? `<tr><td>Verified Fixed</td><td align="center">${fixVerificationSummary.verified_fixed}</td></tr>` : ""}
+                ${Number(fixVerificationSummary.verification_failed || 0) > 0 ? `<tr><td>Verification Failed</td><td align="center">${fixVerificationSummary.verification_failed}</td></tr>` : ""}
+                ${Number(fixVerificationSummary.inconclusive || 0) > 0 ? `<tr><td>Inconclusive</td><td align="center">${fixVerificationSummary.inconclusive}</td></tr>` : ""}
+                ${Number(fixVerificationSummary.build_verified || 0) > 0 ? `<tr><td>Workspace Build Passed</td><td align="center">${fixVerificationSummary.build_verified}</td></tr>` : ""}
+                ${Number(fixVerificationSummary.build_failed || 0) > 0 ? `<tr><td>Workspace Build Failed</td><td align="center">${fixVerificationSummary.build_failed}</td></tr>` : ""}
+                ${Number(fixVerificationSummary.test_verified || 0) > 0 ? `<tr><td>Workspace Tests Passed</td><td align="center">${fixVerificationSummary.test_verified}</td></tr>` : ""}
+                ${Number(fixVerificationSummary.test_failed || 0) > 0 ? `<tr><td>Workspace Tests Failed</td><td align="center">${fixVerificationSummary.test_failed}</td></tr>` : ""}
+                ${Number(fixVerificationSummary.not_applicable || 0) > 0 ? `<tr><td>Not Applicable</td><td align="center">${fixVerificationSummary.not_applicable}</td></tr>` : ""}
+                ${Number(fixVerificationSummary.skipped || 0) > 0 ? `<tr><td>Skipped</td><td align="center">${fixVerificationSummary.skipped}</td></tr>` : ""}
                 </tbody>
               </table>
             </div>
-            <div style="padding:10px 14px 14px">${verificationBars}${verificationNote}</div>`
-      : `<div style="padding:10px 14px 14px">${verificationNote || "<p class='table-note'>No fix-verification telemetry was captured for this scan.</p>"}</div>`;
+            <div style="padding:10px 14px 14px">${verificationBars}</div>`
+      : "";
 
   const rows = queueFindings
     .map(
@@ -3737,84 +3892,153 @@ function renderFixesHtml(scan: ScanView): string {
     <td>${escapeHtml(normalizePath(finding.file_path))}</td>
     <td align="center">${finding.line_number || 1}</td>
     <td>${renderCvssLink(finding.cvss_score)}</td>
-    <td>${renderCweLink(finding.cwe_id || "N/A")}</td>
-    <td>${escapeHtml(finding.owasp_mapping || "N/A")}</td>
+    <td>${renderCweLink(finding.cwe_id || "")}</td>
+    <td>${escapeHtml(String(finding.owasp_mapping || ""))}</td>
     <td><a class="fix-link" href="#${escapeHtml(findingAnchorByUid.get(String(finding.finding_uid || "")) || stableAnchorId("fix", String(finding.finding_uid || `${finding.file_path}:${finding.line_number || 1}`)))}" data-target-id="${escapeHtml(findingAnchorByUid.get(String(finding.finding_uid || "")) || stableAnchorId("fix", String(finding.finding_uid || `${finding.file_path}:${finding.line_number || 1}`)))}">Open</a></td>
+  </tr>`,
+  )
+    .join("");
+  const moduleAggAll = aggregateModules(findings);
+  const moduleAgg = moduleAggAll.slice(0, 120);
+  const moduleRows = moduleAgg
+    .map(
+      (item) => `<tr>
+    <td>${escapeHtml(String(item.module || "root"))}</td>
+    <td align="center">${drillCountCell("module", String(item.module || "root"), "All", Number(item.count || 0))}</td>
+    <td align="center">${drillCountCell("module", String(item.module || "root"), "Critical", Number(item.critical || 0))}</td>
+    <td align="center">${drillCountCell("module", String(item.module || "root"), "High", Number(item.high || 0))}</td>
   </tr>`,
     )
     .join("");
+  const hasModuleRows = Boolean(moduleRows.trim());
+  const hasQueueRows = Boolean(rows.trim());
 
   const detailSections = detailFindingsWithAnchors
     .map(({ finding, anchorId }) => {
       const activeStatus = String(finding.active_poc?.status || "").toLowerCase();
       const advisoryLinks = renderAdvisoryLinks(finding);
       const hasAdvisories = advisoryValues(finding).length > 0;
-      const activeOutput =
-        activeStatus && activeStatus !== "skipped"
-          ? activePocOutputText(finding.active_poc)
-          : "Active PoC output is omitted for skipped/not-executed checks to keep this report compact.";
+      const activePoc = finding.active_poc;
+      const fixVerification = finding.fix_verification;
+      const blockParts: string[] = [];
+      blockParts.push(`<h3>[${escapeHtml(finding.severity)}] ${escapeHtml(normalizedFindingTitle(finding))}</h3>`);
+      blockParts.push(`<p><strong>Location:</strong> ${escapeHtml(normalizePath(finding.file_path))}:${finding.line_number || 1}</p>`);
+      const cweValue = renderCweLink(finding.cwe_id || "");
+      const owaspValue = String(finding.owasp_mapping || "").trim();
+      const cweOwaspParts = [
+        cweValue ? `<strong>CWE:</strong> ${cweValue}` : "",
+        owaspValue ? `<strong>OWASP:</strong> ${escapeHtml(owaspValue)}` : "",
+        `<strong>CVSS:</strong> ${renderCvssLink(finding.cvss_score)}`,
+      ].filter(Boolean);
+      blockParts.push(`<p>${cweOwaspParts.join(" | ")}</p>`);
+      if (hasAdvisories) {
+        blockParts.push(`<p><strong>CVE / Advisory IDs:</strong> ${advisoryLinks}</p>`);
+      }
+      if (isRenderableDisplayValue(finding.recommendation)) {
+        blockParts.push(`<p><strong>Recommendation:</strong> ${escapeHtml(String(finding.recommendation || ""))}</p>`);
+      }
+      if (dependencyAuthenticitySummary(finding)) {
+        blockParts.push(`<p><strong>Dependency Authenticity:</strong> ${escapeHtml(dependencyAuthenticitySummary(finding))}<br><span class="muted">${escapeHtml(dependencyAuthenticityDetail(finding))}</span></p>`);
+      }
+      if (isRenderableDisplayValue(finding.attack_scenario)) {
+        blockParts.push(`<p><strong>Attack Scenario:</strong> ${escapeHtml(String(finding.attack_scenario || ""))}</p>`);
+      }
+      if (isRenderableDisplayValue(finding.exploitation_example)) {
+        blockParts.push(`<p><strong>Exploitation Path:</strong> ${escapeHtml(String(finding.exploitation_example || ""))}</p>`);
+      }
+      const proofText = String(finding.proof_of_concept || "").trim();
+      if (proofText) {
+        blockParts.push(`<h4>PoC Validation</h4><pre>${escapeHtml(truncateForReport(proofText, 2200))}</pre>`);
+      }
+      const activePocStatus = activePocStatusText(activePoc);
+      if (activePoc && String(activePoc.status || activePoc.command || activePoc.output || "").trim() && activePocStatus !== "not_executed") {
+        blockParts.push(`<p><strong>Active PoC Status:</strong> ${escapeHtml(activePocStatus)}</p>`);
+        if (String(activePoc.command || "").trim()) {
+          blockParts.push(`<p><strong>Active PoC Command:</strong> <code>${escapeHtml(activePocCommandText(activePoc))}</code></p>`);
+        }
+        if (String(activePoc.output || "").trim() && activeStatus !== "skipped") {
+          blockParts.push(`<h4>Active PoC Output</h4><pre>${escapeHtml(truncateForReport(activePocOutputText(activePoc), 1600))}</pre>`);
+        }
+      }
+      if (fixVerification && (
+        String(fixVerification.result || "").trim() ||
+        String(fixVerification.reason || "").trim() ||
+        String(fixVerification.post_fix_execution?.command || "").trim() ||
+        String(fixVerification.post_fix_execution?.output || "").trim() ||
+        fixVerification.build_verification ||
+        fixVerification.test_verification
+      )) {
+        blockParts.push(`<h4>Fix Verification</h4>`);
+        if (String(fixVerification.result || "").trim()) {
+          blockParts.push(`<p><strong>Result:</strong> ${escapeHtml(fixVerificationResultText(fixVerification))}</p>`);
+        }
+        if (String(fixVerification.reason || "").trim()) {
+          blockParts.push(`<p><strong>Reason:</strong> ${escapeHtml(fixVerificationReasonText(fixVerification))}</p>`);
+        }
+        if (String(fixVerification.post_fix_execution?.command || "").trim()) {
+          blockParts.push(`<p><strong>Post-Fix Command:</strong> <code>${escapeHtml(String(fixVerification.post_fix_execution?.command || ""))}</code></p>`);
+        }
+        if (String(fixVerification.post_fix_execution?.output || "").trim()) {
+          blockParts.push(`<h4>Post-Fix Output</h4><pre>${escapeHtml(truncateForReport(String(fixVerification.post_fix_execution?.output || ""), 1600))}</pre>`);
+        }
+        if (fixVerification.build_verification && (String(fixVerification.build_verification.command || "").trim() || String(fixVerification.build_verification.output || "").trim())) {
+          blockParts.push(`<p><strong>Workspace Build Command:</strong> <code>${escapeHtml(String(fixVerification.build_verification.command || ""))}</code></p>`);
+          if (String(fixVerification.build_verification.output || "").trim()) {
+            blockParts.push(`<pre>${escapeHtml(truncateForReport(String(fixVerification.build_verification.output || ""), 1200))}</pre>`);
+          }
+        }
+        if (fixVerification.test_verification && (String(fixVerification.test_verification.command || "").trim() || String(fixVerification.test_verification.output || "").trim())) {
+          blockParts.push(`<p><strong>Workspace Test Command:</strong> <code>${escapeHtml(String(fixVerification.test_verification.command || ""))}</code></p>`);
+          if (String(fixVerification.test_verification.output || "").trim()) {
+            blockParts.push(`<pre>${escapeHtml(truncateForReport(String(fixVerification.test_verification.output || ""), 1200))}</pre>`);
+          }
+        }
+      }
+      const originalCode = String(finding.original_code || "").trim();
+      const fixValue = String(preferredFindingFix(finding) || "").trim();
+      if (originalCode || fixValue) {
+        blockParts.push(`<div class="code-grid">`);
+        if (originalCode) {
+          blockParts.push(`<div><h4>Original Code</h4><pre>${escapeHtml(truncateForReport(originalCode, 1200))}</pre></div>`);
+        }
+        if (fixValue) {
+          blockParts.push(`<div><h4>${escapeHtml(fixArtifactLabel(finding))}</h4><pre>${escapeHtml(truncateForReport(preferredFindingFix(finding), 1200))}</pre></div>`);
+        }
+        blockParts.push(`</div>`);
+      }
+      const aiSummary = String(resolvedAiRemediationSummary(finding) || "").trim();
+      if (aiSummary) {
+        blockParts.push(`<h4>AI Remediation Summary</h4><pre>${escapeHtml(truncateForReport(aiSummary, 1200))}</pre>`);
+      }
+      if (String(aiFixConfidenceLabel(finding) || "").trim()) {
+        blockParts.push(`<p><strong>AI Fix Confidence:</strong> ${escapeHtml(aiFixConfidenceLabel(finding))} (${aiFixConfidenceScore(finding).toFixed(2)}) | <strong>Grounded:</strong> ${escapeHtml(aiGroundingStatus(finding))} | <strong>Source:</strong> ${escapeHtml(String(finding.ai_fix_source || "local-evidence-driven:evidence-rules-v1"))}</p>`);
+        blockParts.push(`<p><strong>Grounding Notes:</strong> ${escapeHtml(aiGroundingNotes(finding))}</p>`);
+      }
+      const aiSteps = String(resolvedAiValidationSteps(finding) || "").trim();
+      if (aiSteps) {
+        blockParts.push(`<h4>AI Validation Steps</h4><pre>${escapeHtml(truncateForReport(aiSteps, 1200))}</pre>`);
+      }
+      const patchPreview = String(finding.patch_preview || "").trim();
+      if (fixArtifactKind(finding) === "exact_patch" && patchPreview) {
+        blockParts.push(`<h4>Patch Preview</h4><pre>${escapeHtml(truncateForReport(patchPreview, 1400))}</pre>`);
+      }
       return `<section id="${escapeHtml(anchorId)}" class="fix-detail avoid-break">
-    <h3>[${escapeHtml(finding.severity)}] ${escapeHtml(normalizedFindingTitle(finding))}</h3>
-    <p><strong>Location:</strong> ${escapeHtml(normalizePath(finding.file_path))}:${finding.line_number || 1}</p>
-    <p><strong>CWE:</strong> ${renderCweLink(finding.cwe_id || "N/A")} | <strong>OWASP:</strong> ${escapeHtml(finding.owasp_mapping || "N/A")} | <strong>CVSS:</strong> ${renderCvssLink(finding.cvss_score)}</p>
-    ${hasAdvisories ? `<p><strong>CVE / Advisory IDs:</strong> ${advisoryLinks}</p>` : ""}
-    <p><strong>Recommendation:</strong> ${escapeHtml(finding.recommendation || "N/A")}</p>
-    ${dependencyAuthenticitySummary(finding) ? `<p><strong>Dependency Authenticity:</strong> ${escapeHtml(dependencyAuthenticitySummary(finding))}<br><span class="muted">${escapeHtml(dependencyAuthenticityDetail(finding))}</span></p>` : ""}
-    <p><strong>Attack Scenario:</strong> ${escapeHtml(finding.attack_scenario || "N/A")}</p>
-    <p><strong>Exploitation Path:</strong> ${escapeHtml(finding.exploitation_example || "N/A")}</p>
-    <h4>PoC Validation</h4>
-    <pre>${escapeHtml(truncateForReport(finding.proof_of_concept || "N/A", 2200))}</pre>
-    <p><strong>Active PoC Status:</strong> ${escapeHtml(activePocStatusText(finding.active_poc))}</p>
-    <p><strong>Active PoC Command:</strong> <code>${escapeHtml(activePocCommandText(finding.active_poc))}</code></p>
-    <h4>Active PoC Output</h4>
-    <pre>${escapeHtml(truncateForReport(activeOutput, 1600))}</pre>
-    <h4>Fix Verification</h4>
-    <p><strong>Result:</strong> ${escapeHtml(fixVerificationResultText(finding.fix_verification))}</p>
-    <p><strong>Reason:</strong> ${escapeHtml(fixVerificationReasonText(finding.fix_verification))}</p>
-    <p><strong>Post-Fix Command:</strong> <code>${escapeHtml(String(finding.fix_verification?.post_fix_execution?.command || "No post-fix verification command was executed for this finding in this scan."))}</code></p>
-    <h4>Post-Fix Output</h4>
-    <pre>${escapeHtml(truncateForReport(String(finding.fix_verification?.post_fix_execution?.output || "No post-fix verification output was captured for this finding in this scan."), 1600))}</pre>
-    ${
-      finding.fix_verification?.build_verification
-        ? `<p><strong>Workspace Build Command:</strong> <code>${escapeHtml(String(finding.fix_verification.build_verification.command || "N/A"))}</code></p>
-    <pre>${escapeHtml(truncateForReport(String(finding.fix_verification.build_verification.output || "No build output captured."), 1200))}</pre>`
-        : ""
-    }
-    ${
-      finding.fix_verification?.test_verification
-        ? `<p><strong>Workspace Test Command:</strong> <code>${escapeHtml(String(finding.fix_verification.test_verification.command || "N/A"))}</code></p>
-    <pre>${escapeHtml(truncateForReport(String(finding.fix_verification.test_verification.output || "No test output captured."), 1200))}</pre>`
-        : ""
-    }
-    <div class="code-grid">
-      <div>
-        <h4>Original Code</h4>
-        <pre>${escapeHtml(truncateForReport(finding.original_code || "Snippet unavailable.", 1200))}</pre>
-      </div>
-    <div>
-      <h4>${escapeHtml(fixArtifactLabel(finding))}</h4>
-      <pre>${escapeHtml(truncateForReport(preferredFindingFix(finding), 1200))}</pre>
-    </div>
-    </div>
-    <h4>AI Remediation Summary</h4>
-    <pre>${escapeHtml(truncateForReport(resolvedAiRemediationSummary(finding), 1200))}</pre>
-    <p><strong>AI Fix Confidence:</strong> ${escapeHtml(aiFixConfidenceLabel(finding))} (${aiFixConfidenceScore(finding).toFixed(2)}) | <strong>Grounded:</strong> ${escapeHtml(aiGroundingStatus(finding))} | <strong>Source:</strong> ${escapeHtml(String(finding.ai_fix_source || "local-evidence-driven:evidence-rules-v1"))}</p>
-    <p><strong>Grounding Notes:</strong> ${escapeHtml(aiGroundingNotes(finding))}</p>
-    <h4>AI Validation Steps</h4>
-    <pre>${escapeHtml(truncateForReport(resolvedAiValidationSteps(finding), 1200))}</pre>
-    ${
-      fixArtifactKind(finding) === "exact_patch" && String(finding.patch_preview || "").trim()
-        ? `<h4>Patch Preview</h4>
-    <pre>${escapeHtml(truncateForReport(finding.patch_preview || "No patch preview available.", 1400))}</pre>`
-        : "<p class='table-note'><strong>Patch Preview:</strong> Guidance-only remediation does not include an exact patch.</p>"
-    }
+    ${blockParts.join("")}
   </section>`;
     })
     .join("");
+  const hasDetailSections = Boolean(detailSections.trim());
   const enterpriseBlockers = (enterprise?.blockers || [])
     .slice(0, 12)
     .map((item) => `<li>${escapeHtml(item)}</li>`)
     .join("");
+  const hasEnterpriseData = Boolean(
+    (enterpriseBlockers.trim().length > 0) ||
+      Number(enterprise?.readiness_score || 0) > 0 ||
+      Number(enterprise?.required_tools_ready || 0) > 0 ||
+      Number(enterprise?.required_tools_total || 0) > 0 ||
+      Number(toolchainExecution?.attempted_tools || 0) > 0,
+  );
 
   const fixesCards = renderStatGrid([
     {
@@ -3881,14 +4105,14 @@ function renderFixesHtml(scan: ScanView): string {
           <table class="summary">
             <thead><tr><th>Artifact</th><th>Value</th></tr></thead>
             <tbody>
-            <tr><td>Chain Version</td><td>${escapeHtml(String(reportIntegrity?.chain_version || "1.0"))}</td></tr>
-            <tr><td>Tamper Evident</td><td>${reportIntegrity?.tamper_evident ? "Yes" : "No"}</td></tr>
-            <tr><td>Generated At</td><td>${escapeHtml(String(reportIntegrity?.generated_at || "N/A"))}</td></tr>
-            <tr><td>Report SHA256</td><td><code>${escapeHtml(String(reportIntegrity?.report_sha256 || "N/A"))}</code></td></tr>
-            <tr><td>Findings SHA256</td><td><code>${escapeHtml(String(reportIntegrity?.findings_sha256 || "N/A"))}</code></td></tr>
-            <tr><td>Tool Evidence SHA256</td><td><code>${escapeHtml(String(reportIntegrity?.tool_evidence_sha256 || "N/A"))}</code></td></tr>
-            <tr><td>Metadata SHA256</td><td><code>${escapeHtml(String(reportIntegrity?.metadata_sha256 || "N/A"))}</code></td></tr>
-            <tr><td>Previous Report SHA256</td><td><code>${escapeHtml(String(reportIntegrity?.previous_report_sha256 || "N/A"))}</code></td></tr>
+        <tr><td>Chain Version</td><td>${escapeHtml(String(reportIntegrity?.chain_version || ""))}</td></tr>
+        <tr><td>Tamper Evident</td><td>${reportIntegrity?.tamper_evident === true ? "Yes" : reportIntegrity?.tamper_evident === false ? "No" : ""}</td></tr>
+        <tr><td>Generated At</td><td>${escapeHtml(String(reportIntegrity?.generated_at || ""))}</td></tr>
+        <tr><td>Report SHA256</td><td><code>${escapeHtml(String(reportIntegrity?.report_sha256 || ""))}</code></td></tr>
+        <tr><td>Findings SHA256</td><td><code>${escapeHtml(String(reportIntegrity?.findings_sha256 || ""))}</code></td></tr>
+        <tr><td>Tool Evidence SHA256</td><td><code>${escapeHtml(String(reportIntegrity?.tool_evidence_sha256 || ""))}</code></td></tr>
+        <tr><td>Metadata SHA256</td><td><code>${escapeHtml(String(reportIntegrity?.metadata_sha256 || ""))}</code></td></tr>
+        <tr><td>Previous Report SHA256</td><td><code>${escapeHtml(String(reportIntegrity?.previous_report_sha256 || ""))}</code></td></tr>
           </tbody>
           </table>
         </div>
@@ -3932,30 +4156,28 @@ function renderFixesHtml(scan: ScanView): string {
             </div>
             <div style="padding:10px 14px 14px">${severityBars}</div>
           </div>
-          <div class="table-frame">
-            <h2 style="padding:12px 14px 0">${Number(fixVerificationSummary.performed || 0) > 0 ? "Fix Verification Summary" : "Fix Verification Status"}</h2>
+          ${verificationSection
+            ? `<div class="table-frame">
+            <h2 style="padding:12px 14px 0">Fix Verification Summary</h2>
             ${verificationSection}
-          </div>
+          </div>`
+            : ""}
         </div>
         <div class="stack">
-          <div class="table-frame">
+          ${hasEnterpriseData ? `<div class="table-frame">
             <h2 style="padding:12px 14px 0">Enterprise Assurance</h2>
             <div class="table-scroll">
               <table>
                 <thead><tr><th>Metric</th><th>Value</th></tr></thead>
                 <tbody>
-                <tr><td>Status</td><td>${escapeHtml(String(enterprise?.status || "blocked").toUpperCase())}</td></tr>
-                <tr><td>Readiness Score</td><td>${enterprise?.readiness_score || 0}</td></tr>
-                <tr><td>Required Tool Coverage</td><td>${(enterprise?.required_tools_coverage_percent || 0).toFixed(2)}%</td></tr>
-                <tr><td>Tool Success Rate</td><td>${(toolchainExecution?.success_rate_percent || 0).toFixed(2)}%</td></tr>
-                <tr><td>Recommendation</td><td>${escapeHtml(enterprise?.recommendation || "N/A")}</td></tr>
+                ${Number(enterprise?.readiness_score || 0) > 0 ? `<tr><td>Readiness Score</td><td>${enterprise?.readiness_score}</td></tr>` : ""}
+                ${Number(enterprise?.required_tools_coverage_percent || 0) > 0 ? `<tr><td>Required Tool Coverage</td><td>${(enterprise?.required_tools_coverage_percent || 0).toFixed(2)}%</td></tr>` : ""}
+                ${Number(toolchainExecution?.success_rate_percent || 0) > 0 ? `<tr><td>Tool Success Rate</td><td>${(toolchainExecution?.success_rate_percent || 0).toFixed(2)}%</td></tr>` : ""}
                 </tbody>
               </table>
             </div>
-            <div style="padding:0 14px 14px">
-              ${enterpriseBlockers ? `<h3>Enterprise Blockers</h3><ul>${enterpriseBlockers}</ul>` : ""}
-            </div>
-          </div>
+            ${enterpriseBlockers ? `<div style="padding:0 14px 14px"><h3>Enterprise Blockers</h3><ul>${enterpriseBlockers}</ul></div>` : ""}
+          </div>` : ""}
           <div class="table-frame">
             <h2 style="padding:12px 14px 0">Data Quality</h2>
             <div class="table-scroll">
@@ -3969,30 +4191,30 @@ function renderFixesHtml(scan: ScanView): string {
       </div>
     </section>
 
-    <section class="section">
+    ${hasQueueRows ? `<section class="section">
       <div class="table-frame">
         <h2 style="padding:12px 14px 0">Fix Queue</h2>
         <div class="toolbar" style="padding:0 14px 8px"><input id="fixSearch" type="search" placeholder="Search by issue, file, CWE, OWASP" /><input id="fixSeverityFilter" type="search" placeholder="Optional severity filter (Critical/High/...)" style="min-width:220px" /></div>
       <div class="table-scroll">
           <table id="fixTable">
             <thead><tr><th data-sort-index="0" data-sort-type="number">#</th><th data-sort-index="1" data-sort-type="text">Severity</th><th data-sort-index="2" data-sort-type="text">Issue</th><th data-sort-index="3" data-sort-type="text">File</th><th data-sort-index="4" data-sort-type="number">Line</th><th data-sort-index="5" data-sort-type="number">CVSS</th><th data-sort-index="6" data-sort-type="text">CWE</th><th data-sort-index="7" data-sort-type="text">OWASP</th><th>Details</th></tr></thead>
-            <tbody>${rows || "<tr><td colspan='9'>No findings available.</td></tr>"}</tbody>
+            <tbody>${rows}</tbody>
           </table>
         </div>
       </div>
       <p class="table-note">This queue is intentionally compact for triage. Showing ${queueFindings.length} of ${findings.length} findings. Use filters and exports for full evidence.</p>
-    </section>
+    </section>` : ""}
 
     ${replaySection}
 
     ${integritySection}
 
-    <section class="section">
+    ${hasDetailSections ? `<section class="section">
       <h2>Original and Suggested Fix Details</h2>
       <div class="toolbar"><input id="fixDetailSearch" type="search" placeholder="Search detailed fixes by issue, file, CWE, recommendation, or PoC" /></div>
-      ${detailSections || "<p>No fix entries found.</p>"}
+      ${detailSections}
       ${findings.length > detailFindings.length ? `<p class="table-note">${findings.length - detailFindings.length} additional finding details were omitted for report readability.</p>` : ""}
-    </section>
+    </section>` : ""}
   </main>
   <script>
     (function () {
@@ -4133,6 +4355,7 @@ function renderFindingDetailsHtml(scan: ScanView): string {
       </tr>`,
     )
     .join("");
+  const hasRows = Boolean(rows.trim());
 
   return `<!doctype html>
 <html lang="en">
@@ -4150,7 +4373,7 @@ function renderFindingDetailsHtml(scan: ScanView): string {
       <p class="meta"><strong>Generated:</strong> ${escapeHtml(exportedAt)}</p>
       <p class="meta"><strong>Total Findings:</strong> ${findings.length}</p>
     </section>
-    <section class="section">
+    ${hasRows ? `<section class="section">
       <h2>Finding Details</h2>
       <div class="toolbar"><input id="findingDetailsSearch" type="search" placeholder="Search finding, severity, location, description, or remediation" /></div>
       <div class="table-frame table-scroll">
@@ -4164,10 +4387,10 @@ function renderFindingDetailsHtml(scan: ScanView): string {
               <th width="23%">Remediation</th>
             </tr>
           </thead>
-          <tbody>${rows || '<tr><td colspan="5">No findings available.</td></tr>'}</tbody>
+          <tbody>${rows}</tbody>
         </table>
       </div>
-    </section>
+    </section>` : ""}
   </div>
   <script>
     (function () {
@@ -4680,7 +4903,7 @@ function renderCweLink(value: string): string {
   const label = String(value || "N/A");
   const url = cweUrl(label);
   if (!url) {
-    return escapeHtml(label);
+    return isRenderableDisplayValue(label) ? escapeHtml(label) : "";
   }
   return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
 }
@@ -4688,7 +4911,7 @@ function renderCweLink(value: string): string {
 function renderCveLinks(value: unknown): string {
   const ids = cveValues(value);
   if (!ids.length) {
-    return "N/A";
+    return "";
   }
   return ids
     .slice(0, 12)
@@ -4731,7 +4954,7 @@ function advisoryUrl(id: string): string | null {
 function renderAdvisoryLinks(finding: Pick<VulnerabilityFinding, "advisory_ids" | "cve_ids" | "dependency_id">): string {
   const ids = advisoryValues(finding);
   if (!ids.length) {
-    return "N/A";
+    return "";
   }
   return ids
     .slice(0, 12)
@@ -5073,7 +5296,7 @@ function knownExploitedMetricText(
     | undefined,
 ): string {
   const count = Number(riskIntel?.known_exploited_findings || 0);
-  return Number.isFinite(count) && count > 0 ? String(count) : "No CISA KEV match found";
+  return Number.isFinite(count) && count > 0 ? String(count) : "CISA KEV match: none";
 }
 
 function knownExploitedMetricSubtext(
@@ -5106,7 +5329,7 @@ function knownExploitedSummaryText(
   const catalogLabel = knownExploitedMetricSubtext(riskIntel);
   return Number.isFinite(count) && count > 0
     ? `${count} finding(s) matched the ${catalogLabel}.`
-    : `No finding matched the ${catalogLabel}.`;
+    : `CISA KEV match: none in the ${catalogLabel}.`;
 }
 
 function knownExploitedFindingText(
@@ -5117,7 +5340,7 @@ function knownExploitedFindingText(
   } | null | undefined,
 ): string {
   if (!finding) {
-    return "No CISA KEV match found";
+    return "";
   }
   const kevCves = Array.isArray(finding.known_exploited_cves)
     ? finding.known_exploited_cves.filter((value) => String(value || "").trim())
@@ -5125,7 +5348,7 @@ function knownExploitedFindingText(
   if (kevCves.length > 0) {
     return `Matched official CISA KEV catalog: ${kevCves.join(", ")}`;
   }
-  return finding.known_exploited ? "Matched official CISA KEV catalog" : "No CISA KEV match found";
+  return finding.known_exploited ? "Matched official CISA KEV catalog" : "";
 }
 
 function hasFalsePositiveCandidates(falsePositiveReport: unknown): boolean {
@@ -5456,6 +5679,9 @@ function resolveCtoBoardView(
     return existing;
   }
   const ranked = rankedFindings(findings, 5);
+  if (!ranked.length) {
+    return {};
+  }
   const totalFindings = findings.length;
   const activeRisk = Number(summary.active_risk_findings || 0);
   const likelyLoss = Math.round(activeRisk * 185000 + riskIntel.known_exploited_findings * 95000 + totalFindings * 4200);
@@ -5502,6 +5728,9 @@ function resolveCisoSecurityView(
   if (table.length > 0) {
     return existing;
   }
+  if (!findings.length) {
+    return {};
+  }
   return {
     attack_chain_example: "External attacker -> service/API -> lateral movement -> critical asset impact",
     vulnerability_operational_table: rankedFindings(findings, 20).map((finding) => ({
@@ -5526,6 +5755,9 @@ function resolveDeveloperDevopsView(
   const rows = Array.isArray(existing.tactical_findings) ? existing.tactical_findings : [];
   if (rows.length > 0) {
     return existing;
+  }
+  if (!findings.length) {
+    return {};
   }
   return {
     tactical_findings: rankedFindings(findings, 24).map((finding) => ({
@@ -5576,10 +5808,15 @@ function resolveAdvancedFeatures(
   dataQuality: DataQualitySummary,
 ): Record<string, unknown> {
   const existing = (roleAware.advanced_features as Record<string, unknown>) || {};
-  const fixPlan = Object.keys((existing.what_should_i_fix_first_ai as Record<string, unknown>) || {}).length > 0
+  const existingFixPlan = Object.keys((existing.what_should_i_fix_first_ai as Record<string, unknown>) || {}).length > 0
     ? (existing.what_should_i_fix_first_ai as Record<string, unknown>)
-    : buildFallbackFixWindowPlan(findings);
+    : null;
+  const fallbackFixPlan = buildFallbackFixWindowPlan(findings);
+  const fixPlan = existingFixPlan || (Object.keys(fallbackFixPlan).length > 0 ? fallbackFixPlan : null);
   const aiSolutionEngine = (existing.ai_solution_engine as Record<string, unknown>) || {};
+  if (!Object.keys(existing).length && !fixPlan && !Number(enterprise?.readiness_score || 0) && !Number(dataQuality.coverage_confidence_score || 0)) {
+    return {};
+  }
   return {
     ...existing,
     security_maturity_scoring:
@@ -5600,7 +5837,7 @@ function resolveAdvancedFeatures(
           grounded_generation: true,
           prioritization_status: "ready",
         },
-    what_should_i_fix_first_ai: fixPlan,
+    ...(fixPlan ? { what_should_i_fix_first_ai: fixPlan } : {}),
   };
 }
 
@@ -5911,9 +6148,12 @@ function workflowStatusText(status: string | undefined): string {
 
 function codeSnippetLines(value: string, maxLines = 8, maxChars = 160): string[] {
   const normalized = String(value || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  if (!isRenderableDisplayValue(normalized)) {
+    return [];
+  }
   const rawLines = normalized.split("\n").map((line) => line.trim()).filter((line) => line.length > 0);
   if (rawLines.length === 0) {
-    return ["N/A"];
+    return [];
   }
   const sliced = rawLines.slice(0, maxLines).map((line) => (line.length > maxChars ? `${line.slice(0, maxChars)}...` : line));
   if (rawLines.length > maxLines) {
@@ -5957,46 +6197,53 @@ function csvLine(fields: string[]): string {
 
 function renderSummaryValue(value: unknown): string {
   if (value === null || value === undefined) {
-    return "N/A";
+    return "";
   }
   if (typeof value === "number" || typeof value === "boolean") {
-    return escapeHtml(String(value));
+    return isRenderableDisplayValue(value) ? escapeHtml(String(value)) : "";
   }
   if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    if (!normalized || normalized === "undefined" || normalized === "null") {
-      return "N/A";
-    }
-    return escapeHtml(value);
+    return isRenderableDisplayValue(value) ? escapeHtml(value) : "";
   }
   if (Array.isArray(value)) {
-    if (value.length === 0) {
-      return "[]";
+    const items = value.map((item) => renderSummaryValue(item)).filter(Boolean);
+    if (items.length === 0) {
+      return "";
     }
-    return `<ul>${value.map((item) => `<li>${renderSummaryValue(item)}</li>`).join("")}</ul>`;
+    return `<ul>${items.map((item) => `<li>${item}</li>`).join("")}</ul>`;
   }
   if (typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>);
-    if (entries.length === 0) {
-      return "{}";
-    }
-    const rows = entries
-      .map(([entryKey, entryValue]) => `<tr><td>${escapeHtml(entryKey)}</td><td>${renderSummaryValue(entryValue)}</td></tr>`)
+    const rows = Object.entries(value as Record<string, unknown>)
+      .map(([entryKey, entryValue]) => {
+        const rendered = renderSummaryValue(entryValue);
+        return rendered ? `<tr><td>${escapeHtml(entryKey)}</td><td>${rendered}</td></tr>` : "";
+      })
+      .filter(Boolean)
       .join("");
+    if (!rows) {
+      return "";
+    }
     return `<table><thead><tr><th>Key</th><th>Value</th></tr></thead><tbody>${rows}</tbody></table>`;
   }
-  return escapeHtml(String(value));
+  return isRenderableDisplayValue(value) ? escapeHtml(String(value)) : "";
 }
 
 function renderComplianceMatrixRows(items: Array<{ standard: string; control_count: number; status: string }>): string {
   return items
-    .map(
-      (item) => `<tr>
-        <td>${escapeHtml(String(item.standard || "N/A"))}</td>
-        <td align="center">${Number(item.control_count || 0)}</td>
-        <td>${escapeHtml(String(item.status || "partial"))}</td>
-      </tr>`,
-    )
+    .map((item) => {
+      const standard = String(item.standard || "").trim();
+      const count = Number(item.control_count || 0);
+      const status = String(item.status || "").trim();
+      if (!isRenderableDisplayValue(standard) || !isRenderableDisplayValue(status) || count <= 0) {
+        return "";
+      }
+      return `<tr>
+        <td>${escapeHtml(standard)}</td>
+        <td align="center">${count}</td>
+        <td>${escapeHtml(status)}</td>
+      </tr>`;
+    })
+    .filter(Boolean)
     .join("");
 }
 
@@ -6104,10 +6351,11 @@ function exportThemeCss(extra = ""): string {
 function renderStatGrid(
   cards: Array<{ label: string; value: string | number; tone?: string; sub?: string }>,
 ): string {
-  if (!cards.length) {
+  const visible = cards.filter((card) => isRenderableDisplayValue(card.value));
+  if (!visible.length) {
     return "";
   }
-  return `<div class="stat-grid">${cards
+  return `<div class="stat-grid">${visible
     .map(
       (card) => `<article class="stat-card${card.tone ? ` tone-${escapeHtml(card.tone)}` : ""}">
         <span class="label">${escapeHtml(card.label)}</span>
@@ -6122,9 +6370,9 @@ function renderMetricBars(
   title: string,
   rows: Array<{ label: string; value: number; tone?: "critical" | "high" | "medium" | "low" | "info" | "accent" }>,
 ): string {
-  const filtered = rows.filter((row) => Number.isFinite(row.value) && row.value >= 0);
+  const filtered = rows.filter((row) => Number.isFinite(row.value) && row.value > 0);
   if (!filtered.length) {
-    return `<p class="muted">No ${escapeHtml(title.toLowerCase())} data available.</p>`;
+    return "";
   }
   const max = Math.max(1, ...filtered.map((row) => row.value));
   const body = filtered
@@ -6140,27 +6388,64 @@ function renderMetricBars(
   return `<h3>${escapeHtml(title)}</h3><div class="kpi-bars">${body}</div>`;
 }
 
+function isRenderableDisplayValue(value: unknown): boolean {
+  if (value === null || value === undefined) {
+    return false;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) && value > 0;
+  }
+  if (typeof value === "boolean") {
+    return value;
+  }
+  const text = String(value).trim();
+  if (!text) {
+    return false;
+  }
+  const normalized = text.toLowerCase();
+  if (["n/a", "na", "none", "null", "not applicable", "unknown", "n\\a"].includes(normalized)) {
+    return false;
+  }
+  if (/^0+(?:\.0+)?%?$/.test(text)) {
+    return false;
+  }
+  if (/^0+\s*\/\s*0+(\s*\(\s*0+(?:\.0+)?%\s*\))?$/.test(text)) {
+    return false;
+  }
+  if (normalized.startsWith("no ")) {
+    return false;
+  }
+  if (normalized.startsWith("unavailable")) {
+    return false;
+  }
+  return true;
+}
+
 function formatMetricNumber(value: unknown, digits = 2): string {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) {
-    return "N/A";
+    return "";
   }
   return numeric.toFixed(digits);
 }
 
 function formatBestLikelyWorst(value: Record<string, unknown>): string {
   if (value.available === false) {
-    return "N/A";
+    return "";
   }
   const best = value.best_case_usd ?? value.best_case_hours;
   const likely = value.most_likely_usd ?? value.most_likely_hours;
   const worst = value.worst_case_usd ?? value.worst_case_hours;
-  const bestText = formatMetricNumber(best, Number.isInteger(Number(best)) ? 0 : 1);
-  const likelyText = formatMetricNumber(likely, Number.isInteger(Number(likely)) ? 0 : 1);
-  const worstText = formatMetricNumber(worst, Number.isInteger(Number(worst)) ? 0 : 1);
-  if (bestText === "N/A" && likelyText === "N/A" && worstText === "N/A") {
-    return "N/A";
+  const bestNum = Number(best);
+  const likelyNum = Number(likely);
+  const worstNum = Number(worst);
+  const hasAny = [bestNum, likelyNum, worstNum].some((entry) => Number.isFinite(entry) && entry > 0);
+  if (!hasAny) {
+    return "";
   }
+  const bestText = formatMetricNumber(best, Number.isInteger(bestNum) ? 0 : 1);
+  const likelyText = formatMetricNumber(likely, Number.isInteger(likelyNum) ? 0 : 1);
+  const worstText = formatMetricNumber(worst, Number.isInteger(worstNum) ? 0 : 1);
   return `${bestText} / ${likelyText} / ${worstText}`;
 }
 
@@ -6181,8 +6466,12 @@ function objectSummaryRows(value: unknown): string {
                   .map(([nestedKey, nestedValue]) => `${nestedKey}=${String(nestedValue)}`)
                   .join(", ")
             : String(item ?? "N/A");
+      if (!isRenderableDisplayValue(normalized)) {
+        return "";
+      }
       return `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(normalized)}</td></tr>`;
     })
+    .filter(Boolean)
     .join("");
 }
 
