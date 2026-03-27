@@ -68,28 +68,46 @@ _ALL_CODEBASE_TOOLS = {
     "trivy",
 }
 
+_STANDARD_CODEBASE_TOOLS = {
+    "bandit",
+    "checkov",
+    "cppcheck",
+    "eslint-security",
+    "findsecbugs",
+    "flawfinder",
+    "gitleaks",
+    "gosec",
+    "govulncheck",
+    "grype",
+    "hadolint",
+    "npm-audit",
+    "osv-scanner",
+    "pip-audit",
+    "safety",
+    "semgrep",
+    "spotbugs",
+    "tfsec",
+}
+
+_FAST_CODEBASE_TOOLS = {
+    "bandit",
+    "checkov",
+    "gitleaks",
+    "semgrep",
+}
+
 _ROLE_TOOL_ALLOWLIST = {
     "Admin": frozenset(_ALL_CODEBASE_TOOLS),
-    "Security Analyst": frozenset(_ALL_CODEBASE_TOOLS),
+    "Security Analyst": frozenset(_STANDARD_CODEBASE_TOOLS | {"codeql", "snyk", "trivy"}),
     "Developer": frozenset(
         {
             "bandit",
             "checkov",
             "cppcheck",
             "eslint-security",
-            "findsecbugs",
             "flawfinder",
             "gitleaks",
-            "gosec",
-            "govulncheck",
-            "grype",
-            "npm-audit",
-            "osv-scanner",
-            "pip-audit",
-            "safety",
             "semgrep",
-            "spotbugs",
-            "tfsec",
             "hadolint",
         }
     ),
@@ -101,7 +119,6 @@ _ROLE_TOOL_ALLOWLIST = {
             "hadolint",
             "npm-audit",
             "osv-scanner",
-            "owasp-dependency-check",
             "pip-audit",
             "safety",
             "semgrep",
@@ -116,7 +133,6 @@ _ROLE_TOOL_ALLOWLIST = {
             "hadolint",
             "npm-audit",
             "osv-scanner",
-            "owasp-dependency-check",
             "pip-audit",
             "safety",
             "semgrep",

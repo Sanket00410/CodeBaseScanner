@@ -360,12 +360,11 @@ function buildScanEnvironment(
 function applyScanPreset(env: NodeJS.ProcessEnv, preset: "fast" | "standard" | "deep"): void {
   const logicalCores = Math.max(2, Math.min(16, os.cpus().length || 4));
   const toolPresets: Record<NonNullable<ScanRequest["scanPreset"]>, string[]> = {
-    fast: ["semgrep", "gitleaks", "bandit", "trivy", "checkov"],
+    fast: ["semgrep", "gitleaks", "bandit", "checkov"],
     standard: [
       "semgrep",
       "gitleaks",
       "bandit",
-      "trivy",
       "checkov",
       "gosec",
       "govulncheck",
@@ -377,6 +376,10 @@ function applyScanPreset(env: NodeJS.ProcessEnv, preset: "fast" | "standard" | "
       "hadolint",
       "tfsec",
       "grype",
+      "osv-scanner",
+      "npm-audit",
+      "pip-audit",
+      "safety",
     ],
     deep: [
       "bandit",
@@ -389,12 +392,15 @@ function applyScanPreset(env: NodeJS.ProcessEnv, preset: "fast" | "standard" | "
       "govulncheck",
       "grype",
       "hadolint",
+      "infer",
+      "npm-audit",
       "osv-scanner",
       "owasp-dependency-check",
       "pip-audit",
       "safety",
       "semgrep",
       "snyk",
+      "sonarqube",
       "spotbugs",
       "tfsec",
       "trivy",
@@ -419,6 +425,10 @@ function applyScanPreset(env: NodeJS.ProcessEnv, preset: "fast" | "standard" | "
   if (preset === "fast") {
     env.USS_FILE_SCAN_WORKERS = String(Math.max(4, Math.min(12, logicalCores)));
     env.USS_MAX_FILE_SIZE_KB = "512";
+    env.USS_USE_NATIVE_DEPENDENCY_ANALYSIS = "1";
+    env.USS_USE_PROJECT_RULES = "0";
+    env.USS_EXTERNAL_TOOL_TIMEOUT_SECONDS = env.USS_EXTERNAL_TOOL_TIMEOUT_SECONDS || "180";
+    env.USS_NATIVE_ANALYSIS_FAMILIES = env.USS_NATIVE_ANALYSIS_FAMILIES || "sql-injection,command-injection,path-traversal,unsafe-eval,xss,prototype-pollution";
     env.USS_ACTIVE_POC_MODE = "0";
     env.USS_ACTIVE_POC_MAX_FINDINGS = "0";
     return;
@@ -426,12 +436,20 @@ function applyScanPreset(env: NodeJS.ProcessEnv, preset: "fast" | "standard" | "
   if (preset === "deep") {
     env.USS_FILE_SCAN_WORKERS = String(Math.max(4, Math.min(10, logicalCores)));
     env.USS_MAX_FILE_SIZE_KB = "2048";
+    env.USS_USE_NATIVE_DEPENDENCY_ANALYSIS = "1";
+    env.USS_USE_PROJECT_RULES = "1";
+    env.USS_EXTERNAL_TOOL_TIMEOUT_SECONDS = env.USS_EXTERNAL_TOOL_TIMEOUT_SECONDS || "900";
+    env.USS_NATIVE_ANALYSIS_FAMILIES = env.USS_NATIVE_ANALYSIS_FAMILIES || "";
     env.USS_ACTIVE_POC_MODE = "1";
     env.USS_ACTIVE_POC_MAX_FINDINGS = "0";
     return;
   }
   env.USS_FILE_SCAN_WORKERS = String(Math.max(4, Math.min(10, logicalCores)));
   env.USS_MAX_FILE_SIZE_KB = "1024";
+  env.USS_USE_NATIVE_DEPENDENCY_ANALYSIS = "1";
+  env.USS_USE_PROJECT_RULES = "1";
+  env.USS_EXTERNAL_TOOL_TIMEOUT_SECONDS = env.USS_EXTERNAL_TOOL_TIMEOUT_SECONDS || "300";
+  env.USS_NATIVE_ANALYSIS_FAMILIES = env.USS_NATIVE_ANALYSIS_FAMILIES || "sql-injection,command-injection,path-traversal,unsafe-eval,xss,prototype-pollution,server-side-request-forgery,open-redirect,template-injection,insecure-deserialization";
   env.USS_ACTIVE_POC_MODE = "1";
   env.USS_ACTIVE_POC_MAX_FINDINGS = "80";
 }

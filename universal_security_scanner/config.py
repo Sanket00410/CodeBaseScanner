@@ -127,14 +127,12 @@ def _default_codebase_tools_for_preset(preset: str) -> list[str]:
             "semgrep",
             "gitleaks",
             "bandit",
-            "trivy",
             "checkov",
         ],
         "standard": [
             "semgrep",
             "gitleaks",
             "bandit",
-            "trivy",
             "checkov",
             "gosec",
             "govulncheck",
@@ -146,6 +144,10 @@ def _default_codebase_tools_for_preset(preset: str) -> list[str]:
             "hadolint",
             "tfsec",
             "grype",
+            "osv-scanner",
+            "npm-audit",
+            "pip-audit",
+            "safety",
         ],
         "deep": [
             "bandit",
@@ -158,18 +160,49 @@ def _default_codebase_tools_for_preset(preset: str) -> list[str]:
             "govulncheck",
             "grype",
             "hadolint",
+            "infer",
+            "npm-audit",
             "osv-scanner",
             "owasp-dependency-check",
             "pip-audit",
             "safety",
             "semgrep",
             "snyk",
+            "sonarqube",
             "spotbugs",
             "tfsec",
             "trivy",
         ],
     }
     return list(presets.get(normalized, _default_codebase_tools()))
+
+
+def _default_native_families_for_preset(preset: str) -> list[str]:
+    normalized = preset.strip().lower()
+    presets: dict[str, list[str]] = {
+        "fast": [
+            "sql-injection",
+            "command-injection",
+            "path-traversal",
+            "unsafe-eval",
+            "xss",
+            "prototype-pollution",
+        ],
+        "standard": [
+            "sql-injection",
+            "command-injection",
+            "path-traversal",
+            "unsafe-eval",
+            "xss",
+            "prototype-pollution",
+            "server-side-request-forgery",
+            "open-redirect",
+            "template-injection",
+            "insecure-deserialization",
+        ],
+        "deep": [],
+    }
+    return list(presets.get(normalized, []))
 
 
 def _read_int(name: str, default: int, *, allow_zero: bool = False) -> int:
@@ -246,6 +279,7 @@ class ScannerConfig:
     scan_cache_max_files: int = 50000
     scan_preset: str = "standard"
     suppression_review_days: int = 30
+    use_project_rules: bool = True
     suppression_default_owner: str = "security-triage"
     suppression_require_expiry: bool = True
     quality_benchmark_enabled: bool = True
@@ -270,6 +304,7 @@ class ScannerConfig:
         if resolved_scan_preset not in {"fast", "standard", "deep"}:
             resolved_scan_preset = role_default_scan_preset(resolved_role)
         default_codebase_tools = _default_codebase_tools_for_preset(resolved_scan_preset)
+        default_native_families = _default_native_families_for_preset(resolved_scan_preset)
 
         return cls(
             max_file_size_kb=_read_int("USS_MAX_FILE_SIZE_KB", 1024),
@@ -297,9 +332,12 @@ class ScannerConfig:
                 "USS_NATIVE_ANALYSIS_LANGUAGES",
                 ["python", "javascript"],
             ),
-            native_analysis_families=_read_csv("USS_NATIVE_ANALYSIS_FAMILIES", []),
+            native_analysis_families=_read_csv("USS_NATIVE_ANALYSIS_FAMILIES", default_native_families),
             native_max_findings_per_file=_read_int("USS_NATIVE_MAX_FINDINGS_PER_FILE", 50),
-            use_native_dependency_analysis=_read_bool("USS_USE_NATIVE_DEPENDENCY_ANALYSIS", True),
+            use_native_dependency_analysis=_read_bool(
+                "USS_USE_NATIVE_DEPENDENCY_ANALYSIS",
+                resolved_scan_preset != "fast",
+            ),
             native_dependency_ecosystems=_read_csv(
                 "USS_NATIVE_DEPENDENCY_ECOSYSTEMS",
                 ["python", "npm"],
@@ -315,6 +353,7 @@ class ScannerConfig:
             scan_cache_file=Path(os.getenv("USS_SCAN_CACHE_FILE", "exports/.integrity/scan_cache.json")),
             scan_cache_max_files=_read_int("USS_SCAN_CACHE_MAX_FILES", 50000),
             suppression_review_days=_read_int("USS_SUPPRESSION_REVIEW_DAYS", 30),
+            use_project_rules=_read_bool("USS_USE_PROJECT_RULES", resolved_scan_preset != "fast"),
             suppression_default_owner=os.getenv("USS_SUPPRESSION_DEFAULT_OWNER", "security-triage").strip() or "security-triage",
             suppression_require_expiry=_read_bool("USS_SUPPRESSION_REQUIRE_EXPIRY", True),
             quality_benchmark_enabled=_read_bool("USS_QUALITY_BENCHMARK_ENABLED", True),

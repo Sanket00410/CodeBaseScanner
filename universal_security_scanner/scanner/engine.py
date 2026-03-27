@@ -330,8 +330,9 @@ class ScanEngine:
             findings.append(candidate)
 
         toolchain_prepare_steps = 1 if active_external_tools or catalog_tools else 0
+        project_rule_steps = len(self.project_rules) if self.config.use_project_rules else 0
         native_dependency_steps = 1 if self.native_dependency_scanner.enabled else 0
-        total_steps = max(1, len(files) + len(self.project_rules) + len(selected_runner_tools) + toolchain_prepare_steps + native_dependency_steps)
+        total_steps = max(1, len(files) + project_rule_steps + len(selected_runner_tools) + toolchain_prepare_steps + native_dependency_steps)
         completed_steps = 0
 
         if progress_callback:
@@ -473,40 +474,48 @@ class ScanEngine:
                     if findings_limit_reached():
                         break
 
-        for project_rule in self.project_rules:
-            completed_steps += 1
-            progress = round((completed_steps / total_steps) * 100.0, 2)
-            honor_pause_control(
-                progress_callback=progress_callback,
-                progress=progress,
-                stage="scanning_dependencies",
-                current_file=str(target),
-            )
-            if progress_callback:
-                progress_callback(
-                    progress,
-                    "scanning_dependencies",
-                    str(target),
-                    f"Running {project_rule.metadata.rule_id}",
+        if self.config.use_project_rules:
+            for project_rule in self.project_rules:
+                completed_steps += 1
+                progress = round((completed_steps / total_steps) * 100.0, 2)
+                honor_pause_control(
+                    progress_callback=progress_callback,
+                    progress=progress,
+                    stage="scanning_dependencies",
+                    current_file=str(target),
                 )
-
-            try:
-                project_findings = project_rule.scan_project(target)
-            except Exception as exc:  # pragma: no cover - defensive branch
-                error = f"Project rule {project_rule.metadata.rule_id} failed: {exc}"
-                LOGGER.exception(error)
-                errors.append(error)
-                continue
-
-            for finding in project_findings:
-                append_finding(
-                    self._normalize_finding(
-                        finding,
-                        target=target,
-                        default_origin="project_rule",
-                        provenance={"source": "project_rule"},
+                if progress_callback:
+                    progress_callback(
+                        progress,
+                        "scanning_dependencies",
+                        str(target),
+                        f"Running {project_rule.metadata.rule_id}",
                     )
-                )
+
+                try:
+                    project_findings = project_rule.scan_project(target)
+                except Exception as exc:  # pragma: no cover - defensive branch
+                    error = f"Project rule {project_rule.metadata.rule_id} failed: {exc}"
+                    LOGGER.exception(error)
+                    errors.append(error)
+                    continue
+
+                for finding in project_findings:
+                    append_finding(
+                        self._normalize_finding(
+                            finding,
+                            target=target,
+                            default_origin="project_rule",
+                            provenance={"source": "project_rule"},
+                        )
+                    )
+        elif progress_callback:
+            progress_callback(
+                round((completed_steps / total_steps) * 100.0, 2),
+                "scanning_dependencies",
+                str(target),
+                "Project rules skipped for this role preset",
+            )
 
         if self.native_dependency_scanner.enabled:
             completed_steps += 1
