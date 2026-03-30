@@ -3,9 +3,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 
-from universal_security_scanner.models import Finding, ScanResult, Severity
-from universal_security_scanner.scanner.reporting import report_builder
-from universal_security_scanner.scanner.reporting.report_builder import build_report
+from codesentinelx_engine.models import Finding, ScanResult, Severity
+from codesentinelx_engine.scanner.reporting import report_builder
+from codesentinelx_engine.scanner.reporting.report_builder import build_report
 
 
 def test_report_builder_populates_active_poc_and_fix_verification(tmp_path: Path) -> None:
@@ -213,3 +213,4 @@ def test_dependency_reachability_includes_manifest_lockfile_and_advisory_data(tm
     assert "package.json" in reachability["manifest_paths"][0]
     assert "package-lock.json" in reachability["lockfile_paths"][0]
     assert reachability["advisory_verified"] is True
+

@@ -1,9 +1,9 @@
 from datetime import datetime, timezone
 from pathlib import Path
 
-from universal_security_scanner.models import Finding, ScanResult, Severity
-from universal_security_scanner.scanner.native_triage import annotate_findings
-from universal_security_scanner.scanner.reporting.report_builder import build_report
+from codesentinelx_engine.models import Finding, ScanResult, Severity
+from codesentinelx_engine.scanner.native_triage import annotate_findings
+from codesentinelx_engine.scanner.reporting.report_builder import build_report
 
 
 def test_native_triage_scores_verified_flow_finding_high_confidence() -> None:
@@ -102,3 +102,4 @@ def test_build_report_populates_rule_confidence_and_suppression_lifecycle(tmp_pa
     assert "average_rule_confidence" in lifecycle
     assert "finding_origins" in lifecycle
     assert report["executive_summary"]["assessment_confidence"] in {"High", "Medium", "Low"}
+

@@ -18,15 +18,15 @@ function Write-Step {
 }
 
 $RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$SecureScopeRoot = Join-Path $RepoRoot "SecureScope"
+$codesentinelx_desktopRoot = Join-Path $RepoRoot "codesentinelx_desktop"
 $VenvPython = Join-Path $RepoRoot ".venv\Scripts\python.exe"
 
 if (-not (Test-Path $VenvPython)) {
     throw "Virtual environment not found at $VenvPython. Run .\setup-windows.ps1 first."
 }
 
-if (-not (Test-Path (Join-Path $SecureScopeRoot "package.json"))) {
-    throw "SecureScope package.json was not found. Repository layout is incomplete."
+if (-not (Test-Path (Join-Path $codesentinelx_desktopRoot "package.json"))) {
+    throw "codesentinelx_desktop package.json was not found. Repository layout is incomplete."
 }
 
 $env:CODESENTINELX_SCANNER_ROOT = $RepoRoot
@@ -53,10 +53,11 @@ if ($EnableOllama) {
 }
 
 Write-Step "Starting CodeSentinelX desktop app"
-Push-Location $SecureScopeRoot
+Push-Location $codesentinelx_desktopRoot
 try {
     npm run dev
 }
 finally {
     Pop-Location
 }
+

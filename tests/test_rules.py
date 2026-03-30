@@ -1,7 +1,7 @@
-﻿from pathlib import Path
+from pathlib import Path
 
-from universal_security_scanner.models import Severity
-from universal_security_scanner.scanner.rules.builtin_rules import build_builtin_file_rules
+from codesentinelx_engine.models import Severity
+from codesentinelx_engine.scanner.rules.builtin_rules import build_builtin_file_rules
 
 
 def _scan_text(path: str, content: str):
@@ -52,3 +52,4 @@ def test_detects_sensitive_logging_pattern() -> None:
     findings = _scan_text("logging.py", content)
 
     assert any(item.vulnerability_type == "Sensitive Data Logged" for item in findings)
+

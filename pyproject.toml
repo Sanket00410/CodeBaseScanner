@@ -3,14 +3,14 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "universal-security-scanner"
+name = "codesentinelx-engine"
 version = "1.0.0"
-description = "Universal interactive code security scanner with executive-grade reporting"
+description = "CodeSentinelX desktop and engine for local codebase security analysis"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
-  {name = "Universal Security Scanner"}
+  {name = "CodeSentinelX"}
 ]
 dependencies = [
   "fastapi>=0.115.0",
@@ -28,15 +28,18 @@ dev = [
 ]
 
 [project.scripts]
-uss = "universal_security_scanner.cli:main"
+codesentinelx = "codesentinelx_engine.cli:main"
 
 [tool.setuptools]
 include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["universal_security_scanner*"]
+include = ["codesentinelx_engine*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+
+
+

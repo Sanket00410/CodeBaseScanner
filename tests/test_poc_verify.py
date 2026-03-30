@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from universal_security_scanner.poc_verify import ValidationContext, verify_finding
+from codesentinelx_engine.poc_verify import ValidationContext, verify_finding
 
 
 def test_sql_injection_validator_confirms_dynamic_query(tmp_path: Path) -> None:
@@ -53,3 +53,4 @@ def test_sql_injection_validator_does_not_confirm_frontend_template_literal(tmp_
 
     assert result.status != "verified"
     assert result.family == "sql-injection"
+

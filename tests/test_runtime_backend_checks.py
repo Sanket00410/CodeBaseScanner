@@ -1,4 +1,4 @@
-from universal_security_scanner.scanner import remote_targets
+from codesentinelx_engine.scanner import remote_targets
 
 
 def test_cookie_flag_findings_detects_missing_flags() -> None:
@@ -17,3 +17,4 @@ def test_public_api_path_helper() -> None:
     assert remote_targets._is_public_api_path("/swagger/index.html")
     assert remote_targets._is_public_api_path("/health")
     assert not remote_targets._is_public_api_path("/api/v1/users")
+

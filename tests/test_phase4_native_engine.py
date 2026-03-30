@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from universal_security_scanner.config import ScannerConfig
-from universal_security_scanner.scanner.engine import ScanEngine
-from universal_security_scanner.scanner.source_analysis import analyze_family
+from codesentinelx_engine.config import ScannerConfig
+from codesentinelx_engine.scanner.engine import ScanEngine
+from codesentinelx_engine.scanner.source_analysis import analyze_family
 
 
 def test_framework_aware_js_sanitizer_marks_xss_flow_as_sanitized() -> None:
@@ -62,3 +62,4 @@ def test_scan_engine_reuses_file_scan_cache_between_runs(tmp_path: Path, monkeyp
     assert second.findings
     assert cache_file.exists()
     assert calls["count"] == 1
+

@@ -4,9 +4,9 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from universal_security_scanner.models import Finding, ScanResult, Severity
-from universal_security_scanner.scanner.quality_benchmark import evaluate_quality_benchmark
-from universal_security_scanner.scanner.reporting.report_builder import build_report
+from codesentinelx_engine.models import Finding, ScanResult, Severity
+from codesentinelx_engine.scanner.quality_benchmark import evaluate_quality_benchmark
+from codesentinelx_engine.scanner.reporting.report_builder import build_report
 
 
 def _sample_benchmark_payload() -> dict:
@@ -175,3 +175,4 @@ def test_build_report_surfaces_quality_benchmark(tmp_path: Path) -> None:
     assert data_quality["quality_benchmark"]["benchmark_status"] == benchmark["benchmark_status"]
     assert data_quality["quality_benchmark"]["precision_percent"] == benchmark["precision_percent"]
     assert enterprise["quality_benchmark"]["benchmark_name"] == benchmark["benchmark_name"]
+

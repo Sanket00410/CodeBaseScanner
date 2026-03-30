@@ -2,9 +2,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from universal_security_scanner.models import Finding, ScanResult, SecurityControl, Severity
-from universal_security_scanner.scanner.reporting.exporters import ReportExporter
-from universal_security_scanner.scanner.reporting.report_builder import build_report
+from codesentinelx_engine.models import Finding, ScanResult, SecurityControl, Severity
+from codesentinelx_engine.scanner.reporting.exporters import ReportExporter
+from codesentinelx_engine.scanner.reporting.report_builder import build_report
 
 
 def _sample_report():
@@ -69,3 +69,4 @@ def test_export_existing_sarif_rejected(tmp_path) -> None:
     exporter = ReportExporter(tmp_path)
     with pytest.raises(ValueError):
         exporter.export(report, "sarif", tmp_path / "bad.sarif", report_type="existing")
+

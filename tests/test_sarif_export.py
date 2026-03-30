@@ -1,8 +1,8 @@
-﻿from datetime import datetime, timezone
+from datetime import datetime, timezone
 
-from universal_security_scanner.models import Finding, ScanResult, Severity
-from universal_security_scanner.scanner.reporting.exporters import ReportExporter
-from universal_security_scanner.scanner.reporting.report_builder import build_report
+from codesentinelx_engine.models import Finding, ScanResult, Severity
+from codesentinelx_engine.scanner.reporting.exporters import ReportExporter
+from codesentinelx_engine.scanner.reporting.report_builder import build_report
 
 
 def test_sarif_export(tmp_path) -> None:
@@ -36,3 +36,4 @@ def test_sarif_export(tmp_path) -> None:
     data = path.read_text(encoding="utf-8")
     assert "TEST-SQLI-1" in data
     assert "version" in data
+

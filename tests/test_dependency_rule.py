@@ -1,6 +1,6 @@
-﻿import json
+import json
 
-from universal_security_scanner.scanner.rules.dependency_rules import DependencyVulnerabilityRule
+from codesentinelx_engine.scanner.rules.dependency_rules import DependencyVulnerabilityRule
 
 
 def test_dependency_rule_detects_vulnerable_dependencies(tmp_path) -> None:
@@ -15,3 +15,4 @@ def test_dependency_rule_detects_vulnerable_dependencies(tmp_path) -> None:
 
     assert any("django" in (item.evidence or "") for item in findings)
     assert any("lodash" in (item.evidence or "") for item in findings)
+

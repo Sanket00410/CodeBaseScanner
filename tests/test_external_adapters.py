@@ -1,11 +1,11 @@
-﻿from pathlib import Path
+from pathlib import Path
 
-from universal_security_scanner.config import ScannerConfig
-from universal_security_scanner.models import Severity
-from universal_security_scanner.scanner.external.gitleaks_adapter import parse_gitleaks_output
-from universal_security_scanner.scanner.external.registry import external_tool_names
-from universal_security_scanner.scanner.external.semgrep_adapter import parse_semgrep_output
-from universal_security_scanner.scanner.external.trivy_adapter import parse_trivy_output
+from codesentinelx_engine.config import ScannerConfig
+from codesentinelx_engine.models import Severity
+from codesentinelx_engine.scanner.external.gitleaks_adapter import parse_gitleaks_output
+from codesentinelx_engine.scanner.external.registry import external_tool_names
+from codesentinelx_engine.scanner.external.semgrep_adapter import parse_semgrep_output
+from codesentinelx_engine.scanner.external.trivy_adapter import parse_trivy_output
 
 
 def test_external_tool_names_deduplicates_and_respects_switch() -> None:
@@ -110,3 +110,4 @@ def test_parse_gitleaks_output() -> None:
     assert len(findings) == 1
     assert findings[0].severity == Severity.HIGH
     assert findings[0].cwe == "CWE-798"
+

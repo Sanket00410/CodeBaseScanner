@@ -1,2 +1,3 @@
-﻿recursive-include universal_security_scanner/web/templates *.html
-recursive-include universal_security_scanner/web/static *.css *.js
+recursive-include codesentinelx_engine/web/templates *.html
+recursive-include codesentinelx_engine/web/static *.css *.js
+

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from universal_security_scanner.scanner import kev_catalog
+from codesentinelx_engine.scanner import kev_catalog
 
 
 def test_load_kev_catalog_from_local_override(tmp_path, monkeypatch):
@@ -38,3 +38,4 @@ def test_load_kev_catalog_from_local_override(tmp_path, monkeypatch):
 def test_normalize_cve_id_handles_noise():
     assert kev_catalog.normalize_cve_id("CVE-2026-0001 (critical)") == "CVE-2026-0001"
     assert kev_catalog.normalize_cve_id("not a cve") is None
+

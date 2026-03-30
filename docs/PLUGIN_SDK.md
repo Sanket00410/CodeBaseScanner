@@ -1,7 +1,7 @@
-﻿# Plugin SDK Guide
+# Plugin SDK Guide
 
 ## Base Contract
-Implement `BaseLanguagePlugin` from `universal_security_scanner.plugins.sdk.interfaces`.
+Implement `BaseLanguagePlugin` from `codesentinelx_engine.plugins.sdk.interfaces`.
 
 Required:
 - `metadata`: plugin id, language, version
@@ -18,7 +18,8 @@ Required:
 - Go: SQLi, command injection, weak crypto
 
 ## Adding New Plugins
-1. Create file under `universal_security_scanner/plugins/builtin` or custom package.
+1. Create file under `codesentinelx_engine/plugins/builtin` or custom package.
 2. Implement plugin class using SDK interface.
-3. Register plugin in `universal_security_scanner/plugins/loader.py`.
+3. Register plugin in `codesentinelx_engine/plugins/loader.py`.
 4. Add tests under `tests/`.
+

@@ -1,8 +1,8 @@
-﻿from datetime import datetime, timezone
+from datetime import datetime, timezone
 
-from universal_security_scanner.models import Finding, ScanResult, SecurityControl, Severity
-from universal_security_scanner.scanner.controls.analyzer import ExistingSecurityMeasuresAnalyzer
-from universal_security_scanner.scanner.reporting.report_builder import build_report
+from codesentinelx_engine.models import Finding, ScanResult, SecurityControl, Severity
+from codesentinelx_engine.scanner.controls.analyzer import ExistingSecurityMeasuresAnalyzer
+from codesentinelx_engine.scanner.reporting.report_builder import build_report
 
 
 def test_controls_analyzer_detects_existing_controls() -> None:
@@ -109,3 +109,4 @@ def test_report_has_distinct_sections() -> None:
     assert report["executive_summary"]["scan_profile"] == "codebase"
     assert report["existing_implementation_report"]["profile_compliance"]["scan_profile"] == "codebase"
     assert "owasp_top_10_2025" in report["existing_implementation_report"]["profile_compliance"]["applicable_framework_ids"]
+

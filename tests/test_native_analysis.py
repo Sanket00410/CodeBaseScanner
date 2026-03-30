@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from universal_security_scanner.config import ScannerConfig
-from universal_security_scanner.scanner.engine import ScanEngine
-from universal_security_scanner.scanner.native_analysis import NativeCodeScanner
+from codesentinelx_engine.config import ScannerConfig
+from codesentinelx_engine.scanner.engine import ScanEngine
+from codesentinelx_engine.scanner.native_analysis import NativeCodeScanner
 
 
 def test_native_code_scanner_detects_python_flow_issue() -> None:
@@ -40,3 +40,4 @@ def test_engine_adds_native_findings_without_duplicate_flow_rows(tmp_path: Path)
     result = ScanEngine(config).scan(tmp_path)
     sqli_rows = [item for item in result.findings if item.rule_id == "PY-A03-SQLI-FLOW-001"]
     assert len(sqli_rows) == 1
+

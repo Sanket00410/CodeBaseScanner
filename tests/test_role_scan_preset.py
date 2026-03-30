@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from universal_security_scanner.config import ScannerConfig
+from codesentinelx_engine.config import ScannerConfig
 
 
 @pytest.mark.parametrize(
@@ -28,3 +28,4 @@ def test_role_defaults_drive_scan_preset(monkeypatch: pytest.MonkeyPatch, role: 
     assert required_tool in config.codebase_external_tools
     if forbidden_tool:
         assert forbidden_tool not in config.codebase_external_tools
+

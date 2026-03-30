@@ -1,11 +1,11 @@
 from datetime import datetime, timezone
 from pathlib import Path
 
-from universal_security_scanner.config import ScannerConfig
-from universal_security_scanner.models import ScanResult
-from universal_security_scanner.scanner.engine import ScanEngine
-from universal_security_scanner.scanner.native_dependency_analysis import NativeDependencyScanner
-from universal_security_scanner.scanner.reporting.report_builder import build_report
+from codesentinelx_engine.config import ScannerConfig
+from codesentinelx_engine.models import ScanResult
+from codesentinelx_engine.scanner.engine import ScanEngine
+from codesentinelx_engine.scanner.native_dependency_analysis import NativeDependencyScanner
+from codesentinelx_engine.scanner.reporting.report_builder import build_report
 
 
 def test_native_dependency_scanner_flags_missing_lockfile_and_unpinned_npm(tmp_path: Path) -> None:
@@ -74,3 +74,4 @@ def test_report_builder_enriches_native_dependency_findings_with_reachability(tm
     enriched = report["vulnerability_fixed_code_report"]["findings"][0]
     assert enriched["dependency_name"] == "lodash"
     assert enriched["dependency_reachability"]["status"] == "reachable_in_code"
+

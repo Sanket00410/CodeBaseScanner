@@ -121,7 +121,7 @@ It will:
 
 - create `.venv`
 - install Python package dependencies
-- install desktop `npm` dependencies inside `SecureScope`
+- install desktop `npm` dependencies inside `codesentinelx_desktop`
 - optionally pull an Ollama model
 - optionally run validation checks
 
@@ -170,7 +170,7 @@ py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 pip install -e ".[dev]"
-cd SecureScope
+cd codesentinelx_desktop
 npm install
 npm run dev
 ```
@@ -197,7 +197,7 @@ The setup script can run:
 
 ```powershell
 python -m pytest -q tests/test_poc_verify.py tests/test_plugins.py tests/test_report_builder_validation.py
-cd SecureScope
+cd codesentinelx_desktop
 npm run typecheck
 ```
 
@@ -205,7 +205,7 @@ npm run typecheck
 
 CodeSentinelX includes a starter benchmark truth set so the quality gate section can appear on first run.
 
-- Starter file in the repo: `universal_security_scanner/resources/benchmark_truth_set.json`
+- Starter file in the repo: `codesentinelx_engine/resources/benchmark_truth_set.json`
 - Default runtime file: `exports/.integrity/benchmark_truth_set.json`
 - Optional override: set `USS_QUALITY_BENCHMARK_FILE` to a custom JSON file path
 
@@ -214,7 +214,7 @@ To use your own repo-specific truth set:
 1. Copy the starter file into the runtime location:
 
 ```powershell
-Copy-Item universal_security_scanner\resources\benchmark_truth_set.json exports\.integrity\benchmark_truth_set.json
+Copy-Item codesentinelx_engine\resources\benchmark_truth_set.json exports\.integrity\benchmark_truth_set.json
 ```
 
 2. Add benchmark cases for findings you want to measure. Each case should include:
@@ -265,7 +265,8 @@ This benchmark is meant to be honest, not decorative:
 
 ## Main Entry Points
 
-- Desktop app: `SecureScope`
-- Python engine: `universal_security_scanner`
+- Desktop app: `codesentinelx_desktop`
+- Python engine: `codesentinelx_engine`
 - Setup script: `setup-windows.ps1`
 - Run script: `run-codesentinelx.ps1`
+

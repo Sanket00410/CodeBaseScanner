@@ -1,4 +1,4 @@
-﻿name: CodeSentinelX-PR-Scan
+name: CodeSentinelX-PR-Scan
 
 on:
   pull_request:
@@ -23,11 +23,11 @@ jobs:
 
       - name: Run differential scan
         run: |
-          uss scan --path . --format json --output scan-report.json --no-progress
+          codesentinelx scan --path . --format json --output scan-report.json --no-progress
 
       - name: Convert to SARIF
         run: |
-          uss scan --path . --format sarif --output scan-report.sarif --no-progress || true
+          codesentinelx scan --path . --format sarif --output scan-report.sarif --no-progress || true
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -44,3 +44,4 @@ jobs:
             echo "Blocking merge: critical vulnerabilities detected ($CRITICAL_COUNT)."
             exit 1
           fi
+

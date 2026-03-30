@@ -1,7 +1,7 @@
-﻿from datetime import datetime, timezone
+from datetime import datetime, timezone
 
-from universal_security_scanner.models import Finding, Severity
-from universal_security_scanner.risk import calculate_risk_score, risk_rating, severity_distribution
+from codesentinelx_engine.models import Finding, Severity
+from codesentinelx_engine.risk import calculate_risk_score, risk_rating, severity_distribution
 
 
 def _finding(severity: Severity) -> Finding:
@@ -38,3 +38,4 @@ def test_risk_score_and_rating() -> None:
 
     assert score > 0
     assert risk_rating(score) in {"Low", "Medium", "High", "Critical"}
+

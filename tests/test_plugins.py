@@ -1,7 +1,7 @@
-﻿from pathlib import Path
+from pathlib import Path
 
-from universal_security_scanner.models import Severity
-from universal_security_scanner.plugins.loader import load_builtin_language_plugins
+from codesentinelx_engine.models import Severity
+from codesentinelx_engine.plugins.loader import load_builtin_language_plugins
 
 
 def _get_plugin(language: str):
@@ -69,3 +69,4 @@ def test_go_plugin_detects_weak_crypto() -> None:
     plugin = _get_plugin("go")
     findings = plugin.scan_file(Path("main.go"), "_ = md5.New()")
     assert any(item.severity in {Severity.MEDIUM, Severity.HIGH, Severity.CRITICAL} for item in findings)
+

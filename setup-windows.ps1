@@ -84,7 +84,7 @@ Write-Step "Installing Python package dependencies"
 & $VenvPython -m pip install -e ".[dev]"
 
 Write-Step "Installing desktop dependencies"
-Push-Location (Join-Path $RepoRoot "SecureScope")
+Push-Location (Join-Path $RepoRoot "codesentinelx_desktop")
 try {
     npm install
 }
@@ -104,8 +104,8 @@ if ($RunValidation) {
     Write-Step "Running focused Python validation tests"
     & $VenvPython -m pytest -q tests/test_poc_verify.py tests/test_plugins.py tests/test_report_builder_validation.py
 
-    Write-Step "Running SecureScope typecheck"
-    Push-Location (Join-Path $RepoRoot "SecureScope")
+    Write-Step "Running codesentinelx_desktop typecheck"
+    Push-Location (Join-Path $RepoRoot "codesentinelx_desktop")
     try {
         npm run typecheck
     }
@@ -121,3 +121,4 @@ if ($EnableOllama) {
 } else {
     Write-Host ".\run-codesentinelx.ps1" -ForegroundColor Yellow
 }
+
