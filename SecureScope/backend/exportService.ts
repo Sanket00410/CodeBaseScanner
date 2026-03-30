@@ -4236,7 +4236,7 @@ function renderFixesHtml(scan: ScanView): string {
       const confidenceLabel = aiFixConfidenceLabel(finding);
       const confidenceScore = aiFixConfidenceScore(finding);
       const releaseGate = String(findingAny.release_gate_action || findingAny.release_gate || "").trim() || "Track";
-      const owner = String(finding.code_owner || "").trim();
+      const owner = displayFindingOwner(finding as Partial<VulnerabilityFinding> & Record<string, unknown>);
       const module = String(finding.affected_module || "").trim() || folderFromPath(normalizePath(finding.file_path));
       const originalCode = String(finding.original_code || "").trim();
       const fixValue = String(preferredFindingFix(finding) || "").trim();
@@ -4259,7 +4259,7 @@ function renderFixesHtml(scan: ScanView): string {
       sectionPrimaryLocation.push(`<table class="results"><tbody>
         <tr><th>Full Path + Line</th><td>${escapeHtml(fullLocation)}</td></tr>
         <tr><th>Module</th><td>${escapeHtml(module || "N/A")}</td></tr>
-        <tr><th>Owner</th><td>${escapeHtml(owner || "N/A")}</td></tr>
+        <tr><th>Owner</th><td>${escapeHtml(owner)}</td></tr>
       </tbody></table>`);
 
       sectionDecision.push(`<h4>Developer Decision Block</h4>`);
@@ -4302,7 +4302,9 @@ function renderFixesHtml(scan: ScanView): string {
         const activePocMetaRows = [
           String(activePoc.verification_basis || "").trim() ? `<tr><th>Verification Basis</th><td>${escapeHtml(String(activePoc.verification_basis || ""))}</td></tr>` : "",
           pocReason ? `<tr><th>Reason</th><td>${escapeHtml(pocReason)}</td></tr>` : "",
-          isRenderableDisplayValue(activePoc.exit_code) ? `<tr><th>Exit Code</th><td>${escapeHtml(String(activePoc.exit_code))}</td></tr>` : "",
+          isRenderableDisplayValue(activePoc.exit_code)
+            ? `<tr><th>Exit Code</th><td title="${escapeHtml(exitCodeHoverText(activePoc.exit_code))}">${escapeHtml(String(activePoc.exit_code))}</td></tr>`
+            : "",
           pocResolvedFile ? `<tr><th>Resolved File</th><td>${escapeHtml(pocResolvedFile)}</td></tr>` : "",
           isRenderableDisplayValue(pocLine) ? `<tr><th>Line</th><td>${escapeHtml(String(pocLine))}</td></tr>` : "",
           String(activePoc.family || "").trim() ? `<tr><th>Family</th><td>${escapeHtml(String(activePoc.family || ""))}</td></tr>` : "",
@@ -4384,9 +4386,11 @@ function renderFixesHtml(scan: ScanView): string {
 
       sectionMetadata.push(`<h4>Metadata & Evidence</h4>`);
       const metadataRows = [
-        isRenderableDisplayValue(findingAny.source_tool) ? `<tr><th>Source Tool</th><td>${escapeHtml(String(findingAny.source_tool || ""))}</td></tr>` : "",
         isRenderableDisplayValue(findingAny.report_generated_at) ? `<tr><th>Timestamp</th><td>${escapeHtml(String(findingAny.report_generated_at || ""))}</td></tr>` : "",
         hasAdvisories ? `<tr><th>CVE / Advisory IDs</th><td>${advisoryLinks}</td></tr>` : "",
+        isRenderableDisplayValue(findingAny.source_tool)
+          ? `<tr><th>Source Tool</th><td>${escapeHtml(displayReportToolName(findingAny.source_tool || "CodeSentinelX"))}</td></tr>`
+          : "",
         dependencyAuthenticitySummary(finding) ? `<tr><th>Dependency Authenticity</th><td>${escapeHtml(dependencyAuthenticitySummary(finding))}<br><span class="muted">${escapeHtml(dependencyAuthenticityDetail(finding))}</span></td></tr>` : "",
         isRenderableDisplayValue(finding.evidence_replay_pack?.record_sha256) ? `<tr><th>Replay Record SHA256</th><td><code>${escapeHtml(String(finding.evidence_replay_pack?.record_sha256 || ""))}</code></td></tr>` : "",
         isRenderableDisplayValue(deterministicReplay?.mode) ? `<tr><th>Replay Mode</th><td>${escapeHtml(String(deterministicReplay?.mode || ""))}</td></tr>` : "",
@@ -4408,7 +4412,7 @@ function renderFixesHtml(scan: ScanView): string {
           return `<tr>
           <td>${escapeHtml(fullFindingLocation(scan.report.executive_summary.target_path, item.file_path, Number(item.line_number || 1)))}</td>
           <td>${escapeHtml(String(itemAny.workflow_status || "Open"))}</td>
-          <td>${escapeHtml(String(itemAny.source_tool || "scanner"))}</td>
+          <td>${escapeHtml(displayReportToolName(itemAny.source_tool || itemAny.tool || "CodeSentinelX"))}</td>
         </tr>`;
         })
         .join("");
@@ -4683,7 +4687,7 @@ function renderFixesHtml(scan: ScanView): string {
 
         input.addEventListener("input", applyQueueFilters);
         if (severityInput) {
-          severityInput.addEventListener("input", applyQueueFilters);
+          severityInput.addEventListener("change", applyQueueFilters);
         }
       }
 
@@ -4879,6 +4883,17 @@ function renderCombinedHtml(scan: ScanView): string {
       const lead = group.findings[0];
       const leadCwe = String(lead?.cwe_id || "").trim() || "N/A";
       const leadOwasp = String(lead?.owasp_mapping || "").trim() || "N/A";
+      const instanceRows = group.findings
+        .map((finding) => {
+          const findingAny = finding as unknown as Record<string, unknown>;
+          return `<tr>
+            <td>${escapeHtml(fullFindingLocation(scan.report.executive_summary.target_path, finding.file_path, Number(finding.line_number || 1)))}</td>
+            <td>${escapeHtml(displayFindingOwner(finding as Partial<VulnerabilityFinding> & Record<string, unknown>))}</td>
+            <td>${escapeHtml(String(findingAny.workflow_status || "Open"))}</td>
+            <td>${escapeHtml(displayReportToolName(findingAny.source_tool || findingAny.tool || "CodeSentinelX"))}</td>
+          </tr>`;
+        })
+        .join("");
       return `<section id="${escapeHtml(combinedAlertAnchorByGroup.get(group.id) || stableAnchorId("combined-alert", group.id))}" class="fix-detail" style="margin:0 0 12px">
         <h3>[${escapeHtml(group.severity)}] ${escapeHtml(group.title)} (${group.count})</h3>
         <table class="results">
@@ -4890,6 +4905,13 @@ function renderCombinedHtml(scan: ScanView): string {
           ${isRenderableDisplayValue(lead.recommendation) ? `<tr><th>Recommendation</th><td>${escapeHtml(String(lead.recommendation || ""))}</td></tr>` : ""}
           <tr><th>Top Location</th><td>${escapeHtml(fullFindingLocation(scan.report.executive_summary.target_path, lead.file_path, Number(lead.line_number || 1)))}</td></tr>
         </table>
+        <h4>Instances</h4>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>File / Line</th><th>Owner</th><th>Workflow Status</th><th>Tool</th></tr></thead>
+            <tbody>${instanceRows || "<tr><td colspan='4'>No instances.</td></tr>"}</tbody>
+          </table>
+        </div>
       </section>`;
     })
     .join("");
@@ -5041,24 +5063,6 @@ function renderCombinedHtml(scan: ScanView): string {
       </div>
     </section>
 
-    ${topRiskRows
-      ? `<section class="section">
-      <div class="table-frame">
-        <h2 style="padding:12px 14px 0">Top Prioritized Findings</h2>
-        <div class="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>ID</th><th>Severity</th><th>Issue</th><th>CVSS</th><th>Location</th><th>CWE</th><th>OWASP</th>
-              </tr>
-            </thead>
-            <tbody>${topRiskRows}</tbody>
-          </table>
-        </div>
-      </div>
-    </section>`
-      : ""}
-
     ${combinedHasAlertRows
       ? `<section class="section">
       <div class="table-frame">
@@ -5078,6 +5082,24 @@ function renderCombinedHtml(scan: ScanView): string {
       <div class="table-frame" style="padding:12px 14px">
         <h2>Detailed Findings</h2>
         ${combinedDetailedSections}
+      </div>
+    </section>`
+      : ""}
+
+    ${topRiskRows
+      ? `<section class="section">
+      <div class="table-frame">
+        <h2 style="padding:12px 14px 0">Top Prioritized Findings</h2>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th><th>Severity</th><th>Issue</th><th>CVSS</th><th>Location</th><th>CWE</th><th>OWASP</th>
+              </tr>
+            </thead>
+            <tbody>${topRiskRows}</tbody>
+          </table>
+        </div>
       </div>
     </section>`
       : ""}
@@ -5696,6 +5718,39 @@ function fullFindingLocation(targetPath: string, filePath: string, line: number)
     return `${file}:${lineNo}`;
   }
   return `${targetRoot}/${file}:${lineNo}`;
+}
+
+function displayFindingOwner(finding: Partial<VulnerabilityFinding> & Record<string, unknown>): string {
+  const candidates = [
+    String(finding.code_owner || "").trim(),
+    String(finding.suppression_owner || "").trim(),
+    String(finding.assigned_owner || "").trim(),
+    String(finding.owner || "").trim(),
+    String(finding.module_owner || "").trim(),
+  ].filter(Boolean);
+  return candidates[0] || "Unassigned";
+}
+
+function displayReportToolName(tool: unknown): string {
+  const value = String(tool || "").trim();
+  if (!value) {
+    return "CodeSentinelX";
+  }
+  const normalized = value.toLowerCase();
+  if (["scanner", "codebasescanner", "codesentinelx", "universal_security_scanner", "universal security scanner"].includes(normalized)) {
+    return "CodeSentinelX";
+  }
+  return value;
+}
+
+function exitCodeHoverText(exitCode: unknown): string {
+  const value = Number(exitCode);
+  if (!Number.isFinite(value)) {
+    return "Exit code meaning: the tool did not return a numeric status. Some tools report structured status instead of a numeric code.";
+  }
+  return value === 0
+    ? "Exit code 0 usually means the command succeeded."
+    : "Non-zero exit codes usually mean the command failed, timed out, or returned a tool-specific warning/error state.";
 }
 
 function singleLine(value: string): string {

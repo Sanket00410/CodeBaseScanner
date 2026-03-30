@@ -1860,6 +1860,11 @@ def _build_enterprise_assurance(
         recommendation = "Resolve critical findings and failed analyzer coverage before relying on this report for release sign-off."
     elif status == "warning":
         recommendation = "Increase analyzer coverage and resolve high-priority findings before production deployment."
+    if any("codeql" in str(item).lower() or "query pack" in str(item).lower() for item in blockers):
+        recommendation = (
+            f"{recommendation} CodeQL coverage is currently incomplete; install the repository-specific packs or point CodeQL at the correct search path before rerunning. "
+            "Management should treat this as reduced confidence in language coverage, and developers should treat it as a tool-setup issue rather than a product defect."
+        )
     if benchmark and benchmark_status == "blocked" and benchmark_advisories:
         recommendation = f"{recommendation} Scanner quality benchmark requires attention before sign-off."
     advisories = benchmark_advisories
