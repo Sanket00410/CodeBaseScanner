@@ -1,4 +1,4 @@
-import { createWriteStream, existsSync, mkdirSync, readFileSync } from "node:fs";
+﻿import { createWriteStream, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
@@ -715,49 +715,119 @@ export class ExportService {
     }
 
     await new Promise<void>((resolve, reject) => {
-      const document = new PDFDocument({ margin: 50, size: "A4" });
+      const document = new PDFDocument({ margin: 44, size: "A4" });
       const stream = createWriteStream(pdfPath);
       stream.on("finish", () => resolve());
       stream.on("error", reject);
       document.on("error", reject);
+      document.on("pageAdded", () => {
+        drawPdfReportBackdrop(document);
+        document.y = document.page.margins.top;
+      });
       document.pipe(stream);
+      drawPdfReportBackdrop(document);
 
       const lines = String(markdown || "").replace(/\r\n/g, "\n").split("\n");
-      document.fillColor("#0b2038").font("Helvetica-Bold").fontSize(20).text("CodeSentinelX User Guide", { align: "left" });
-      document.moveDown(0.4);
-      document.fillColor("#36597b").font("Helvetica").fontSize(9).text(`Generated: ${new Date().toISOString()}`);
-      document.moveDown(0.8);
+      const width = document.page.width - document.page.margins.left - document.page.margins.right;
+      const contentLeft = document.page.margins.left;
 
+      const ensureSpace = (height: number): void => {
+        if (document.y + height > document.page.height - document.page.margins.bottom - 18) {
+          document.addPage();
+        }
+      };
+
+      const renderText = (text: string, options?: { size?: number; color?: string; indent?: number; bold?: boolean; widthOffset?: number }): void => {
+        const size = Number(options?.size || 9.25);
+        const color = String(options?.color || "#dce9f7");
+        const indent = Number(options?.indent || 0);
+        const textWidth = width - Number(options?.widthOffset || 0);
+        ensureSpace(document.heightOfString(text, { width: textWidth - indent, lineGap: 1.35 }) + 6);
+        document.fillColor(color).font(options?.bold ? "Helvetica-Bold" : "Helvetica").fontSize(size).text(text, contentLeft + indent, document.y, {
+          width: textWidth - indent,
+          lineGap: 1.35,
+        });
+      };
+
+      const renderSubHeading = (text: string): void => {
+        ensureSpace(22);
+        document.fillColor("#8fe0ff").font("Helvetica-Bold").fontSize(11.5).text(text, contentLeft, document.y, { width });
+        document.moveDown(0.15);
+      };
+
+      const renderBullet = (text: string): void => {
+        ensureSpace(16);
+        document.fillColor("#7fcfff").font("Helvetica-Bold").fontSize(10).text("•", contentLeft, document.y, { width: 10 });
+        document.fillColor("#dce9f7").font("Helvetica").fontSize(9.2).text(text, contentLeft + 14, document.y, { width: width - 14, lineGap: 1.3 });
+      };
+
+      const renderNumber = (text: string): void => {
+        ensureSpace(16);
+        document.fillColor("#8fe0ff").font("Helvetica-Bold").fontSize(9.2).text(text, contentLeft, document.y, { width, lineGap: 1.3 });
+      };
+
+      const renderParagraph = (text: string): void => {
+        const paragraph = String(text || "").trim();
+        if (!paragraph) {
+          document.moveDown(0.32);
+          return;
+        }
+        ensureSpace(document.heightOfString(paragraph, { width, lineGap: 1.35 }) + 5);
+        document.fillColor("#dce9f7").font("Helvetica").fontSize(9.25).text(paragraph, contentLeft, document.y, { width, lineGap: 1.35 });
+      };
+
+      writePdfHero(document, "CodeSentinelX User Guide", [
+        "Built around the actual UI so users can follow the same flow they see in the app.",
+        "Use the top bar, left navigation, Help search, and Reports History to move faster.",
+      ]);
+      document.moveDown(0.3);
+
+      let sawMainTitle = false;
+      let beforeFirstSection = true;
+      let introCount = 0;
       for (const rawLine of lines) {
         const line = String(rawLine || "");
-        if (!line.trim()) {
-          document.moveDown(0.45);
+        const trimmed = line.trim();
+        if (!trimmed) {
+          document.moveDown(0.22);
           continue;
         }
         if (line.startsWith("# ")) {
-          document.fillColor("#0d2744").font("Helvetica-Bold").fontSize(16).text(line.slice(2).trim());
-          document.moveDown(0.3);
+          sawMainTitle = true;
           continue;
         }
         if (line.startsWith("## ")) {
-          document.fillColor("#12355c").font("Helvetica-Bold").fontSize(13).text(line.slice(3).trim());
-          document.moveDown(0.2);
+          beforeFirstSection = false;
+          writePdfSectionHeader(document, line.slice(3).trim());
           continue;
         }
         if (line.startsWith("### ")) {
-          document.fillColor("#1a4776").font("Helvetica-Bold").fontSize(11).text(line.slice(4).trim());
-          document.moveDown(0.15);
+          if (beforeFirstSection && introCount < 2) {
+            renderSubHeading(line.slice(4).trim());
+            introCount += 1;
+            continue;
+          }
+          renderSubHeading(line.slice(4).trim());
           continue;
         }
         if (line.startsWith("- ")) {
-          document.fillColor("#102a48").font("Helvetica").fontSize(10).text(`• ${line.slice(2).trim()}`, { indent: 16 });
+          if (beforeFirstSection && introCount < 4) {
+            renderBullet(line.slice(2).trim());
+            introCount += 1;
+          } else {
+            renderBullet(line.slice(2).trim());
+          }
           continue;
         }
         if (/^\d+\.\s+/.test(line)) {
-          document.fillColor("#102a48").font("Helvetica").fontSize(10).text(line.trim(), { indent: 12 });
+          renderNumber(trimmed);
           continue;
         }
-        document.fillColor("#102a48").font("Helvetica").fontSize(10).text(line.trim());
+        renderParagraph(line);
+      }
+
+      if (!sawMainTitle) {
+        renderParagraph("The guide markdown did not contain a top-level title. The PDF was rendered from the available content.");
       }
 
       document.end();
@@ -765,7 +835,6 @@ export class ExportService {
 
     return pdfPath;
   }
-
   resolveOutputPath(
     scan: ScanView,
     reportType: ExportRequest["reportType"],
@@ -4147,38 +4216,84 @@ function renderFixesHtml(scan: ScanView): string {
       const activePoc = finding.active_poc;
       const fixVerification = finding.fix_verification;
       const blockParts: string[] = [];
-      blockParts.push(`<h3>[${escapeHtml(finding.severity)}] ${escapeHtml(normalizedFindingTitle(finding))}</h3>`);
-      blockParts.push(`<p><strong>Location:</strong> ${escapeHtml(normalizePath(finding.file_path))}:${finding.line_number || 1}</p>`);
-      const cweValue = renderCweLink(finding.cwe_id || "");
-      const owaspValue = String(finding.owasp_mapping || "").trim();
-      const cweOwaspParts = [
-        cweValue ? `<strong>CWE:</strong> ${cweValue}` : "",
-        owaspValue ? `<strong>OWASP:</strong> ${escapeHtml(owaspValue)}` : "",
-        `<strong>CVSS:</strong> ${renderCvssLink(finding.cvss_score)}`,
-      ].filter(Boolean);
-      blockParts.push(`<p>${cweOwaspParts.join(" | ")}</p>`);
-      if (hasAdvisories) {
-        blockParts.push(`<p><strong>CVE / Advisory IDs:</strong> ${advisoryLinks}</p>`);
-      }
-      if (isRenderableDisplayValue(finding.recommendation)) {
-        blockParts.push(`<p><strong>Recommendation:</strong> ${escapeHtml(String(finding.recommendation || ""))}</p>`);
-      }
-      if (dependencyAuthenticitySummary(finding)) {
-        blockParts.push(`<p><strong>Dependency Authenticity:</strong> ${escapeHtml(dependencyAuthenticitySummary(finding))}<br><span class="muted">${escapeHtml(dependencyAuthenticityDetail(finding))}</span></p>`);
-      }
-      if (isRenderableDisplayValue(finding.attack_scenario)) {
-        blockParts.push(`<p><strong>Attack Scenario:</strong> ${escapeHtml(String(finding.attack_scenario || ""))}</p>`);
-      }
-      if (isRenderableDisplayValue(finding.exploitation_example)) {
-        blockParts.push(`<p><strong>Exploitation Path:</strong> ${escapeHtml(String(finding.exploitation_example || ""))}</p>`);
-      }
+      const sectionIssue: string[] = [];
+      const sectionPrimaryLocation: string[] = [];
+      const sectionDecision: string[] = [];
+      const sectionWhatToChange: string[] = [];
+      const sectionValidationCommands: string[] = [];
+      const sectionExecutionResults: string[] = [];
+      const sectionSecurityContext: string[] = [];
+      const sectionAi: string[] = [];
+      const sectionMetadata: string[] = [];
+      const sectionInstances: string[] = [];
+
+      const findingAny = finding as unknown as Record<string, unknown>;
+      const fullLocation = fullFindingLocation(scan.report.executive_summary.target_path, finding.file_path, Number(finding.line_number || 1));
+      const findingUid = String(finding.finding_uid || "").trim();
+      const ruleFamily = String(finding.vulnerability_type || "").trim();
+      const ruleId = String(finding.rule_id || "").trim();
+      const decisionStatus = fixVerificationResultText(fixVerification);
+      const confidenceLabel = aiFixConfidenceLabel(finding);
+      const confidenceScore = aiFixConfidenceScore(finding);
+      const releaseGate = String(findingAny.release_gate_action || findingAny.release_gate || "").trim() || "Track";
+      const owner = String(finding.code_owner || "").trim();
+      const module = String(finding.affected_module || "").trim() || folderFromPath(normalizePath(finding.file_path));
+      const originalCode = String(finding.original_code || "").trim();
+      const fixValue = String(preferredFindingFix(finding) || "").trim();
+      const aiSummary = String(resolvedAiRemediationSummary(finding) || "").trim();
+      const aiSteps = String(resolvedAiValidationSteps(finding) || "").trim();
       const proofText = String(finding.proof_of_concept || "").trim();
-      if (proofText) {
-        blockParts.push(`<h4>PoC Validation</h4><pre class="evidence-scroll">${escapeHtml(proofText)}</pre>`);
+      const patchPreview = String(finding.patch_preview || "").trim();
+      const recommendation = String(finding.recommendation || "").trim();
+      const groundingNotes = aiGroundingNotes(finding);
+
+      sectionIssue.push(`<h3>[${escapeHtml(finding.severity)}] ${escapeHtml(normalizedFindingTitle(finding))}</h3>`);
+      sectionIssue.push(`<table class="results"><tbody>
+        <tr><th>Severity</th><td>${escapeHtml(finding.severity)}</td></tr>
+        <tr><th>Title</th><td>${escapeHtml(normalizedFindingTitle(finding))}</td></tr>
+        <tr><th>Rule / Family</th><td>${escapeHtml(ruleFamily || "N/A")}${ruleId ? ` | <code>${escapeHtml(ruleId)}</code>` : ""}</td></tr>
+        <tr><th>Finding ID</th><td>${findingUid ? `<code>${escapeHtml(findingUid)}</code>` : "N/A"}</td></tr>
+      </tbody></table>`);
+
+      sectionPrimaryLocation.push(`<h4>Primary Location</h4>`);
+      sectionPrimaryLocation.push(`<table class="results"><tbody>
+        <tr><th>Full Path + Line</th><td>${escapeHtml(fullLocation)}</td></tr>
+        <tr><th>Module</th><td>${escapeHtml(module || "N/A")}</td></tr>
+        <tr><th>Owner</th><td>${escapeHtml(owner || "N/A")}</td></tr>
+      </tbody></table>`);
+
+      sectionDecision.push(`<h4>Developer Decision Block</h4>`);
+      sectionDecision.push(`<table class="results"><tbody>
+        <tr><th>Fix Verification Status</th><td>${escapeHtml(decisionStatus || "inconclusive")}</td></tr>
+        <tr><th>Fix Confidence</th><td>${escapeHtml(confidenceLabel)} (${confidenceScore.toFixed(2)})</td></tr>
+        <tr><th>Release Gate</th><td>${escapeHtml(releaseGate)}</td></tr>
+      </tbody></table>`);
+
+      sectionWhatToChange.push(`<h4>What To Change</h4>`);
+      if (originalCode || fixValue) {
+        sectionWhatToChange.push(`<div class="code-grid">`);
+        if (originalCode) {
+          sectionWhatToChange.push(`<div><h4>Original Code</h4><pre>${escapeHtml(truncateForReport(originalCode, 1200))}</pre></div>`);
+        }
+        if (fixValue) {
+          sectionWhatToChange.push(`<div><h4>${escapeHtml(fixArtifactLabel(finding))}</h4><pre>${escapeHtml(truncateForReport(preferredFindingFix(finding), 1200))}</pre></div>`);
+        }
+        sectionWhatToChange.push(`</div>`);
+      }
+      if (recommendation) {
+        sectionWhatToChange.push(`<p><strong>Reason this fix is correct:</strong> ${escapeHtml(recommendation)}</p>`);
+      } else if (groundingNotes) {
+        sectionWhatToChange.push(`<p><strong>Reason this fix is correct:</strong> ${escapeHtml(groundingNotes)}</p>`);
+      }
+
+      sectionValidationCommands.push(`<h4>Validation Commands (Copy-ready)</h4>`);
+      const pocCommandMatch = proofText.match(/Replay Command:\s*([^\n\r]+)/i);
+      if (pocCommandMatch?.[1]) {
+        sectionValidationCommands.push(`<h4>PoC Validation Command</h4><pre class="evidence-scroll">${escapeHtml(String(pocCommandMatch[1]).trim())}</pre>`);
       }
       const activePocStatus = activePocStatusText(activePoc);
       if (activePoc && String(activePoc.status || activePoc.command || activePoc.output || "").trim() && activePocStatus !== "not_executed") {
-        blockParts.push(`<p><strong>Active PoC Status:</strong> ${escapeHtml(activePocStatus)}</p>`);
+        sectionValidationCommands.push(`<h4>Active PoC Command</h4><pre class="evidence-scroll">${escapeHtml(activePocCommandText(activePoc))}</pre>`);
         const activePocAny = activePoc as unknown as Record<string, unknown>;
         const pocReason = String(activePocAny.reason || "").trim();
         const pocResolvedFile = String(activePocAny.resolved_file || "").trim();
@@ -4196,13 +4311,7 @@ function renderFixesHtml(scan: ScanView): string {
           .filter(Boolean)
           .join("");
         if (activePocMetaRows) {
-          blockParts.push(`<table class="results">${activePocMetaRows}</table>`);
-        }
-        if (String(activePoc.command || "").trim()) {
-          blockParts.push(`<h4>Active PoC Command</h4><pre class="evidence-scroll">${escapeHtml(activePocCommandText(activePoc))}</pre>`);
-        }
-        if (String(activePoc.output || "").trim() && activeStatus !== "skipped") {
-          blockParts.push(`<h4>Active PoC Output</h4><pre class="evidence-scroll">${escapeHtml(activePocOutputText(activePoc))}</pre>`);
+          sectionMetadata.push(`<table class="results">${activePocMetaRows}</table>`);
         }
       }
       if (fixVerification && (
@@ -4213,60 +4322,113 @@ function renderFixesHtml(scan: ScanView): string {
         fixVerification.build_verification ||
         fixVerification.test_verification
       )) {
-        blockParts.push(`<h4>Fix Verification</h4>`);
-        if (String(fixVerification.result || "").trim()) {
-          blockParts.push(`<p><strong>Result:</strong> ${escapeHtml(fixVerificationResultText(fixVerification))}</p>`);
-        }
-        if (String(fixVerification.reason || "").trim()) {
-          blockParts.push(`<p><strong>Reason:</strong> ${escapeHtml(fixVerificationReasonText(fixVerification))}</p>`);
-        }
         if (String(fixVerification.post_fix_execution?.command || "").trim()) {
-          blockParts.push(`<h4>Post-Fix Command</h4><pre class="evidence-scroll">${escapeHtml(String(fixVerification.post_fix_execution?.command || ""))}</pre>`);
-        }
-        if (String(fixVerification.post_fix_execution?.output || "").trim()) {
-          blockParts.push(`<h4>Post-Fix Output</h4><pre class="evidence-scroll">${escapeHtml(String(fixVerification.post_fix_execution?.output || ""))}</pre>`);
+          sectionValidationCommands.push(`<h4>Post-Fix Verification Command</h4><pre class="evidence-scroll">${escapeHtml(String(fixVerification.post_fix_execution?.command || ""))}</pre>`);
         }
         if (fixVerification.build_verification && (String(fixVerification.build_verification.command || "").trim() || String(fixVerification.build_verification.output || "").trim())) {
-          blockParts.push(`<h4>Workspace Build Command</h4><pre class="evidence-scroll">${escapeHtml(String(fixVerification.build_verification.command || ""))}</pre>`);
-          if (String(fixVerification.build_verification.output || "").trim()) {
-            blockParts.push(`<h4>Workspace Build Output</h4><pre class="evidence-scroll">${escapeHtml(String(fixVerification.build_verification.output || ""))}</pre>`);
-          }
+          sectionValidationCommands.push(`<h4>Build/Test Command (Build)</h4><pre class="evidence-scroll">${escapeHtml(String(fixVerification.build_verification.command || ""))}</pre>`);
         }
         if (fixVerification.test_verification && (String(fixVerification.test_verification.command || "").trim() || String(fixVerification.test_verification.output || "").trim())) {
-          blockParts.push(`<h4>Workspace Test Command</h4><pre class="evidence-scroll">${escapeHtml(String(fixVerification.test_verification.command || ""))}</pre>`);
-          if (String(fixVerification.test_verification.output || "").trim()) {
-            blockParts.push(`<h4>Workspace Test Output</h4><pre class="evidence-scroll">${escapeHtml(String(fixVerification.test_verification.output || ""))}</pre>`);
-          }
+          sectionValidationCommands.push(`<h4>Build/Test Command (Test)</h4><pre class="evidence-scroll">${escapeHtml(String(fixVerification.test_verification.command || ""))}</pre>`);
+        }
+
+        sectionExecutionResults.push(`<h4>Execution Results</h4>`);
+        if (proofText) {
+          sectionExecutionResults.push(`<h4>PoC Validation Output</h4><pre class="evidence-scroll">${escapeHtml(proofText)}</pre>`);
+        }
+        if (activePoc && String(activePoc.output || "").trim() && activeStatus !== "skipped") {
+          sectionExecutionResults.push(`<h4>Active PoC Output</h4><pre class="evidence-scroll">${escapeHtml(activePocOutputText(activePoc))}</pre>`);
+        }
+        if (String(fixVerification.post_fix_execution?.output || "").trim()) {
+          sectionExecutionResults.push(`<h4>Post-Fix Output</h4><pre class="evidence-scroll">${escapeHtml(String(fixVerification.post_fix_execution?.output || ""))}</pre>`);
+        }
+        if (fixVerification.build_verification && String(fixVerification.build_verification.output || "").trim()) {
+          sectionExecutionResults.push(`<h4>Build/Test Output (Build)</h4><pre class="evidence-scroll">${escapeHtml(String(fixVerification.build_verification.output || ""))}</pre>`);
+        }
+        if (fixVerification.test_verification && String(fixVerification.test_verification.output || "").trim()) {
+          sectionExecutionResults.push(`<h4>Build/Test Output (Test)</h4><pre class="evidence-scroll">${escapeHtml(String(fixVerification.test_verification.output || ""))}</pre>`);
+        }
+        if (String(fixVerification.reason || "").trim()) {
+          sectionExecutionResults.push(`<p><strong>Verification Reason:</strong> ${escapeHtml(fixVerificationReasonText(fixVerification))}</p>`);
         }
       }
-      const originalCode = String(finding.original_code || "").trim();
-      const fixValue = String(preferredFindingFix(finding) || "").trim();
-      if (originalCode || fixValue) {
-        blockParts.push(`<div class="code-grid">`);
-        if (originalCode) {
-          blockParts.push(`<div><h4>Original Code</h4><pre>${escapeHtml(truncateForReport(originalCode, 1200))}</pre></div>`);
-        }
-        if (fixValue) {
-          blockParts.push(`<div><h4>${escapeHtml(fixArtifactLabel(finding))}</h4><pre>${escapeHtml(truncateForReport(preferredFindingFix(finding), 1200))}</pre></div>`);
-        }
-        blockParts.push(`</div>`);
+
+      sectionSecurityContext.push(`<h4>Security Context</h4>`);
+      const cweValue = renderCweLink(finding.cwe_id || "");
+      const owaspValue = String(finding.owasp_mapping || "").trim();
+      const securityRows = [
+        cweValue ? `<tr><th>CWE</th><td>${cweValue}</td></tr>` : "",
+        owaspValue ? `<tr><th>OWASP</th><td>${escapeHtml(owaspValue)}</td></tr>` : "",
+        `<tr><th>CVSS</th><td>${renderCvssLink(finding.cvss_score)}</td></tr>`,
+        isRenderableDisplayValue(finding.attack_scenario) ? `<tr><th>Attack Scenario</th><td>${escapeHtml(String(finding.attack_scenario || ""))}</td></tr>` : "",
+        isRenderableDisplayValue(finding.exploitation_example) ? `<tr><th>Exploitation Path</th><td>${escapeHtml(String(finding.exploitation_example || ""))}</td></tr>` : "",
+        isRenderableDisplayValue(finding.business_impact) ? `<tr><th>Business Impact</th><td>${escapeHtml(String(finding.business_impact || ""))}</td></tr>` : "",
+      ]
+        .filter(Boolean)
+        .join("");
+      if (securityRows) {
+        sectionSecurityContext.push(`<table class="results">${securityRows}</table>`);
       }
-      const aiSummary = String(resolvedAiRemediationSummary(finding) || "").trim();
+
+      sectionAi.push(`<h4>AI Guidance</h4>`);
       if (aiSummary) {
-        blockParts.push(`<h4>AI Remediation Summary</h4><pre class="evidence-scroll">${escapeHtml(aiSummary)}</pre>`);
+        sectionAi.push(`<h4>AI Remediation Summary</h4><pre class="evidence-scroll">${escapeHtml(aiSummary)}</pre>`);
       }
       if (String(aiFixConfidenceLabel(finding) || "").trim()) {
-        blockParts.push(`<p><strong>AI Fix Confidence:</strong> ${escapeHtml(aiFixConfidenceLabel(finding))} (${aiFixConfidenceScore(finding).toFixed(2)}) | <strong>Grounded:</strong> ${escapeHtml(aiGroundingStatus(finding))} | <strong>Source:</strong> ${escapeHtml(String(finding.ai_fix_source || "local-evidence-driven:evidence-rules-v1"))}</p>`);
-        blockParts.push(`<p><strong>Grounding Notes:</strong> ${escapeHtml(aiGroundingNotes(finding))}</p>`);
+        sectionAi.push(`<p><strong>AI Fix Confidence:</strong> ${escapeHtml(aiFixConfidenceLabel(finding))} (${aiFixConfidenceScore(finding).toFixed(2)}) | <strong>Grounded:</strong> ${escapeHtml(aiGroundingStatus(finding))} | <strong>Source:</strong> ${escapeHtml(String(finding.ai_fix_source || "local-evidence-driven:evidence-rules-v1"))}</p>`);
+        sectionAi.push(`<p><strong>Grounding Notes:</strong> ${escapeHtml(aiGroundingNotes(finding))}</p>`);
       }
-      const aiSteps = String(resolvedAiValidationSteps(finding) || "").trim();
       if (aiSteps) {
-        blockParts.push(`<h4>AI Validation Steps</h4><pre class="evidence-scroll">${escapeHtml(aiSteps)}</pre>`);
+        sectionAi.push(`<h4>AI Validation Steps</h4><pre class="evidence-scroll">${escapeHtml(aiSteps)}</pre>`);
       }
-      const patchPreview = String(finding.patch_preview || "").trim();
+
+      sectionMetadata.push(`<h4>Metadata & Evidence</h4>`);
+      const metadataRows = [
+        isRenderableDisplayValue(findingAny.source_tool) ? `<tr><th>Source Tool</th><td>${escapeHtml(String(findingAny.source_tool || ""))}</td></tr>` : "",
+        isRenderableDisplayValue(findingAny.report_generated_at) ? `<tr><th>Timestamp</th><td>${escapeHtml(String(findingAny.report_generated_at || ""))}</td></tr>` : "",
+        hasAdvisories ? `<tr><th>CVE / Advisory IDs</th><td>${advisoryLinks}</td></tr>` : "",
+        dependencyAuthenticitySummary(finding) ? `<tr><th>Dependency Authenticity</th><td>${escapeHtml(dependencyAuthenticitySummary(finding))}<br><span class="muted">${escapeHtml(dependencyAuthenticityDetail(finding))}</span></td></tr>` : "",
+        isRenderableDisplayValue(finding.evidence_replay_pack?.record_sha256) ? `<tr><th>Replay Record SHA256</th><td><code>${escapeHtml(String(finding.evidence_replay_pack?.record_sha256 || ""))}</code></td></tr>` : "",
+        isRenderableDisplayValue(deterministicReplay?.mode) ? `<tr><th>Replay Mode</th><td>${escapeHtml(String(deterministicReplay?.mode || ""))}</td></tr>` : "",
+        isRenderableDisplayValue(reportIntegrity?.report_sha256) ? `<tr><th>Report SHA256</th><td><code>${escapeHtml(String(reportIntegrity?.report_sha256 || ""))}</code></td></tr>` : "",
+      ]
+        .filter(Boolean)
+        .join("");
+      if (metadataRows) {
+        sectionMetadata.push(`<table class="results">${metadataRows}</table>`);
+      }
+
+      sectionInstances.push(`<h4>Instances</h4>`);
+      const siblingKey = `${normalizedFindingTitle(finding)}::${String(finding.cwe_id || "").toUpperCase()}::${String(finding.owasp_mapping || "").toUpperCase()}`;
+      const siblingRows = findings
+        .filter((item) => `${normalizedFindingTitle(item)}::${String(item.cwe_id || "").toUpperCase()}::${String(item.owasp_mapping || "").toUpperCase()}` === siblingKey)
+        .slice(0, 200)
+        .map((item) => {
+          const itemAny = item as unknown as Record<string, unknown>;
+          return `<tr>
+          <td>${escapeHtml(fullFindingLocation(scan.report.executive_summary.target_path, item.file_path, Number(item.line_number || 1)))}</td>
+          <td>${escapeHtml(String(itemAny.workflow_status || "Open"))}</td>
+          <td>${escapeHtml(String(itemAny.source_tool || "scanner"))}</td>
+        </tr>`;
+        })
+        .join("");
+      sectionInstances.push(`<div class="table-scroll"><table><thead><tr><th>File / Line</th><th>Workflow Status</th><th>Tool</th></tr></thead><tbody>${siblingRows || "<tr><td colspan='3'>No instances.</td></tr>"}</tbody></table></div>`);
+
       if (fixArtifactKind(finding) === "exact_patch" && patchPreview) {
-        blockParts.push(`<h4>Patch Preview</h4><pre>${escapeHtml(truncateForReport(patchPreview, 1400))}</pre>`);
+        sectionMetadata.push(`<h4>Patch Preview</h4><pre>${escapeHtml(truncateForReport(patchPreview, 1400))}</pre>`);
       }
+
+      blockParts.push(sectionIssue.join(""));
+      blockParts.push(sectionPrimaryLocation.join(""));
+      blockParts.push(sectionDecision.join(""));
+      blockParts.push(sectionWhatToChange.join(""));
+      blockParts.push(sectionValidationCommands.join(""));
+      blockParts.push(sectionExecutionResults.join(""));
+      blockParts.push(sectionSecurityContext.join(""));
+      blockParts.push(sectionAi.join(""));
+      blockParts.push(sectionMetadata.join(""));
+      blockParts.push(sectionInstances.join(""));
+
       return `<section id="${escapeHtml(anchorId)}" class="fix-detail avoid-break">
     ${blockParts.join("")}
   </section>`;
@@ -7260,3 +7422,4 @@ function slugify(value: string): string {
     .replace(/^-+|-+$/g, "")
     .slice(0, 80);
 }
+
