@@ -1,6 +1,7 @@
 import {
   AuditLogEntry,
   PortfolioSummary,
+  ReportHistoryItem,
   ScmDiffContext,
   ScanHistoryItem,
   ScanProgress,
@@ -33,6 +34,10 @@ declare global {
       resumeScan: (scanId: string) => Promise<ScanControlActionResult>;
       stopScan: (scanId: string) => Promise<ScanControlActionResult>;
       getScanHistory: () => Promise<ScanHistoryItem[]>;
+      getHelpGuide: () => Promise<{ markdown: string; markdownPath: string; pdfPath: string }>;
+      ensureHelpPdf: () => Promise<string>;
+      getReportHistory: () => Promise<ReportHistoryItem[]>;
+      deleteReportHistory: (payload?: { paths?: string[]; all?: boolean }) => Promise<{ deleted: number; failed: number }>;
       getPortfolioSummary: () => Promise<PortfolioSummary>;
       getScanById: (scanId: string) => Promise<ScanView | null>;
       markReviewed: (payload: { scanId: string; findingId: string; actor: string; role: UserRole }) => Promise<ScanView | null>;

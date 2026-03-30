@@ -578,6 +578,16 @@ export interface ScanHistoryItem {
   topModule?: string;
 }
 
+export interface ReportHistoryItem {
+  fileName: string;
+  fullPath: string;
+  generatedAt: string;
+  reportType: string;
+  target: string;
+  format: string;
+  roleScope: string;
+}
+
 export interface PortfolioSummary {
   scansTotal: number;
   repositoriesTotal: number;

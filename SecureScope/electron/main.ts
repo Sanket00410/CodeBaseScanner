@@ -32,6 +32,7 @@ let toolAccessAuth: ToolAccessAuthService | null = null;
 let scannerRootPath = "";
 let storeFilePath = "";
 let toolRunDirPath = "";
+let exportDirPath = "";
 
 function createWindow(): void {
   const preloadPath = path.join(__dirname, "preload.js");
@@ -123,6 +124,7 @@ app.whenReady().then(async () => {
     scannerRootPath = resolveScannerRoot(app.getAppPath());
     storeFilePath = path.join(app.getPath("userData"), "codesentinelx-store.json");
     const exportDir = path.join(app.getPath("documents"), "CodeSentinelX", "exports");
+    exportDirPath = exportDir;
     toolRunDirPath = path.join(app.getPath("documents"), "CodeSentinelX", "tool-runs");
 
     store = await ScanStore.create(storeFilePath);
@@ -343,6 +345,125 @@ ipcMain.handle("scan:history", () => {
   return store?.listHistory() || [];
 });
 
+ipcMain.handle("help:getGuide", async () => {
+  if (!exportService || !scannerRootPath) {
+    return { markdown: "", markdownPath: "", pdfPath: "" };
+  }
+  const { markdown, markdownPath } = await exportService.getUserGuideMarkdown(scannerRootPath);
+  const pdfPath = await exportService.ensureUserGuidePdf(scannerRootPath);
+  return { markdown, markdownPath, pdfPath };
+});
+
+ipcMain.handle("help:ensurePdf", async () => {
+  if (!exportService || !scannerRootPath) {
+    throw new Error("Help guide service is unavailable.");
+  }
+  return exportService.ensureUserGuidePdf(scannerRootPath);
+});
+
+ipcMain.handle("report:history", async () => {
+  if (!exportDirPath) {
+    return [];
+  }
+  const entries = await fs.promises.readdir(exportDirPath, { withFileTypes: true }).catch(() => []);
+  const reports = entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => {
+      const fileName = entry.name;
+      const fullPath = path.join(exportDirPath, fileName);
+      const parsed = /^(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2}(?:-\d{3})?)_([A-Za-z0-9._-]+)_(.+)\.(html|pdf|json|xml|csv|patch|sairf)$/i.exec(
+        fileName,
+      );
+      let generatedAt = "";
+      let reportType = "unknown";
+      let target = "";
+      let format = path.extname(fileName).replace(/^\./, "").toLowerCase();
+      if (parsed) {
+        const [, datePart, timePart, typePart, targetPart, ext] = parsed;
+        const normalizedTime = timePart.replace(/-/g, ":").replace(/:(\d{3})$/, ".$1");
+        generatedAt = `${datePart}T${normalizedTime}`;
+        reportType = typePart.toLowerCase();
+        target = targetPart.replace(/-/g, " ");
+        format = ext.toLowerCase();
+      }
+      const roleScope =
+        reportType.startsWith("fixes")
+          ? "Developer"
+          : reportType.startsWith("existing")
+            ? "Auditor"
+            : reportType.startsWith("vulnerability")
+              ? "Security Analyst"
+              : reportType.startsWith("combined")
+                ? "Admin / Management"
+                : "Unknown";
+      return {
+        fileName,
+        fullPath,
+        generatedAt,
+        reportType,
+        target,
+        format,
+        roleScope,
+      };
+    })
+    .sort((a, b) => {
+      const left = Date.parse(a.generatedAt || "");
+      const right = Date.parse(b.generatedAt || "");
+      if (Number.isFinite(left) && Number.isFinite(right)) {
+        return right - left;
+      }
+      return b.fileName.localeCompare(a.fileName);
+    });
+  return reports;
+});
+
+ipcMain.handle("report:delete", async (_event, payload?: { paths?: string[]; all?: boolean }) => {
+  if (!exportDirPath) {
+    return { deleted: 0, failed: 0 };
+  }
+  const requestedAll = Boolean(payload?.all);
+  const requestedPaths = Array.isArray(payload?.paths) ? payload?.paths.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
+  const targets = new Set<string>();
+  if (requestedAll) {
+    const entries = await fs.promises.readdir(exportDirPath, { withFileTypes: true }).catch(() => []);
+    for (const entry of entries) {
+      if (!entry.isFile()) {
+        continue;
+      }
+      targets.add(path.join(exportDirPath, entry.name));
+    }
+  } else {
+    for (const item of requestedPaths) {
+      const resolved = path.resolve(item);
+      const exportRoot = path.resolve(exportDirPath);
+      if (resolved.startsWith(exportRoot + path.sep) || resolved === exportRoot) {
+        targets.add(resolved);
+      }
+    }
+  }
+  let deleted = 0;
+  let failed = 0;
+  for (const target of targets) {
+    try {
+      const stat = await fs.promises.stat(target).catch(() => null);
+      if (!stat || !stat.isFile()) {
+        continue;
+      }
+      await fs.promises.unlink(target);
+      deleted += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+  await store?.addAudit({
+    action: "report.history.cleaned",
+    actor: "local-user",
+    role: "Admin",
+    details: `Report cleanup executed: deleted=${deleted}, failed=${failed}, mode=${requestedAll ? "all" : "selected"}`,
+  });
+  return { deleted, failed };
+});
+
 ipcMain.handle("scan:portfolioSummary", () => {
   return store?.getPortfolioSummary() || {
     scansTotal: 0,
@@ -416,7 +537,7 @@ ipcMain.handle("scan:export", async (_event, request: ExportRequest) => {
     action: "report.exported",
     actor: "local-user",
     role: (request.role || scan.report.executive_summary.scan_role || "Security Analyst") as UserRole,
-    details: `Exported ${request.reportType} report in ${request.format} format`,
+    details: `Exported ${request.reportType} report in ${request.format} format -> ${outputPath}`,
   });
   return outputPath;
 });

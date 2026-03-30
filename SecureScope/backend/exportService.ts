@@ -34,6 +34,14 @@ interface AlertGroup {
   findings: VulnerabilityFinding[];
 }
 
+interface AlertTitleGroup {
+  id: string;
+  title: string;
+  severity: string;
+  count: number;
+  findings: VulnerabilityFinding[];
+}
+
 interface ExecutionEvidenceRow {
   tool: string;
   status: string;
@@ -685,6 +693,77 @@ function escapeInlineJson(value: unknown): string {
 export class ExportService {
   constructor(private readonly outputDir: string) {
     mkdirSync(this.outputDir, { recursive: true });
+  }
+
+  async getUserGuideMarkdown(repoRoot: string): Promise<{ markdown: string; markdownPath: string }> {
+    const markdownPath = path.join(repoRoot, "README_USER_GUIDE.md");
+    const markdown = await fs.readFile(markdownPath, "utf-8");
+    return { markdown, markdownPath };
+  }
+
+  async ensureUserGuidePdf(repoRoot: string): Promise<string> {
+    const { markdown, markdownPath } = await this.getUserGuideMarkdown(repoRoot);
+    const helpDir = path.join(this.outputDir, "help");
+    await fs.mkdir(helpDir, { recursive: true });
+    const pdfPath = path.join(helpDir, "README_USER_GUIDE.pdf");
+    const [mdStat, pdfStat] = await Promise.all([
+      fs.stat(markdownPath).catch(() => null),
+      fs.stat(pdfPath).catch(() => null),
+    ]);
+    if (mdStat && pdfStat && pdfStat.mtimeMs >= mdStat.mtimeMs && pdfStat.size > 0) {
+      return pdfPath;
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      const document = new PDFDocument({ margin: 50, size: "A4" });
+      const stream = createWriteStream(pdfPath);
+      stream.on("finish", () => resolve());
+      stream.on("error", reject);
+      document.on("error", reject);
+      document.pipe(stream);
+
+      const lines = String(markdown || "").replace(/\r\n/g, "\n").split("\n");
+      document.fillColor("#0b2038").font("Helvetica-Bold").fontSize(20).text("CodeSentinelX User Guide", { align: "left" });
+      document.moveDown(0.4);
+      document.fillColor("#36597b").font("Helvetica").fontSize(9).text(`Generated: ${new Date().toISOString()}`);
+      document.moveDown(0.8);
+
+      for (const rawLine of lines) {
+        const line = String(rawLine || "");
+        if (!line.trim()) {
+          document.moveDown(0.45);
+          continue;
+        }
+        if (line.startsWith("# ")) {
+          document.fillColor("#0d2744").font("Helvetica-Bold").fontSize(16).text(line.slice(2).trim());
+          document.moveDown(0.3);
+          continue;
+        }
+        if (line.startsWith("## ")) {
+          document.fillColor("#12355c").font("Helvetica-Bold").fontSize(13).text(line.slice(3).trim());
+          document.moveDown(0.2);
+          continue;
+        }
+        if (line.startsWith("### ")) {
+          document.fillColor("#1a4776").font("Helvetica-Bold").fontSize(11).text(line.slice(4).trim());
+          document.moveDown(0.15);
+          continue;
+        }
+        if (line.startsWith("- ")) {
+          document.fillColor("#102a48").font("Helvetica").fontSize(10).text(`• ${line.slice(2).trim()}`, { indent: 16 });
+          continue;
+        }
+        if (/^\d+\.\s+/.test(line)) {
+          document.fillColor("#102a48").font("Helvetica").fontSize(10).text(line.trim(), { indent: 12 });
+          continue;
+        }
+        document.fillColor("#102a48").font("Helvetica").fontSize(10).text(line.trim());
+      }
+
+      document.end();
+    });
+
+    return pdfPath;
   }
 
   resolveOutputPath(
@@ -2006,16 +2085,79 @@ function writeFixesPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
 }
 
 function writeCombinedPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
+  const report = scan.report.vulnerability_fixed_code_report;
+  const summary = report.summary;
+  const findings = sortedFindings(report.findings || []);
+  const toolchainExecution = resolveToolchainExecution(scan, summary);
+  const enterprise = resolveEnterpriseAssurance(scan, summary);
+  const riskIntel = resolveRiskIntelligence(summary as VulnerabilityFixedCodeReport["summary"] & {
+    risk_intelligence?: { findings_with_cve?: number; findings_cvss_ge_7?: number; known_exploited_findings?: number };
+  }, findings);
   const qualityBenchmark =
     scan.report.executive_summary.data_quality?.quality_benchmark ||
     scan.report.executive_summary.enterprise_assurance?.quality_benchmark ||
     scan.report.vulnerability_fixed_code_report.summary.data_quality?.quality_benchmark ||
     scan.report.vulnerability_fixed_code_report.summary.enterprise_assurance?.quality_benchmark ||
     null;
-  doc.fontSize(18).text("CodeSentinelX Combined Security Report");
-  doc.moveDown(0.3).fontSize(10).text(`Target: ${scan.report.executive_summary.target_path}`);
-  doc.text(`Risk Score: ${scan.report.executive_summary.risk_score} (${scan.report.executive_summary.risk_rating})`);
-  doc.moveDown(0.7).fontSize(11).text("Use separate Existing and Vulnerability reports for full evidence.");
+  writePdfHero(doc, "CodeSentinelX Combined Security Report", [
+    `Target: ${report.target_path}`,
+    `Generated: ${formatDisplayTimestamp(resolveReportGeneratedAt(scan, "combined"))}`,
+    `Role: ${resolveReportRole(scan)}`,
+  ]);
+  writePdfMetricStrip(doc, [
+    { label: "Total Findings", value: String(Number(summary.total_findings || findings.length)), tone: "accent" },
+    { label: "Critical", value: String(Number(summary.severity_distribution?.Critical || 0)), tone: "critical" },
+    { label: "High", value: String(Number(summary.severity_distribution?.High || 0)), tone: "high" },
+    { label: "Known Exploited", value: String(knownExploitedMetricText(riskIntel) || "0"), tone: "info" },
+    {
+      label: "Risk Score",
+      value: `${Number(summary.risk_score || scan.report.executive_summary.risk_score || 0).toFixed(2)}`,
+      tone: "medium",
+    },
+  ]);
+  writePdfSectionHeader(doc, "Severity Distribution");
+  writePdfKeyValueTable(
+    doc,
+    SEVERITY_ORDER.map((severity) => ({
+      key: severity,
+      value: String(Number(summary.severity_distribution?.[severity] || 0)),
+    })),
+  );
+  if (enterprise) {
+    writePdfSectionHeader(doc, "Enterprise Assurance");
+    writePdfKeyValueTable(doc, [
+      { key: "Status", value: String(enterprise.status || "unknown").toUpperCase() },
+      { key: "Readiness Score", value: String(Number(enterprise.readiness_score || 0)) },
+      {
+        key: "Required Tools Ready",
+        value: `${Number(enterprise.required_tools_ready || 0)}/${Number(enterprise.required_tools_total || 0)}`,
+      },
+      { key: "Required Coverage", value: `${Number(enterprise.required_tools_coverage_percent || 0).toFixed(2)}%` },
+      { key: "Tool Success Rate", value: `${Number(toolchainExecution?.success_rate_percent || 0).toFixed(2)}%` },
+    ]);
+  }
+  const topFindings = rankedFindings(findings, 16);
+  if (topFindings.length > 0) {
+    writePdfSectionHeader(doc, "Top Prioritized Findings");
+    for (const finding of topFindings) {
+      writeWrapped(
+        doc,
+        `[${finding.severity}] ${normalizedFindingTitle(finding)} | CVSS ${Number(finding.cvss_score || 0).toFixed(1)} | ${normalizePath(finding.file_path)}:${Number(finding.line_number || 1)}`,
+        8.5,
+      );
+    }
+  }
+  if (toolchainExecution?.timing_breakdown?.length) {
+    writePdfSectionHeader(doc, "Analyzer Runtime Breakdown");
+    for (const row of toolchainExecution.timing_breakdown.slice(0, 18)) {
+      const avg = row.avg_ms_per_finding !== null ? Number(row.avg_ms_per_finding).toFixed(2) : "N/A";
+      writeWrapped(
+        doc,
+        `${row.tool}: status=${row.status}, attempted=${row.attempted ? "yes" : "no"}, duration=${Number(row.duration_ms || 0)}ms, findings=${Number(row.findings_count || 0)}, errors=${Number(row.errors_count || 0)}, avg=${avg}`,
+        8,
+      );
+    }
+  }
   if (qualityBenchmark && qualityBenchmark.configured) {
     writePdfSectionHeader(doc, "Scanner Quality Benchmark");
     writePdfKeyValueTable(doc, [
@@ -2508,6 +2650,7 @@ function renderExistingHtml(scan: ScanView): string {
       bindSearch("profileSearch", ".profile-coverage-table tbody tr");
     })();
   </script>
+  ${renderReportTableEnhancerTag()}
 </body>
 </html>`;
 }
@@ -3830,6 +3973,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       syncHashTarget();
     })();
   </script>
+  ${renderReportTableEnhancerTag()}
 </body>
 </html>`;
 }
@@ -4030,16 +4174,35 @@ function renderFixesHtml(scan: ScanView): string {
       }
       const proofText = String(finding.proof_of_concept || "").trim();
       if (proofText) {
-        blockParts.push(`<h4>PoC Validation</h4><pre>${escapeHtml(truncateForReport(proofText, 2200))}</pre>`);
+        blockParts.push(`<h4>PoC Validation</h4><pre class="evidence-scroll">${escapeHtml(proofText)}</pre>`);
       }
       const activePocStatus = activePocStatusText(activePoc);
       if (activePoc && String(activePoc.status || activePoc.command || activePoc.output || "").trim() && activePocStatus !== "not_executed") {
         blockParts.push(`<p><strong>Active PoC Status:</strong> ${escapeHtml(activePocStatus)}</p>`);
+        const activePocAny = activePoc as unknown as Record<string, unknown>;
+        const pocReason = String(activePocAny.reason || "").trim();
+        const pocResolvedFile = String(activePocAny.resolved_file || "").trim();
+        const pocLine = activePocAny.line ?? activePocAny.line_tested;
+        const pocRuleId = String(activePocAny.rule_id || "").trim();
+        const activePocMetaRows = [
+          String(activePoc.verification_basis || "").trim() ? `<tr><th>Verification Basis</th><td>${escapeHtml(String(activePoc.verification_basis || ""))}</td></tr>` : "",
+          pocReason ? `<tr><th>Reason</th><td>${escapeHtml(pocReason)}</td></tr>` : "",
+          isRenderableDisplayValue(activePoc.exit_code) ? `<tr><th>Exit Code</th><td>${escapeHtml(String(activePoc.exit_code))}</td></tr>` : "",
+          pocResolvedFile ? `<tr><th>Resolved File</th><td>${escapeHtml(pocResolvedFile)}</td></tr>` : "",
+          isRenderableDisplayValue(pocLine) ? `<tr><th>Line</th><td>${escapeHtml(String(pocLine))}</td></tr>` : "",
+          String(activePoc.family || "").trim() ? `<tr><th>Family</th><td>${escapeHtml(String(activePoc.family || ""))}</td></tr>` : "",
+          pocRuleId ? `<tr><th>Rule ID</th><td><code>${escapeHtml(pocRuleId)}</code></td></tr>` : "",
+        ]
+          .filter(Boolean)
+          .join("");
+        if (activePocMetaRows) {
+          blockParts.push(`<table class="results">${activePocMetaRows}</table>`);
+        }
         if (String(activePoc.command || "").trim()) {
-          blockParts.push(`<p><strong>Active PoC Command:</strong> <code>${escapeHtml(activePocCommandText(activePoc))}</code></p>`);
+          blockParts.push(`<h4>Active PoC Command</h4><pre class="evidence-scroll">${escapeHtml(activePocCommandText(activePoc))}</pre>`);
         }
         if (String(activePoc.output || "").trim() && activeStatus !== "skipped") {
-          blockParts.push(`<h4>Active PoC Output</h4><pre>${escapeHtml(truncateForReport(activePocOutputText(activePoc), 1600))}</pre>`);
+          blockParts.push(`<h4>Active PoC Output</h4><pre class="evidence-scroll">${escapeHtml(activePocOutputText(activePoc))}</pre>`);
         }
       }
       if (fixVerification && (
@@ -4058,21 +4221,21 @@ function renderFixesHtml(scan: ScanView): string {
           blockParts.push(`<p><strong>Reason:</strong> ${escapeHtml(fixVerificationReasonText(fixVerification))}</p>`);
         }
         if (String(fixVerification.post_fix_execution?.command || "").trim()) {
-          blockParts.push(`<p><strong>Post-Fix Command:</strong> <code>${escapeHtml(String(fixVerification.post_fix_execution?.command || ""))}</code></p>`);
+          blockParts.push(`<h4>Post-Fix Command</h4><pre class="evidence-scroll">${escapeHtml(String(fixVerification.post_fix_execution?.command || ""))}</pre>`);
         }
         if (String(fixVerification.post_fix_execution?.output || "").trim()) {
-          blockParts.push(`<h4>Post-Fix Output</h4><pre>${escapeHtml(truncateForReport(String(fixVerification.post_fix_execution?.output || ""), 1600))}</pre>`);
+          blockParts.push(`<h4>Post-Fix Output</h4><pre class="evidence-scroll">${escapeHtml(String(fixVerification.post_fix_execution?.output || ""))}</pre>`);
         }
         if (fixVerification.build_verification && (String(fixVerification.build_verification.command || "").trim() || String(fixVerification.build_verification.output || "").trim())) {
-          blockParts.push(`<p><strong>Workspace Build Command:</strong> <code>${escapeHtml(String(fixVerification.build_verification.command || ""))}</code></p>`);
+          blockParts.push(`<h4>Workspace Build Command</h4><pre class="evidence-scroll">${escapeHtml(String(fixVerification.build_verification.command || ""))}</pre>`);
           if (String(fixVerification.build_verification.output || "").trim()) {
-            blockParts.push(`<pre>${escapeHtml(truncateForReport(String(fixVerification.build_verification.output || ""), 1200))}</pre>`);
+            blockParts.push(`<h4>Workspace Build Output</h4><pre class="evidence-scroll">${escapeHtml(String(fixVerification.build_verification.output || ""))}</pre>`);
           }
         }
         if (fixVerification.test_verification && (String(fixVerification.test_verification.command || "").trim() || String(fixVerification.test_verification.output || "").trim())) {
-          blockParts.push(`<p><strong>Workspace Test Command:</strong> <code>${escapeHtml(String(fixVerification.test_verification.command || ""))}</code></p>`);
+          blockParts.push(`<h4>Workspace Test Command</h4><pre class="evidence-scroll">${escapeHtml(String(fixVerification.test_verification.command || ""))}</pre>`);
           if (String(fixVerification.test_verification.output || "").trim()) {
-            blockParts.push(`<pre>${escapeHtml(truncateForReport(String(fixVerification.test_verification.output || ""), 1200))}</pre>`);
+            blockParts.push(`<h4>Workspace Test Output</h4><pre class="evidence-scroll">${escapeHtml(String(fixVerification.test_verification.output || ""))}</pre>`);
           }
         }
       }
@@ -4090,7 +4253,7 @@ function renderFixesHtml(scan: ScanView): string {
       }
       const aiSummary = String(resolvedAiRemediationSummary(finding) || "").trim();
       if (aiSummary) {
-        blockParts.push(`<h4>AI Remediation Summary</h4><pre>${escapeHtml(truncateForReport(aiSummary, 1200))}</pre>`);
+        blockParts.push(`<h4>AI Remediation Summary</h4><pre class="evidence-scroll">${escapeHtml(aiSummary)}</pre>`);
       }
       if (String(aiFixConfidenceLabel(finding) || "").trim()) {
         blockParts.push(`<p><strong>AI Fix Confidence:</strong> ${escapeHtml(aiFixConfidenceLabel(finding))} (${aiFixConfidenceScore(finding).toFixed(2)}) | <strong>Grounded:</strong> ${escapeHtml(aiGroundingStatus(finding))} | <strong>Source:</strong> ${escapeHtml(String(finding.ai_fix_source || "local-evidence-driven:evidence-rules-v1"))}</p>`);
@@ -4098,7 +4261,7 @@ function renderFixesHtml(scan: ScanView): string {
       }
       const aiSteps = String(resolvedAiValidationSteps(finding) || "").trim();
       if (aiSteps) {
-        blockParts.push(`<h4>AI Validation Steps</h4><pre>${escapeHtml(truncateForReport(aiSteps, 1200))}</pre>`);
+        blockParts.push(`<h4>AI Validation Steps</h4><pre class="evidence-scroll">${escapeHtml(aiSteps)}</pre>`);
       }
       const patchPreview = String(finding.patch_preview || "").trim();
       if (fixArtifactKind(finding) === "exact_patch" && patchPreview) {
@@ -4208,7 +4371,7 @@ function renderFixesHtml(scan: ScanView): string {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CodeSentinelX Original and Suggested Fix Report</title>
-  <style>${exportThemeCss(".fix-link{color:var(--accent);text-decoration:underline}.toolbar{display:flex;gap:8px;align-items:center;margin:6px 0 10px;flex-wrap:wrap}input{background:rgba(7,20,36,.14);border:1px solid rgba(120,168,205,.28);border-radius:8px;color:var(--text);padding:7px 10px;min-width:300px}.fix-detail{border:1px solid rgba(120,168,205,.24);border-radius:14px;background:rgba(8,21,36,.14);padding:14px;margin-bottom:12px}.fix-detail h3{margin-bottom:10px}.fix-detail.is-active{outline:2px solid rgba(94,234,212,.38);box-shadow:0 0 0 1px rgba(94,234,212,.18),0 18px 32px rgba(15,23,42,.22)}")}</style>
+  <style>${exportThemeCss(".fix-link{color:var(--accent);text-decoration:underline}.toolbar{display:flex;gap:8px;align-items:center;margin:6px 0 10px;flex-wrap:wrap}input{background:rgba(7,20,36,.14);border:1px solid rgba(120,168,205,.28);border-radius:8px;color:var(--text);padding:7px 10px;min-width:300px}.fix-detail{border:1px solid rgba(120,168,205,.24);border-radius:14px;background:rgba(8,21,36,.14);padding:14px;margin-bottom:12px}.fix-detail h3{margin-bottom:10px}.fix-detail.is-active{outline:2px solid rgba(94,234,212,.38);box-shadow:0 0 0 1px rgba(94,234,212,.18),0 18px 32px rgba(15,23,42,.22)}.evidence-scroll{max-height:320px;overflow:auto;white-space:pre;word-break:normal;scrollbar-width:thin;scrollbar-color:rgba(128,169,196,.22) transparent}.evidence-scroll::-webkit-scrollbar{height:8px;width:8px}.evidence-scroll::-webkit-scrollbar-track{background:transparent}.evidence-scroll::-webkit-scrollbar-thumb{background:rgba(128,169,196,.2);border-radius:999px}.evidence-scroll::-webkit-scrollbar-thumb:hover{background:rgba(128,169,196,.32)}")}</style>
 </head>
 <body>
   <main class="report-shell">
@@ -4418,6 +4581,7 @@ function renderFixesHtml(scan: ScanView): string {
       syncHashTarget();
     })();
   </script>
+  ${renderReportTableEnhancerTag()}
 </body>
 </html>`;
 }
@@ -4490,11 +4654,120 @@ function renderFindingDetailsHtml(scan: ScanView): string {
       });
     })();
   </script>
+  ${renderReportTableEnhancerTag()}
 </body>
 </html>`;
 }
 
 function renderCombinedHtml(scan: ScanView): string {
+  const report = scan.report.vulnerability_fixed_code_report;
+  const summary = report.summary;
+  const findings = sortedFindings(report.findings || []);
+  const toolchainExecution = resolveToolchainExecution(scan, summary);
+  const enterprise = resolveEnterpriseAssurance(scan, summary);
+  const dataQuality = summary.data_quality || scan.report.executive_summary.data_quality || null;
+  const riskIntel = resolveRiskIntelligence(summary as VulnerabilityFixedCodeReport["summary"] & {
+    risk_intelligence?: { findings_with_cve?: number; findings_cvss_ge_7?: number; known_exploited_findings?: number };
+  }, findings);
+  const exportedAt = formatDisplayTimestamp(resolveReportGeneratedAt(scan, "combined"));
+  const severityRows = SEVERITY_ORDER.map((severity) => {
+    const count = Number(summary.severity_distribution?.[severity] || 0);
+    if (count <= 0) {
+      return "";
+    }
+    return `<tr><td>${escapeHtml(severity)}</td><td align="center">${count}</td></tr>`;
+  }).join("");
+  const topRiskRows = rankedFindings(findings, 30)
+    .map((finding, index) => {
+      const uid = escapeHtml(String(finding.finding_uid || `${index + 1}`));
+      const title = escapeHtml(normalizedFindingTitle(finding));
+      const severity = escapeHtml(String(finding.severity || "Info"));
+      const cvss = Number(finding.cvss_score || 0).toFixed(1);
+      const location = escapeHtml(fullFindingLocation(scan.report.executive_summary.target_path, finding.file_path, Number(finding.line_number || 1)));
+      const cwe = escapeHtml(String(finding.cwe_id || "N/A"));
+      const owasp = escapeHtml(String(finding.owasp_mapping || "N/A"));
+      return `<tr>
+        <td>${uid}</td>
+        <td><span class="sev sev-${severity}">${severity}</span></td>
+        <td>${title}</td>
+        <td align="center">${cvss}</td>
+        <td>${location}</td>
+        <td>${cwe}</td>
+        <td>${owasp}</td>
+      </tr>`;
+    })
+    .join("");
+  const combinedGroupedAll = groupByAlertTitle(findings);
+  const combinedGrouped = combinedGroupedAll.slice(0, 120);
+  const combinedAlertAnchorByGroup = new Map(
+    combinedGroupedAll.map((group) => [group.id, stableAnchorId("combined-alert", group.id)]),
+  );
+  const combinedAlertRows = combinedGrouped
+    .map(
+      (group) => `<tr>
+        <td class="risk-${group.severity.toLowerCase()}">${escapeHtml(group.severity)}</td>
+        <td><a href="#${escapeHtml(combinedAlertAnchorByGroup.get(group.id) || stableAnchorId("combined-alert", group.id))}" class="alert-link">${escapeHtml(group.title)}</a></td>
+        <td align="center">${group.count}</td>
+      </tr>`,
+    )
+    .join("");
+  const combinedHasAlertRows = Boolean(combinedAlertRows.trim());
+  const combinedDetailedSections = combinedGrouped
+    .map((group) => {
+      const lead = group.findings[0];
+      const leadCwe = String(lead?.cwe_id || "").trim() || "N/A";
+      const leadOwasp = String(lead?.owasp_mapping || "").trim() || "N/A";
+      return `<section id="${escapeHtml(combinedAlertAnchorByGroup.get(group.id) || stableAnchorId("combined-alert", group.id))}" class="fix-detail" style="margin:0 0 12px">
+        <h3>[${escapeHtml(group.severity)}] ${escapeHtml(group.title)} (${group.count})</h3>
+        <table class="results">
+          <tr><th width="20%">CWE</th><td>${renderCweLink(leadCwe)}</td></tr>
+          <tr><th>OWASP</th><td>${escapeHtml(leadOwasp)}</td></tr>
+          <tr><th>CVSS</th><td>${renderCvssLink(lead.cvss_score)}</td></tr>
+          ${isRenderableDisplayValue(lead.description) ? `<tr><th>Description</th><td>${escapeHtml(String(lead.description || ""))}</td></tr>` : ""}
+          ${isRenderableDisplayValue(lead.business_impact) ? `<tr><th>Business Impact</th><td>${escapeHtml(String(lead.business_impact || ""))}</td></tr>` : ""}
+          ${isRenderableDisplayValue(lead.recommendation) ? `<tr><th>Recommendation</th><td>${escapeHtml(String(lead.recommendation || ""))}</td></tr>` : ""}
+          <tr><th>Top Location</th><td>${escapeHtml(fullFindingLocation(scan.report.executive_summary.target_path, lead.file_path, Number(lead.line_number || 1)))}</td></tr>
+        </table>
+      </section>`;
+    })
+    .join("");
+  const timingRows = (toolchainExecution?.timing_breakdown || [])
+    .slice(0, 40)
+    .map((row) => {
+      const avg = row.avg_ms_per_finding !== null ? Number(row.avg_ms_per_finding).toFixed(2) : "N/A";
+      return `<tr>
+        <td>${escapeHtml(String(row.tool || ""))}</td>
+        <td>${escapeHtml(String(row.status || ""))}</td>
+        <td align="center">${row.attempted ? "Yes" : "No"}</td>
+        <td align="right">${Number(row.duration_ms || 0)}</td>
+        <td align="right">${Number(row.findings_count || 0)}</td>
+        <td align="right">${Number(row.errors_count || 0)}</td>
+        <td align="right">${avg}</td>
+      </tr>`;
+    })
+    .join("");
+  const enterpriseRows = [
+    isRenderableDisplayValue(enterprise?.status) ? `<tr><td>Status</td><td align="center">${escapeHtml(String(enterprise?.status || "").toUpperCase())}</td></tr>` : "",
+    isRenderableDisplayValue(enterprise?.readiness_score) ? `<tr><td>Readiness Score</td><td align="center">${formatMetricNumber(enterprise?.readiness_score, 0)}</td></tr>` : "",
+    isRenderableDisplayValue(enterprise?.required_tools_ready) || isRenderableDisplayValue(enterprise?.required_tools_total)
+      ? `<tr><td>Required Tools Ready</td><td align="center">${Number(enterprise?.required_tools_ready || 0)}/${Number(enterprise?.required_tools_total || 0)}</td></tr>`
+      : "",
+    isRenderableDisplayValue(enterprise?.required_tools_coverage_percent)
+      ? `<tr><td>Required Tool Coverage</td><td align="center">${formatMetricNumber(enterprise?.required_tools_coverage_percent, 2)}%</td></tr>`
+      : "",
+    isRenderableDisplayValue(toolchainExecution?.success_rate_percent)
+      ? `<tr><td>Tool Success Rate</td><td align="center">${formatMetricNumber(toolchainExecution?.success_rate_percent, 2)}%</td></tr>`
+      : "",
+    isRenderableDisplayValue(toolchainExecution?.attempted_tools)
+      ? `<tr><td>Attempted Tools</td><td align="center">${Number(toolchainExecution?.attempted_tools || 0)}</td></tr>`
+      : "",
+    isRenderableDisplayValue(toolchainExecution?.failed_tools)
+      ? `<tr><td>Failed Tools</td><td align="center">${Number(toolchainExecution?.failed_tools || 0)}</td></tr>`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("");
+  const dataQualityRows = objectSummaryRows(dataQuality);
   const qualityBenchmark =
     scan.report.executive_summary.data_quality?.quality_benchmark ||
     scan.report.executive_summary.enterprise_assurance?.quality_benchmark ||
@@ -4527,26 +4800,282 @@ function renderCombinedHtml(scan: ScanView): string {
     }
   </section>`
       : "";
+  const cards = renderStatGrid([
+    {
+      label: "Total Findings",
+      value: Number(summary.total_findings || findings.length),
+      tone: "accent",
+      sub: "Deduplicated findings in this scan scope",
+    },
+    {
+      label: "Critical",
+      value: Number(summary.severity_distribution?.Critical || 0),
+      tone: "critical",
+      sub: "Immediate release blockers",
+    },
+    {
+      label: "High",
+      value: Number(summary.severity_distribution?.High || 0),
+      tone: "high",
+      sub: "High-priority remediation candidates",
+    },
+    {
+      label: "Known Exploited (CISA KEV)",
+      value: knownExploitedMetricText(riskIntel),
+      tone: "info",
+      sub: knownExploitedMetricSubtext(riskIntel),
+    },
+    {
+      label: "Risk Score",
+      value: Number(summary.risk_score || scan.report.executive_summary.risk_score || 0).toFixed(2),
+      tone: "medium",
+      sub: String(summary.risk_rating || scan.report.executive_summary.risk_rating || ""),
+    },
+  ]);
   return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <title>CodeSentinelX Combined Report</title>
-  <style>${exportThemeCss(".card{max-width:980px;margin:0 auto}")}</style>
+  <style>${exportThemeCss(".report-shell{max-width:1300px}.card{max-width:none}")}</style>
 </head>
 <body>
-  <div class="card hero">
-    <h1>CodeSentinelX Combined Security Report</h1>
-    <div class="hero-meta">
-      <div class="meta-pill"><strong>Target:</strong> ${escapeHtml(scan.report.executive_summary.target_path)}</div>
-      <div class="meta-pill"><strong>Risk Score:</strong> ${scan.report.executive_summary.risk_score} (${escapeHtml(scan.report.executive_summary.risk_rating)})</div>
-      <div class="meta-pill"><strong>Guidance:</strong> Export dedicated reports for evidence-level detail</div>
-    </div>
-    <div class="callout" style="margin-top:14px">For full evidence, export separate Existing Security, Vulnerability, and Original/Suggested Fix reports. The combined export is intended only as a cover page and routing layer.</div>
-  </div>
-  ${benchmarkSection}
+  <main class="report-shell">
+    <section class="hero">
+      <h1>CodeSentinelX Combined Security Report</h1>
+      <div class="hero-meta">
+        <div class="meta-pill"><strong>Target:</strong> ${escapeHtml(scan.report.executive_summary.target_path)}</div>
+        <div class="meta-pill"><strong>Generated:</strong> ${escapeHtml(exportedAt)}</div>
+        <div class="meta-pill"><strong>Role:</strong> ${escapeHtml(resolveReportRole(scan))}</div>
+      </div>
+      ${cards}
+      <div class="callout" style="margin-top:14px">
+        Combined export now includes executive metrics, prioritized risks, analyzer execution evidence, and quality signals in one report.
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-grid">
+        <div class="table-frame">
+          <h2 style="padding:12px 14px 0">Severity Distribution</h2>
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th>Severity</th><th>Count</th></tr></thead>
+              <tbody>${severityRows || `<tr><td colspan="2">No findings in this scope.</td></tr>`}</tbody>
+            </table>
+          </div>
+        </div>
+        ${enterpriseRows
+          ? `<div class="table-frame">
+          <h2 style="padding:12px 14px 0">Enterprise Assurance</h2>
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+              <tbody>${enterpriseRows}</tbody>
+            </table>
+          </div>
+        </div>`
+          : ""}
+      </div>
+    </section>
+
+    ${topRiskRows
+      ? `<section class="section">
+      <div class="table-frame">
+        <h2 style="padding:12px 14px 0">Top Prioritized Findings</h2>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th><th>Severity</th><th>Issue</th><th>CVSS</th><th>Location</th><th>CWE</th><th>OWASP</th>
+              </tr>
+            </thead>
+            <tbody>${topRiskRows}</tbody>
+          </table>
+        </div>
+      </div>
+    </section>`
+      : ""}
+
+    ${combinedHasAlertRows
+      ? `<section class="section">
+      <div class="table-frame">
+        <h2 style="padding:12px 14px 0">Alerts by Type</h2>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Risk</th><th>Alert</th><th>Instances</th></tr></thead>
+            <tbody>${combinedAlertRows}</tbody>
+          </table>
+        </div>
+      </div>
+    </section>`
+      : ""}
+
+    ${combinedDetailedSections
+      ? `<section class="section">
+      <div class="table-frame" style="padding:12px 14px">
+        <h2>Detailed Findings</h2>
+        ${combinedDetailedSections}
+      </div>
+    </section>`
+      : ""}
+
+    ${timingRows
+      ? `<section class="section">
+      <div class="table-frame">
+        <h2 style="padding:12px 14px 0">Analyzer Runtime Breakdown</h2>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Analyzer</th><th>Status</th><th>Attempted</th><th>Duration (ms)</th><th>Findings</th><th>Errors</th><th>Avg ms/Finding</th></tr></thead>
+            <tbody>${timingRows}</tbody>
+          </table>
+        </div>
+      </div>
+    </section>`
+      : ""}
+
+    ${dataQualityRows
+      ? `<section class="section">
+      <div class="table-frame">
+        <h2 style="padding:12px 14px 0">Data Quality</h2>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+            <tbody>${dataQualityRows}</tbody>
+          </table>
+        </div>
+      </div>
+    </section>`
+      : ""}
+
+    ${benchmarkSection}
+  </main>
+  ${renderReportTableEnhancerTag()}
 </body>
 </html>`;
+}
+
+function renderReportTableEnhancerTag(): string {
+  return `<script>
+    (function () {
+      function toArray(v) { return Array.prototype.slice.call(v || []); }
+      function detectSeverityIndex(headers) {
+        for (var i = 0; i < headers.length; i += 1) {
+          var name = String(headers[i].textContent || "").trim().toLowerCase();
+          if (name === "severity" || name === "risk" || name.indexOf("severity") >= 0 || name.indexOf("risk") >= 0) {
+            return i;
+          }
+        }
+        return -1;
+      }
+      function inferType(rows, index) {
+        for (var i = 0; i < rows.length; i += 1) {
+          var cell = rows[i].children[index];
+          if (!cell) continue;
+          var raw = String(cell.textContent || "").trim();
+          if (!raw) continue;
+          var num = Number(raw.replace(/[^0-9.+-]/g, ""));
+          if (!Number.isNaN(num) && Number.isFinite(num)) return "number";
+          return "text";
+        }
+        return "text";
+      }
+      function apply(table, state) {
+        var tbody = table.querySelector("tbody");
+        if (!tbody) return;
+        var rows = toArray(tbody.querySelectorAll("tr"));
+        rows.forEach(function (row) {
+          var text = String(row.textContent || "").toLowerCase();
+          var qOk = !state.query || text.indexOf(state.query) >= 0;
+          var sOk = true;
+          if (state.severity !== "all") {
+            if (state.severityIndex >= 0) {
+              var sevCell = row.children[state.severityIndex];
+              var sevText = String((sevCell && sevCell.textContent) || "").toLowerCase();
+              sOk = sevText.indexOf(state.severity) >= 0;
+            } else {
+              sOk = text.indexOf(state.severity) >= 0;
+            }
+          }
+          row.style.display = qOk && sOk ? "" : "none";
+        });
+        var visible = rows.filter(function (r) { return r.style.display !== "none"; });
+        var index = state.sortIndex;
+        if (index >= 0) {
+          var sortType = state.sortType || inferType(visible, index);
+          visible.sort(function (a, b) {
+            var av = String((a.children[index] && a.children[index].textContent) || "").trim();
+            var bv = String((b.children[index] && b.children[index].textContent) || "").trim();
+            var out = 0;
+            if (sortType === "number") {
+              var an = Number(av.replace(/[^0-9.+-]/g, ""));
+              var bn = Number(bv.replace(/[^0-9.+-]/g, ""));
+              out = (Number.isFinite(an) ? an : -Infinity) - (Number.isFinite(bn) ? bn : -Infinity);
+            } else {
+              out = av.localeCompare(bv);
+            }
+            return state.sortDir === "desc" ? -out : out;
+          });
+          visible.forEach(function (row) { tbody.appendChild(row); });
+        }
+      }
+      function init(table, idx) {
+        var thead = table.querySelector("thead tr");
+        var tbody = table.querySelector("tbody");
+        if (!thead || !tbody) return;
+        var headers = toArray(thead.children);
+        if (!headers.length) return;
+        var severityIndex = detectSeverityIndex(headers);
+        var state = { query: "", severity: "all", severityIndex: severityIndex, sortIndex: 0, sortDir: "desc", sortType: "text" };
+        var box = document.createElement("div");
+        box.className = "report-table-tools";
+        var search = document.createElement("input");
+        search.className = "rtt-input";
+        search.type = "search";
+        search.placeholder = "Search this table";
+        var sev = document.createElement("select");
+        sev.className = "rtt-select";
+        ["all", "critical", "high", "medium", "low", "info"].forEach(function (v) {
+          var o = document.createElement("option"); o.value = v; o.textContent = v === "all" ? "All severities" : v[0].toUpperCase() + v.slice(1); sev.appendChild(o);
+        });
+        var sort = document.createElement("select");
+        sort.className = "rtt-select";
+        headers.forEach(function (h, i) {
+          var t = String(h.textContent || "").trim() || ("Column " + (i + 1));
+          var o = document.createElement("option"); o.value = String(i); o.textContent = "Sort: " + t; sort.appendChild(o);
+        });
+        var dir = document.createElement("select");
+        dir.className = "rtt-select";
+        [{v:"desc",t:"Desc"},{v:"asc",t:"Asc"}].forEach(function (it) { var o = document.createElement("option"); o.value = it.v; o.textContent = it.t; dir.appendChild(o); });
+        box.appendChild(search); box.appendChild(sev); box.appendChild(sort); box.appendChild(dir);
+        if (severityIndex < 0) {
+          sev.disabled = true;
+          sev.style.opacity = "0.6";
+          sev.title = "This table has no Severity/Risk column.";
+        }
+        var scrollContainer = table.closest(".table-scroll");
+        if (scrollContainer && scrollContainer.insertBefore) {
+          scrollContainer.insertBefore(box, table);
+        } else {
+          var frame = table.closest(".table-frame") || table.parentElement;
+          if (frame && frame.insertBefore) {
+            frame.insertBefore(box, frame.firstChild);
+          }
+        }
+        search.addEventListener("input", function () { state.query = String(search.value || "").toLowerCase().trim(); apply(table, state); });
+        sev.addEventListener("change", function () { state.severity = String(sev.value || "all"); apply(table, state); });
+        sort.addEventListener("change", function () { state.sortIndex = Number(sort.value || 0); state.sortType = inferType(toArray(tbody.querySelectorAll("tr")), state.sortIndex); apply(table, state); });
+        dir.addEventListener("change", function () { state.sortDir = String(dir.value || "desc"); apply(table, state); });
+        state.sortType = inferType(toArray(tbody.querySelectorAll("tr")), state.sortIndex);
+        apply(table, state);
+      }
+      var tables = toArray(document.querySelectorAll(".table-scroll table")).filter(function (t) {
+        var bodyRows = t.querySelectorAll("tbody tr");
+        return bodyRows && bodyRows.length > 1;
+      });
+      tables.forEach(function (table, idx) { init(table, idx); });
+    })();
+  </script>`;
 }
 
 function sortedFindings(findings: VulnerabilityFinding[]): VulnerabilityFinding[] {
@@ -4736,6 +5265,36 @@ function aggregateFiles(findings: VulnerabilityFinding[]): FileAggregate[] {
   }
 
   return [...map.values()].sort((a, b) => b.total - a.total).slice(0, 120);
+}
+
+function groupByAlertTitle(findings: VulnerabilityFinding[]): AlertTitleGroup[] {
+  const map = new Map<string, AlertTitleGroup>();
+  for (const finding of findings) {
+    const title = normalizedFindingTitle(finding);
+    const key = title.toLowerCase();
+    if (!map.has(key)) {
+      map.set(key, {
+        id: slugify(title),
+        title,
+        severity: finding.severity,
+        count: 0,
+        findings: [],
+      });
+    }
+    const entry = map.get(key)!;
+    entry.findings.push(finding);
+    entry.count += 1;
+    if (SEVERITY_ORDER.indexOf(finding.severity) < SEVERITY_ORDER.indexOf(entry.severity)) {
+      entry.severity = finding.severity;
+    }
+  }
+  return [...map.values()].sort((a, b) => {
+    const severityDiff = SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity);
+    if (severityDiff !== 0) {
+      return severityDiff;
+    }
+    return b.count - a.count || a.title.localeCompare(b.title);
+  });
 }
 
 function aggregateModules(findings: VulnerabilityFinding[]): Array<{ module: string; count: number; critical: number; high: number }> {
@@ -4939,6 +5498,42 @@ function folderFromPath(value: string): string {
 
 function normalizePath(value: string): string {
   return String(value || "").replaceAll("\\", "/");
+}
+
+function isAbsolutePathLike(value: string): boolean {
+  const input = normalizePath(value);
+  if (!input) {
+    return false;
+  }
+  if (input.startsWith("/")) {
+    return true;
+  }
+  if (/^[A-Za-z]:\//.test(input)) {
+    return true;
+  }
+  if (input.startsWith("//")) {
+    return true;
+  }
+  if (/^[a-z]+:\/\//i.test(input)) {
+    return true;
+  }
+  return false;
+}
+
+function fullFindingLocation(targetPath: string, filePath: string, line: number): string {
+  const targetRoot = normalizePath(String(targetPath || "")).replace(/\/+$/g, "");
+  const file = normalizePath(String(filePath || "")).replace(/^\.?\//, "");
+  const lineNo = Number.isFinite(line) && line > 0 ? line : 1;
+  if (!file) {
+    return `${targetRoot || "unknown"}:${lineNo}`;
+  }
+  if (!targetRoot || isAbsolutePathLike(file) || /^[a-z]+:\/\//i.test(targetRoot)) {
+    return `${file}:${lineNo}`;
+  }
+  if (file.toLowerCase().startsWith(targetRoot.toLowerCase())) {
+    return `${file}:${lineNo}`;
+  }
+  return `${targetRoot}/${file}:${lineNo}`;
 }
 
 function singleLine(value: string): string {
@@ -6377,8 +6972,15 @@ function exportThemeCss(extra = ""): string {
     .stack{display:grid;gap:14px}
     .toolbar{display:flex;gap:8px;align-items:center;margin:6px 0 10px;flex-wrap:wrap}
     input[type="search"],input[type="text"],select{background:rgba(7,20,36,.14);border:1px solid rgba(120,168,205,.28);border-radius:8px;color:var(--text);padding:7px 10px;min-width:240px}
+    select option{background:#08182a;color:#dce9f7}
     .table-frame{border:1px solid rgba(120,168,205,0.24);border-radius:16px;overflow:hidden;background:rgba(6,17,29,0.14)}
-    .table-scroll{overflow:auto;max-width:100%}
+    .table-scroll{overflow:auto;max-width:100%;scrollbar-width:thin;scrollbar-color:rgba(128,169,196,.18) transparent}
+    .table-scroll::-webkit-scrollbar{height:8px;width:8px}
+    .table-scroll::-webkit-scrollbar-track{background:transparent}
+    .table-scroll::-webkit-scrollbar-thumb{background:rgba(128,169,196,.18);border-radius:999px}
+    .table-scroll::-webkit-scrollbar-thumb:hover{background:rgba(128,169,196,.28)}
+    .report-table-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0;padding:8px 8px 10px;position:sticky;top:0;z-index:4;background:linear-gradient(180deg,rgba(8,21,36,.92),rgba(8,21,36,.74));backdrop-filter:blur(3px);border-bottom:1px solid rgba(120,168,205,.18)}
+    .report-table-tools .rtt-input,.report-table-tools .rtt-select{min-width:180px;background:rgba(7,20,36,.14);border:1px solid rgba(120,168,205,.28);border-radius:8px;color:var(--text);padding:7px 10px}
     table{width:100%;border-collapse:collapse;table-layout:fixed;line-height:1.52}
     th,td{border:1px solid var(--line-soft);padding:10px 12px;vertical-align:top}
     th{background:rgba(16,37,63,0.32);color:#c6d9ec;text-align:left;font-size:12px;letter-spacing:.04em;text-transform:uppercase}

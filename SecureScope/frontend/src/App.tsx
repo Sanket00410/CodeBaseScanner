@@ -7,6 +7,7 @@ import {
   EnterpriseAssuranceSummary,
   PortfolioSummary,
   ProfileComplianceReport,
+  ReportHistoryItem,
   ResetLocalStateCacheResult,
   ScmDiffContext,
   ScanHistoryItem,
@@ -25,7 +26,7 @@ import {
   VulnerabilityFinding,
 } from "./types";
 
-type AppTab = "dashboard" | "existing" | "vulnerabilities" | "compliance" | "history" | "tools";
+type AppTab = "dashboard" | "existing" | "vulnerabilities" | "compliance" | "history" | "tools" | "help";
 type ExportFormat = "json" | "xml" | "html" | "pdf" | "sarif" | "csv" | "patch";
 type ExportType = "existing" | "vulnerability" | "fixes" | "finding_details" | "combined";
 type ReportStyle = "classic" | "modern";
@@ -33,7 +34,7 @@ type DashboardSection = "overview" | "toolchain" | "assets" | "operations";
 type ExistingSection = "summary" | "controls" | "compliance";
 type VulnerabilitySection = "queue" | "detail";
 type ComplianceSection = "profile" | "matrix" | "actions";
-type HistorySection = "scans" | "audits";
+type HistorySection = "scans" | "audits" | "reports";
 type ToolManagerSection = "codebase" | "roles" | "policy";
 type FindingScope = "all" | "new" | "changed";
 type FindingGroupMode = "none" | "module" | "owner";
@@ -67,6 +68,7 @@ const TABS: Array<{ key: AppTab; label: string; icon: string }> = [
   { key: "compliance", label: "Compliance", icon: "CP" },
   { key: "history", label: "Scan History", icon: "HS" },
   { key: "tools", label: "Analyzer Catalog", icon: "TM" },
+  { key: "help", label: "Help", icon: "HP" },
 ];
 
 const WINDOW_MENU_ITEMS: Array<{ key: WindowMenuKey; label: string }> = [
@@ -80,6 +82,23 @@ const WINDOW_MENU_ITEMS: Array<{ key: WindowMenuKey; label: string }> = [
 const ROLES: UserRole[] = ["Admin", "Security Analyst", "Developer", "Auditor", "Management"];
 const SEVERITY_ORDER: Severity[] = ["Critical", "High", "Medium", "Low", "Info"];
 const TOOL_PROFILES: ToolScanProfile[] = ["codebase"];
+const ACTIVE_CODEBASE_TOOLS = new Set<string>([
+  "bandit",
+  "brakeman",
+  "checkov",
+  "clair",
+  "codeql",
+  "eslint-security",
+  "gitleaks",
+  "gosec",
+  "govulncheck",
+  "grype",
+  "hadolint",
+  "infer",
+  "osv-scanner",
+  "semgrep",
+  "tfsec",
+]);
 const SCAN_PRESETS: Array<{ key: ScanPreset; label: string; helper: string }> = [
   { key: "fast", label: "Fast", helper: "Faster triage. Disables active PoC checks and uses smaller file budget." },
   { key: "standard", label: "Standard", helper: "Balanced depth/speed for daily secure coding scans." },
@@ -593,6 +612,11 @@ export default function App(): React.JSX.Element {
   const [history, setHistory] = useState<ScanHistoryItem[]>([]);
   const [portfolioSummary, setPortfolioSummary] = useState<PortfolioSummary | null>(null);
   const [audits, setAudits] = useState<AuditLogEntry[]>([]);
+  const [reportHistory, setReportHistory] = useState<ReportHistoryItem[]>([]);
+  const [selectedReportPaths, setSelectedReportPaths] = useState<Set<string>>(new Set());
+  const [helpGuideMarkdown, setHelpGuideMarkdown] = useState<string>("");
+  const [helpGuideMarkdownPath, setHelpGuideMarkdownPath] = useState<string>("");
+  const [helpGuidePdfPath, setHelpGuidePdfPath] = useState<string>("");
   const [lastExport, setLastExport] = useState("");
   const [isExporting, setIsExporting] = useState(false);
   const [vulnerabilityReportStyle, setVulnerabilityReportStyle] = useState<ReportStyle>("classic");
@@ -732,9 +756,9 @@ export default function App(): React.JSX.Element {
     if (!scan) {
       return [];
     }
-    const entries = Object.entries(scan.report.vulnerability_fixed_code_report.toolchain_status || {}).map(([tool, info]) =>
-      normalizeToolEntry(tool, info),
-    );
+    const entries = Object.entries(scan.report.vulnerability_fixed_code_report.toolchain_status || {})
+      .filter(([tool]) => ACTIVE_CODEBASE_TOOLS.has(String(tool).trim().toLowerCase()))
+      .map(([tool, info]) => normalizeToolEntry(tool, info));
     entries.sort((a, b) => {
       const selectedDelta = Number(Boolean(b.selected)) - Number(Boolean(a.selected));
       if (selectedDelta !== 0) {
@@ -750,7 +774,9 @@ export default function App(): React.JSX.Element {
   }, [scan]);
   const toolCoverage = useMemo(() => buildCoverageMatrix(toolchainEntries), [toolchainEntries]);
   const toolRows = useMemo(() => {
-    return toolCatalog.map((tool) => {
+    return toolCatalog
+      .filter((tool) => ACTIVE_CODEBASE_TOOLS.has(String(tool.name || "").trim().toLowerCase()))
+      .map((tool) => {
       const status = toolchainEntries.find((item) => item.name === tool.name);
       const hostStatus: ToolchainStatusEntry | null =
         typeof tool.host_available === "boolean"
@@ -767,7 +793,7 @@ export default function App(): React.JSX.Element {
         scan_profiles: inferToolProfiles(tool),
         status: status || hostStatus,
       };
-    });
+      });
   }, [toolCatalog, toolchainEntries]);
   const activeToolProfile = useMemo<ToolScanProfile>(() => "codebase", []);
   const filteredToolRows = useMemo(() => {
@@ -1008,6 +1034,8 @@ export default function App(): React.JSX.Element {
   useEffect(() => {
     loadHistory().catch((error) => setStatusText(`History load failed: ${String(error)}`));
     loadAudits().catch(() => undefined);
+    loadReportHistory().catch(() => undefined);
+    loadHelpGuide().catch(() => undefined);
     loadToolAuthConfig()
       .then((config) => {
         if (!config.enabled || config.sessionValid) {
@@ -1124,7 +1152,7 @@ export default function App(): React.JSX.Element {
         return;
       }
       if (tab === "history") {
-        const items: HistorySection[] = ["scans", "audits"];
+        const items: HistorySection[] = ["scans", "audits", "reports"];
         if (items[index]) {
           event.preventDefault();
           setHistorySection(items[index]);
@@ -1174,6 +1202,67 @@ export default function App(): React.JSX.Element {
   const loadAudits = async (scanId?: string): Promise<void> => {
     const items = await window.codeSentinelX.listAuditLogs(scanId);
     setAudits(items);
+  };
+
+  const loadReportHistory = async (): Promise<void> => {
+    const items = await window.codeSentinelX.getReportHistory();
+    setReportHistory(items);
+    setSelectedReportPaths(new Set());
+  };
+
+  const loadHelpGuide = async (): Promise<void> => {
+    const payload = await window.codeSentinelX.getHelpGuide();
+    setHelpGuideMarkdown(payload.markdown || "");
+    setHelpGuideMarkdownPath(payload.markdownPath || "");
+    setHelpGuidePdfPath(payload.pdfPath || "");
+  };
+
+  const toggleReportSelection = (fullPath: string): void => {
+    setSelectedReportPaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(fullPath)) {
+        next.delete(fullPath);
+      } else {
+        next.add(fullPath);
+      }
+      return next;
+    });
+  };
+
+  const selectAllReports = (): void => {
+    setSelectedReportPaths(new Set(reportHistory.map((item) => item.fullPath)));
+  };
+
+  const clearReportSelection = (): void => {
+    setSelectedReportPaths(new Set());
+  };
+
+  const deleteSelectedReports = async (): Promise<void> => {
+    if (selectedReportPaths.size === 0) {
+      setStatusText("No reports selected.");
+      return;
+    }
+    const confirmed = window.confirm(`Delete ${selectedReportPaths.size} selected report file(s)?`);
+    if (!confirmed) {
+      return;
+    }
+    const result = await window.codeSentinelX.deleteReportHistory({ paths: Array.from(selectedReportPaths) });
+    await Promise.all([loadReportHistory(), loadAudits()]);
+    setStatusText(`Reports cleanup completed. Deleted: ${result.deleted}, Failed: ${result.failed}`);
+  };
+
+  const deleteAllReports = async (): Promise<void> => {
+    if (!reportHistory.length) {
+      setStatusText("No reports to delete.");
+      return;
+    }
+    const confirmed = window.confirm(`Delete all ${reportHistory.length} exported report file(s)?`);
+    if (!confirmed) {
+      return;
+    }
+    const result = await window.codeSentinelX.deleteReportHistory({ all: true });
+    await Promise.all([loadReportHistory(), loadAudits()]);
+    setStatusText(`All reports cleanup completed. Deleted: ${result.deleted}, Failed: ${result.failed}`);
   };
 
   const loadToolAuthConfig = async (tokenOverride?: string): Promise<ToolManagerAuthConfig> => {
@@ -1483,7 +1572,7 @@ export default function App(): React.JSX.Element {
       });
       setLastExport(output);
       setStatusText(`Exported ${selectedRoleExport.title} as ${format}${styleLabel}`);
-      await loadAudits(scan.scanId);
+      await Promise.all([loadAudits(scan.scanId), loadReportHistory()]);
     } finally {
       setIsExporting(false);
     }
@@ -1597,7 +1686,39 @@ export default function App(): React.JSX.Element {
   };
 
   const showShortcutHelp = (): void => {
-    setStatusText("Shortcuts: Alt+1..6 switch tabs. Number keys switch visible sub-sections.");
+    setStatusText("Shortcuts: Alt+1..7 switch tabs. Number keys switch visible sub-sections.");
+  };
+
+  const openHelpTab = (): void => {
+    setTab("help");
+    setStatusText("Opened Help.");
+  };
+
+  const openHelpPdf = async (): Promise<void> => {
+    let pdfPath = helpGuidePdfPath;
+    if (!pdfPath) {
+      pdfPath = await window.codeSentinelX.ensureHelpPdf();
+      setHelpGuidePdfPath(pdfPath);
+    }
+    const result = await window.codeSentinelX.openPath(pdfPath);
+    if (result && result.trim()) {
+      setStatusText(`Could not open Help PDF: ${result}`);
+      return;
+    }
+    setStatusText("Opened Help PDF.");
+  };
+
+  const openHelpMarkdownFile = async (): Promise<void> => {
+    if (!helpGuideMarkdownPath) {
+      setStatusText("Help markdown path unavailable.");
+      return;
+    }
+    const result = await window.codeSentinelX.openPath(helpGuideMarkdownPath);
+    if (result && result.trim()) {
+      setStatusText(`Could not open Help markdown: ${result}`);
+      return;
+    }
+    setStatusText("Opened Help markdown file.");
   };
 
   const windowMenuActions = useMemo<
@@ -1621,6 +1742,7 @@ export default function App(): React.JSX.Element {
         { label: "Secure Coding Controls", onSelect: () => { setTab("existing"); setExistingSection("summary"); setStatusText("Opened Secure Coding Controls."); } },
         { label: "Compliance", onSelect: () => { setTab("compliance"); setComplianceSection("profile"); setStatusText("Opened Compliance."); } },
         { label: "Scan History", onSelect: () => { setTab("history"); setHistorySection("scans"); setStatusText("Opened Scan History."); } },
+        { label: "Help Center", onSelect: openHelpTab },
       ],
       window: [
         { label: "Minimize", onSelect: () => window.codeSentinelX.minimizeWindow() },
@@ -1628,6 +1750,9 @@ export default function App(): React.JSX.Element {
         { label: "Close Window", onSelect: () => window.codeSentinelX.closeWindow() },
       ],
       help: [
+        { label: "Help Center", onSelect: openHelpTab },
+        { label: "Open Help PDF", onSelect: openHelpPdf },
+        { label: "Open Help Markdown", disabled: !helpGuideMarkdownPath, onSelect: openHelpMarkdownFile },
         { label: "Show Keyboard Shortcuts", onSelect: showShortcutHelp },
         { label: `Preview ${selectedRoleExport.title}`, disabled: !scan || !roleMatchesScan, onSelect: () => previewReport() },
         { label: "Analyzer Policy", onSelect: openPolicyView },
@@ -1636,8 +1761,13 @@ export default function App(): React.JSX.Element {
     }),
     [
       lastExport,
+      helpGuideMarkdownPath,
+      openHelpTab,
       openLastExport,
       openLastExportFolder,
+      openHelpMarkdownFile,
+      openHelpPdf,
+      openHelpTab,
       projectPath,
       reopenLanding,
       previewReport,
@@ -2742,6 +2872,7 @@ export default function App(): React.JSX.Element {
           tabs={[
             { key: "scans", label: "Scan History", icon: "SH" },
             { key: "audits", label: "Audit Logs", icon: "AL" },
+            { key: "reports", label: "Reports", icon: "RP" },
           ]}
           active={historySection}
           onChange={(value) => setHistorySection(value as HistorySection)}
@@ -2888,6 +3019,104 @@ export default function App(): React.JSX.Element {
             </table>
           </div>
         )}
+
+        {historySection === "reports" && (
+          <div className="subpanel">
+            <h3>Reports History</h3>
+            <div className="button-row" style={{ marginBottom: 10 }}>
+              <button type="button" onClick={selectAllReports} disabled={reportHistory.length === 0}>
+                Select All
+              </button>
+              <button type="button" onClick={clearReportSelection} disabled={selectedReportPaths.size === 0}>
+                Clear Selection
+              </button>
+              <button type="button" onClick={() => void deleteSelectedReports()} disabled={selectedReportPaths.size === 0}>
+                Delete Selected
+              </button>
+              <button type="button" onClick={() => void deleteAllReports()} disabled={reportHistory.length === 0}>
+                Delete All
+              </button>
+            </div>
+            <table className="simple-table">
+              <thead>
+                <tr>
+                  <th>Select</th>
+                  <th>Time</th>
+                  <th>Role Scope</th>
+                  <th>Report</th>
+                  <th>Target</th>
+                  <th>Format</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reportHistory.map((item) => (
+                  <tr key={item.fullPath}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={selectedReportPaths.has(item.fullPath)}
+                        onChange={() => toggleReportSelection(item.fullPath)}
+                      />
+                    </td>
+                    <td>{item.generatedAt ? new Date(item.generatedAt).toLocaleString() : "-"}</td>
+                    <td>{item.roleScope}</td>
+                    <td>{item.reportType}</td>
+                    <td>{item.target || "-"}</td>
+                    <td>{item.format.toUpperCase()}</td>
+                    <td>
+                      <button type="button" onClick={() => void window.codeSentinelX.openPath(item.fullPath)}>
+                        Open
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {reportHistory.length === 0 && (
+                  <tr>
+                    <td colSpan={7}>No exported reports yet.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    );
+  };
+
+  const renderHelp = (): React.JSX.Element => {
+    return (
+      <section className="panel stack-gap">
+        <div className="subpanel">
+          <h3>Help Center</h3>
+          <p className="muted-text">
+            End-to-end documentation is available in-app, markdown, and PDF. This guide is role-aware and explains scan/report behavior, troubleshooting, and technical term definitions.
+          </p>
+          <div className="button-row">
+            <button type="button" onClick={() => void loadHelpGuide()}>
+              Refresh Help Content
+            </button>
+            <button type="button" onClick={() => void openHelpPdf()}>
+              Open Help PDF
+            </button>
+            <button type="button" onClick={() => void openHelpMarkdownFile()} disabled={!helpGuideMarkdownPath}>
+              Open README_USER_GUIDE.md
+            </button>
+          </div>
+          <p className="muted-text">Markdown Path: {helpGuideMarkdownPath || "-"}</p>
+          <p className="muted-text">PDF Path: {helpGuidePdfPath || "-"}</p>
+        </div>
+
+        <div className="subpanel">
+          <h3>Guide Content</h3>
+          {helpGuideMarkdown.trim() ? (
+            <pre className="log-console" style={{ maxHeight: 680, whiteSpace: "pre-wrap" }}>
+              {helpGuideMarkdown}
+            </pre>
+          ) : (
+            <EmptyState text="Help guide is not loaded yet." />
+          )}
+        </div>
       </section>
     );
   };
@@ -3573,6 +3802,7 @@ export default function App(): React.JSX.Element {
         {tab === "compliance" && renderCompliance()}
         {tab === "history" && renderHistory()}
         {tab === "tools" && renderToolManager()}
+        {tab === "help" && renderHelp()}
       </main>
         </div>
       </section>
