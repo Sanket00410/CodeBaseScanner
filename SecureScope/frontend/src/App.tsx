@@ -2713,7 +2713,7 @@ export default function App(): React.JSX.Element {
                   <strong>Description:</strong> {selectedFinding.description || "No additional description available."}
                 </p>
                 <p>
-                  <strong>Source Tool:</strong> {selectedFinding.tool || "scanner"}
+                  <strong>Source Tool:</strong> {selectedFinding.tool || "CodeSentinelX"}
                 </p>
                 <p>
                   <strong>Rule Confidence:</strong>{" "}

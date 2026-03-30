@@ -119,6 +119,16 @@ def _as_dict(value: object) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _display_report_tool_name(tool: object) -> str:
+    value = str(tool or "").strip()
+    if not value:
+        return "CodeSentinelX"
+    normalized = value.lower()
+    if normalized in {"scanner", "codebasescanner", "codesentinelx", "universal security scanner", "universal_security_scanner"}:
+        return "CodeSentinelX"
+    return value
+
+
 def _quality_benchmark_from_report(report: dict) -> dict[str, Any] | None:
     executive = _as_dict(report.get("executive_summary"))
     existing = _as_dict(report.get("existing_implementation_report"))
@@ -720,7 +730,7 @@ class ReportExporter:
             write_line(f"[{alert.get('severity')}] {alert.get('title')} ({alert.get('count')})", font="Helvetica-Bold", size=9)
             write_line(f"CWE: {alert.get('cwe')} | OWASP: {alert.get('owasp')}", size=8)
             lead = alert.get("findings", [{}])[0]
-            write_line(f"Tool: {str(lead.get('tool', 'scanner'))}", size=8)
+            write_line(f"Tool: {_display_report_tool_name(lead.get('tool', 'CodeSentinelX'))}", size=8)
             write_line(f"Description:", size=8)
             write_block(str(lead.get("description", "N/A")), size=8)
             write_line(f"Impact: {str(lead.get('business_impact', ''))}", size=8)
@@ -730,7 +740,7 @@ class ReportExporter:
             for finding in alert.get("findings", [])[:8]:
                 location = f"{_normalize_path(str(finding.get('file_path', 'unknown')))}:{finding.get('line_number', 1)}"
                 write_line(
-                    f" - {location} | {finding.get('status', 'Open')} | {finding.get('tool', 'scanner')}",
+                    f" - {location} | {finding.get('status', 'Open')} | {_display_report_tool_name(finding.get('tool', 'CodeSentinelX'))}",
                     size=8,
                 )
             write_line("", gap=4)
@@ -790,7 +800,7 @@ class ReportExporter:
                 {
                     "tool": {
                         "driver": {
-                            "name": report.get("scanner", {}).get("name", "Universal Security Scanner"),
+                            "name": report.get("scanner", {}).get("name", "CodeSentinelX"),
                             "version": report.get("scanner", {}).get("version", "1.0.0"),
                             "rules": list(rules.values()),
                         }
@@ -1301,7 +1311,7 @@ class ReportExporter:
                 f"<td align='center'>{int(item.get('line_number', 1))}</td>"
                 f"<td>{html.escape(str(item.get('severity', 'Info')))}</td>"
                 f"<td>{html.escape(str(item.get('status', 'Open')))}</td>"
-                f"<td>{html.escape(str(item.get('tool', 'scanner')))}</td>"
+                f"<td>{html.escape(_display_report_tool_name(item.get('tool', 'CodeSentinelX')))}</td>"
                 f"<td>{html.escape(str(item.get('cwe_id') or item.get('cwe') or 'N/A'))}</td>"
                 f"<td>{html.escape(str(item.get('owasp_mapping') or item.get('owasp_category') or 'N/A'))}</td>"
                 "</tr>"
@@ -1323,7 +1333,7 @@ class ReportExporter:
                 if _dependency_auth_summary(lead)
                 else ""
             )
-            + f"<tr><th>Source Tool</th><td>{html.escape(str(lead.get('tool', 'scanner')))}</td></tr>"
+            + f"<tr><th>Source Tool</th><td>{html.escape(_display_report_tool_name(lead.get('tool', 'CodeSentinelX')))}</td></tr>"
             + "</table>"
             "<h4>Instances</h4>"
             "<table>"

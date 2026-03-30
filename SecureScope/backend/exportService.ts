@@ -1796,7 +1796,7 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
       known_exploited?: boolean;
       exploitability_context?: string;
     };
-    writeWrapped(doc, `Tool: ${leadExtended.tool || "scanner"}`, 8);
+    writeWrapped(doc, `Tool: ${displayReportToolName(leadExtended.tool || "CodeSentinelX")}`, 8);
     writeWrapped(doc, `Description: ${singleLine(leadExtended.description || "N/A")}`, 8);
     writeWrapped(doc, `CVSS: ${(lead.cvss_score || 0).toFixed(1)} (https://www.first.org/cvss/calculator/3.1)`, 8);
     const cveJoined = cveValues(leadExtended.cve_ids || []).join(", ");
@@ -1837,7 +1837,7 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
       const findingExtended = finding as VulnerabilityFinding & { tool?: string };
       writeWrapped(
         doc,
-        `  - ${normalizePath(finding.file_path)}:${finding.line_number} | ${workflowStatusText(finding.status)} | ${findingExtended.tool || "scanner"}`,
+        `  - ${normalizePath(finding.file_path)}:${finding.line_number} | ${workflowStatusText(finding.status)} | ${displayReportToolName(findingExtended.tool || "CodeSentinelX")}`,
         8,
       );
     }
@@ -2854,7 +2854,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
     cwe_url: cweUrl(finding.cwe_id || ""),
     owasp: finding.owasp_mapping || "N/A",
     status: finding.status || "Open",
-    tool: finding.tool || "scanner",
+    tool: displayReportToolName(finding.tool || "CodeSentinelX"),
   }));
   const severityDistribution = buildSeverityDistribution(findings);
 
@@ -2948,7 +2948,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       <td>${escapeHtml(folderFromPath(finding.file_path))}</td>
       <td align="center">${finding.line_number || 1}</td>
       <td>${escapeHtml(workflowStatusText(finding.status))}</td>
-      <td>${escapeHtml(String((finding as VulnerabilityFinding & { tool?: string }).tool || "scanner"))}</td>
+      <td>${escapeHtml(displayReportToolName((finding as VulnerabilityFinding & { tool?: string }).tool || "CodeSentinelX"))}</td>
       <td>${renderCweLink(finding.cwe_id || "N/A")}</td>
       <td>${escapeHtml(finding.owasp_mapping || "N/A")}</td>
     </tr>`,
@@ -2974,7 +2974,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       ${dependencyAuthenticitySummary(lead) ? `<tr><th>Dependency Authenticity</th><td>${escapeHtml(dependencyAuthenticitySummary(lead))}<br><span class="muted">${escapeHtml(dependencyAuthenticityDetail(lead))}</span></td></tr>` : ""}
       ${isRenderableDisplayValue(lead.attack_scenario) ? `<tr><th>Attack Scenario</th><td>${escapeHtml(String(lead.attack_scenario || ""))}</td></tr>` : ""}
       ${isRenderableDisplayValue(lead.exploitation_example) ? `<tr><th>Exploitation Path</th><td>${escapeHtml(String(lead.exploitation_example || ""))}</td></tr>` : ""}
-      <tr><th>Source Tool</th><td>${escapeHtml(leadExtended.tool || "scanner")}</td></tr>
+      <tr><th>Source Tool</th><td>${escapeHtml(displayReportToolName(leadExtended.tool || "CodeSentinelX"))}</td></tr>
       ${String(activePocStatusText(lead.active_poc) || "").trim() && activePocStatusText(lead.active_poc) !== "not_executed" ? `<tr><th>Active PoC Status</th><td>${escapeHtml(activePocStatusText(lead.active_poc))}</td></tr>` : ""}
       ${String(lead.active_poc?.command || "").trim() ? `<tr><th>Active PoC Command</th><td><code>${escapeHtml(activePocCommandText(lead.active_poc))}</code></td></tr>` : ""}
     </table>
