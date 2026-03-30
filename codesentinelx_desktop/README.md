@@ -90,7 +90,7 @@ Detailed usage guide:
 ## Run in Development
 
 ```powershell
-cd C:\Users\sanketa\Documents\UniversalSecurityScanner\codesentinelx_desktop
+cd codesentinelx_desktop
 npm install
 npm run dev
 ```
@@ -119,7 +119,7 @@ If Electron starts in Node mode by mistake:
 If scanner root is not auto-detected, set:
 
 ```powershell
-$env:CODESENTINELX_SCANNER_ROOT = "C:\Users\sanketa\Documents\UniversalSecurityScanner"
+$env:CODESENTINELX_SCANNER_ROOT = "C:\Users\sanketa\Documents\CodeSentinelX"
 ```
 
 App-managed `.toolchain` packaging has been removed. `npm run build` now produces a native-only desktop package.

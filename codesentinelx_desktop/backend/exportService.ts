@@ -1,4 +1,4 @@
-import { createWriteStream, existsSync, mkdirSync, readFileSync } from "node:fs";
+﻿import { createWriteStream, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
@@ -757,7 +757,7 @@ export class ExportService {
 
       const renderBullet = (text: string): void => {
         ensureSpace(16);
-        document.fillColor("#7fcfff").font("Helvetica-Bold").fontSize(10).text("�", contentLeft, document.y, { width: 10 });
+        document.fillColor("#7fcfff").font("Helvetica-Bold").fontSize(10).text("•", contentLeft, document.y, { width: 10 });
         document.fillColor("#dce9f7").font("Helvetica").fontSize(9.2).text(text, contentLeft + 14, document.y, { width: width - 14, lineGap: 1.3 });
       };
 
@@ -5737,7 +5737,7 @@ function displayReportToolName(tool: unknown): string {
     return "CodeSentinelX";
   }
   const normalized = value.toLowerCase();
-  if (["scanner", "codebasescanner", "codesentinelx", "codesentinelx_engine", "universal security scanner"].includes(normalized)) {
+  if (["scanner", "codebasescanner", "codesentinelx", "codesentinelx_engine"].includes(normalized)) {
     return "CodeSentinelX";
   }
   return value;
@@ -7477,5 +7477,6 @@ function slugify(value: string): string {
     .replace(/^-+|-+$/g, "")
     .slice(0, 80);
 }
+
 
 

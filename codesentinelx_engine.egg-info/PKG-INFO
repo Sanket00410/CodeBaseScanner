@@ -57,7 +57,7 @@ Tagline: **Scan every line. Quantify every risk.**
 ## Repository Layout
 
 ```text
-UniversalSecurityScanner/
+CodeSentinelX/
   codesentinelx_engine/
     scanner/
     plugins/
@@ -74,7 +74,7 @@ UniversalSecurityScanner/
 ## Quick Start (Scanner)
 
 ```powershell
-cd C:\Users\sanketa\Documents\UniversalSecurityScanner
+cd CodeSentinelX
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e .

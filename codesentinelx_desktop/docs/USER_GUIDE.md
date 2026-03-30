@@ -38,7 +38,7 @@ These are automatically managed by the app.
 From terminal:
 
 ```powershell
-cd C:\Users\sanketa\Documents\UniversalSecurityScanner\codesentinelx_desktop
+cd codesentinelx_desktop
 npm install
 npm run dev
 ```
@@ -52,7 +52,7 @@ What each process does:
 ## 5. Build the Windows Portable EXE
 
 ```powershell
-cd C:\Users\sanketa\Documents\UniversalSecurityScanner\codesentinelx_desktop
+cd codesentinelx_desktop
 npm run build
 ```
 

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import base64
 import html
@@ -124,7 +124,7 @@ def _display_report_tool_name(tool: object) -> str:
     if not value:
         return "CodeSentinelX"
     normalized = value.lower()
-    if normalized in {"scanner", "codebasescanner", "codesentinelx", "universal security scanner", "codesentinelx_engine"}:
+    if normalized in {"scanner", "codebasescanner", "codesentinelx", "codesentinelx_engine"}:
         return "CodeSentinelX"
     return value
 
@@ -1649,5 +1649,6 @@ class ReportExporter:
 </body>
 </html>
 """
+
 
 
