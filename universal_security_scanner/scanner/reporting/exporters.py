@@ -1498,6 +1498,80 @@ class ReportExporter:
         exec_summary = report.get("executive_summary", {})
         existing = report.get("existing_implementation_report", {})
         vuln = report.get("vulnerability_fixed_code_report", {})
+        summary = vuln.get("summary", {})
+        findings = _sorted_findings(report)
+        severity_dist = summary.get("severity_distribution", {}) if isinstance(summary.get("severity_distribution"), dict) else {}
+        risk_intel = summary.get("risk_intelligence", {}) if isinstance(summary.get("risk_intelligence"), dict) else {}
+        known_kev = int(risk_intel.get("known_exploited_findings", 0) or 0)
+        severity_rows = "".join(
+            f"<tr><td>{severity}</td><td align='center'>{int(severity_dist.get(severity, 0))}</td></tr>"
+            for severity in ["Critical", "High", "Medium", "Low", "Info"]
+            if int(severity_dist.get(severity, 0)) > 0
+        )
+        top_rows = "".join(
+            (
+                "<tr>"
+                f"<td>{idx + 1}</td>"
+                f"<td>{html.escape(str(item.get('severity', 'Info')))}</td>"
+                f"<td>{html.escape(str(item.get('vulnerability_title') or item.get('vulnerability_type') or 'Issue'))}</td>"
+                f"<td align='center'>{float(item.get('cvss_score', 0.0)):.1f}</td>"
+                f"<td>{html.escape(_normalize_path(str(item.get('file_path', 'unknown'))))}:{int(item.get('line_number', 1))}</td>"
+                f"<td>{html.escape(str(item.get('cwe_id') or item.get('cwe') or 'N/A'))}</td>"
+                f"<td>{html.escape(str(item.get('owasp_mapping') or item.get('owasp_category') or 'N/A'))}</td>"
+                "</tr>"
+            )
+            for idx, item in enumerate(findings[:30])
+        )
+        timing_rows_data: list[dict[str, object]] = []
+        toolchain_status = vuln.get("toolchain_status", {})
+        if isinstance(toolchain_status, dict):
+            for tool_name, status in toolchain_status.items():
+                if not isinstance(status, dict):
+                    continue
+                execution = status.get("execution") if isinstance(status.get("execution"), dict) else {}
+                timing_rows_data.append(
+                    {
+                        "tool": str(tool_name),
+                        "status": str(execution.get("status") or status.get("message") or "unknown"),
+                        "attempted": bool(execution.get("attempted")),
+                        "duration_ms": int(execution.get("duration_ms") or 0),
+                        "findings_count": int(execution.get("findings_count") or 0),
+                        "errors_count": len(execution.get("errors") or []) if isinstance(execution.get("errors"), list) else 0,
+                    }
+                )
+        timing_rows_data.sort(key=lambda item: int(item.get("duration_ms", 0)), reverse=True)
+        timing_rows = "".join(
+            (
+                "<tr>"
+                f"<td>{html.escape(str(item.get('tool', '')))}</td>"
+                f"<td>{html.escape(str(item.get('status', '')))}</td>"
+                f"<td align='center'>{'Yes' if item.get('attempted') else 'No'}</td>"
+                f"<td align='right'>{int(item.get('duration_ms', 0))}</td>"
+                f"<td align='right'>{int(item.get('findings_count', 0))}</td>"
+                f"<td align='right'>{int(item.get('errors_count', 0))}</td>"
+                "</tr>"
+            )
+            for item in timing_rows_data[:40]
+        )
+        enterprise = summary.get("enterprise_assurance", {}) if isinstance(summary.get("enterprise_assurance"), dict) else {}
+        enterprise_rows = "".join(
+            row
+            for row in [
+                f"<tr><td>Status</td><td align='center'>{html.escape(str(enterprise.get('status', '')).upper())}</td></tr>"
+                if str(enterprise.get("status", "")).strip()
+                else "",
+                f"<tr><td>Readiness Score</td><td align='center'>{int(enterprise.get('readiness_score', 0))}</td></tr>"
+                if int(enterprise.get("readiness_score", 0) or 0) > 0
+                else "",
+                f"<tr><td>Required Tools Ready</td><td align='center'>{int(enterprise.get('required_tools_ready', 0))}/{int(enterprise.get('required_tools_total', 0))}</td></tr>"
+                if int(enterprise.get("required_tools_total", 0) or 0) > 0
+                else "",
+                f"<tr><td>Required Coverage</td><td align='center'>{float(enterprise.get('required_tools_coverage_percent', 0.0)):.2f}%</td></tr>"
+                if float(enterprise.get("required_tools_coverage_percent", 0.0) or 0) > 0
+                else "",
+            ]
+            if row
+        )
         benchmark_section = _render_quality_benchmark_html_section(report)
         return f"""
 <!doctype html>
@@ -1507,29 +1581,58 @@ class ReportExporter:
   <meta name='viewport' content='width=device-width,initial-scale=1'>
   <title>CodeSentinelX Combined Report</title>
   <style>
-    body {{ margin:0; font-family: Arial, Helvetica, sans-serif; background:#f5f6f8; color:#111; }}
-    main {{ max-width:960px; margin:0 auto; padding:20px; }}
-    .panel {{ background:#fff; border:1px solid #cad1d8; border-radius:10px; padding:14px; margin-bottom:12px; }}
+    body {{ margin:0; font-family: "Segoe UI Variable Text", "Segoe UI", "Trebuchet MS", Arial, Helvetica, sans-serif; font-size: 13.5px; line-height: 1.58; letter-spacing: .01em; background:radial-gradient(circle at 20% -20%, #1c3a60, #071321 45%); color:#dce9f7; padding:18px; }}
+    main {{ max-width:1260px; margin:0 auto; }}
+    .panel {{ background:rgba(11,26,45,.34); border:1px solid #294a6c; border-radius:14px; padding:14px; margin-bottom:14px; }}
+    .meta {{ margin:4px 0; color:#95afc8; font-size:12.5px; }}
+    .grid {{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }}
+    table {{ width:100%; border-collapse:collapse; margin-bottom:12px; line-height:1.52; }}
+    th, td {{ border:1px solid #294a6c; padding:10px 12px; vertical-align:top; }}
+    th {{ background:rgba(16,37,63,.6); color:#c6d9ec; text-align:left; }}
+    td {{ background:rgba(11,26,45,.34); }}
+    @media (max-width: 1024px) {{ .grid {{ grid-template-columns:1fr; }} }}
+    {_report_globe_css()}
   </style>
 </head>
 <body>
   <main>
     <section class='panel'>
       <h1>CodeSentinelX Combined Security Report</h1>
-      <p>Target: {html.escape(str(exec_summary.get('target_path', 'N/A')))}</p>
-      <p>Generated: {html.escape(_format_display_timestamp(str(exec_summary.get('generated_at', 'N/A'))))}</p>
-      <p>Risk Score: {exec_summary.get('risk_score', 0)} ({html.escape(str(exec_summary.get('risk_rating', 'N/A')) )})</p>
+      <p class='meta'><strong>Target:</strong> {html.escape(str(exec_summary.get('target_path', 'N/A')))}</p>
+      <p class='meta'><strong>Generated:</strong> {html.escape(_format_display_timestamp(str(exec_summary.get('generated_at', 'N/A'))))}</p>
+      <p class='meta'><strong>Risk Score:</strong> {float(summary.get('risk_score', exec_summary.get('risk_score', 0)) or 0):.2f} ({html.escape(str(summary.get('risk_rating', exec_summary.get('risk_rating', 'N/A'))) )})</p>
+      <p class='meta'><strong>Total Findings:</strong> {int(summary.get('total_findings', len(findings)) or len(findings))} | <strong>Known Exploited (CISA KEV):</strong> {known_kev}</p>
+    </section>
+    <section class='panel grid'>
+      <div>
+        <h2>Severity Distribution</h2>
+        <table>
+          <thead><tr><th>Severity</th><th>Count</th></tr></thead>
+          <tbody>{severity_rows or "<tr><td colspan='2'>No findings in this scope.</td></tr>"}</tbody>
+        </table>
+      </div>
+      <div>
+        <h2>Enterprise Assurance</h2>
+        <table>
+          <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+          <tbody>{enterprise_rows or "<tr><td colspan='2'>No enterprise assurance metrics available.</td></tr>"}</tbody>
+        </table>
+      </div>
     </section>
     <section class='panel'>
-      <h2>Separate Reports Recommended</h2>
-      <p>Use dedicated exports for complete evidence and audit workflows:</p>
-      <ul>
-        <li>Existing Security Report for implemented safeguards</li>
-        <li>Vulnerability Report for ZAP-style alert details and line-level instances</li>
-        <li>Original and Suggested Fix Report for developer-ready remediation snippets</li>
-      </ul>
-      <p>Implemented controls: {existing.get('summary', {}).get('implemented_controls', 0)}</p>
-      <p>Deduplicated findings: {vuln.get('summary', {}).get('total_findings', 0)}</p>
+      <h2>Top Prioritized Findings</h2>
+      <table>
+        <thead><tr><th>ID</th><th>Severity</th><th>Issue</th><th>CVSS</th><th>Location</th><th>CWE</th><th>OWASP</th></tr></thead>
+        <tbody>{top_rows or "<tr><td colspan='7'>No prioritized findings available for this scope.</td></tr>"}</tbody>
+      </table>
+    </section>
+    <section class='panel'>
+      <h2>Analyzer Runtime Breakdown</h2>
+      <table>
+        <thead><tr><th>Analyzer</th><th>Status</th><th>Attempted</th><th>Duration (ms)</th><th>Findings</th><th>Errors</th></tr></thead>
+        <tbody>{timing_rows or "<tr><td colspan='6'>No analyzer runtime evidence available.</td></tr>"}</tbody>
+      </table>
+      <p class='meta'><strong>Implemented Controls:</strong> {existing.get('summary', {}).get('implemented_controls', 0)} | <strong>Findings:</strong> {vuln.get('summary', {}).get('total_findings', 0)}</p>
     </section>
     {benchmark_section}
   </main>

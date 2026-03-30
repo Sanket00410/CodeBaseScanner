@@ -1,5 +1,6 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
+import os
 import tempfile
 from pathlib import Path
 
@@ -43,6 +44,24 @@ QUERY_SUITES = {
         "codeql/ruby-queries",
     ],
 }
+
+
+def _auto_codeql_search_path(binary: str, explicit_search_path: str) -> str:
+    if explicit_search_path.strip():
+        return explicit_search_path.strip()
+    binary_path = Path(binary)
+    if not binary_path.is_absolute():
+        return ""
+    candidates: list[Path] = []
+    tool_root = binary_path.parent.parent  # .../.toolchain/codeql
+    candidates.append(tool_root / "packs")
+    candidates.append(tool_root / "codeql-repo")
+    candidates.append(tool_root / "codeql-main")
+    candidates.append(binary_path.parent)  # .../.toolchain/codeql/codeql
+    valid = [str(path) for path in candidates if path.exists()]
+    if not valid:
+        return ""
+    return os.pathsep.join(valid)
 
 
 def _detect_languages(target_root: Path) -> list[str]:
@@ -121,19 +140,6 @@ def _parse_sarif(raw: str, target_root: Path) -> list[Finding]:
     return findings
 
 
-def _download_query_pack(binary: str, language: str, timeout_seconds: int) -> tuple[bool, str]:
-    pack_name = f"codeql/{language}-queries"
-    command = [binary, "pack", "download", pack_name]
-    try:
-        code, _stdout, stderr = run_command(command, timeout_seconds=timeout_seconds)
-    except Exception as exc:
-        return False, f"CodeQL query pack download failed ({language}): {exc}"
-    if code != 0:
-        short_error = " | ".join(stderr.strip().splitlines()[:2])
-        return False, f"CodeQL query pack download failed ({language}): {short_error}"
-    return True, f"Downloaded query pack {pack_name}"
-
-
 def run_codeql_scan(
     target_root: Path,
     timeout_seconds: int,
@@ -152,6 +158,8 @@ def run_codeql_scan(
 
     findings: list[Finding] = []
     errors: list[str] = []
+    explicit_search_path = str(os.getenv("USS_CODEQL_SEARCH_PATH") or os.getenv("CODEQL_SEARCH_PATH") or "").strip()
+    search_path = _auto_codeql_search_path(binary, explicit_search_path)
 
     with tempfile.TemporaryDirectory(prefix="codeql_db_") as db_root:
         root = Path(db_root)
@@ -184,10 +192,6 @@ def run_codeql_scan(
                 errors.append(f"CodeQL database create failed ({lang}): {' | '.join(short_stderr)}")
                 continue
 
-            downloaded, download_message = _download_query_pack(binary, lang, timeout_seconds)
-            if not downloaded:
-                errors.append(download_message)
-
             suites = QUERY_SUITES.get(lang, [f"codeql/{lang}-queries"])
             analyze_errors: list[str] = []
             analyze_success = False
@@ -202,6 +206,8 @@ def run_codeql_scan(
                     f"--output={sarif_path}",
                     "--quiet",
                 ]
+                if search_path:
+                    analyze_cmd.insert(4, f"--search-path={search_path}")
                 try:
                     analyze_code, _analyze_stdout, analyze_stderr = run_command(analyze_cmd, timeout_seconds=timeout_seconds)
                 except Exception as exc:

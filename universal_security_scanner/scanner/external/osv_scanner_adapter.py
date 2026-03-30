@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -88,14 +89,21 @@ def run_osv_scanner_scan(
     timeout_seconds: int,
     binary: str = "osv-scanner",
 ) -> tuple[list[Finding], list[str]]:
+    with tempfile.NamedTemporaryFile(prefix="osv-scan-", suffix=".json", delete=False) as tmp_file:
+        output_path = tmp_file.name
     command = [
         binary,
         "scan",
         "source",
-        "-r",
-        str(target_root),
+        "--recursive",
+        "--allow-no-lockfiles",
+        "--verbosity",
+        "error",
         "--format",
         "json",
+        "--output",
+        output_path,
+        str(target_root),
     ]
 
     try:
@@ -105,12 +113,23 @@ def run_osv_scanner_scan(
     except Exception as exc:
         return [], [f"OSV-Scanner execution failed: {exc}"]
 
-    if return_code not in {0, 1}:
+    raw_payload = ""
+    try:
+        payload_path = Path(output_path)
+        if payload_path.exists():
+            raw_payload = payload_path.read_text(encoding="utf-8", errors="ignore")
+            payload_path.unlink(missing_ok=True)
+    except Exception:
+        raw_payload = ""
+
+    if return_code not in {0, 1, 128}:
         short_error = " | ".join((stderr or "").strip().splitlines()[:3])
         return [], [f"OSV-Scanner returned code {return_code}: {short_error}"]
 
-    payload = safe_json_loads(stdout)
+    payload = safe_json_loads(raw_payload or stdout)
     if not isinstance(payload, dict):
+        if return_code == 128:
+            return [], []
         return [], ["OSV-Scanner produced non-JSON output."]
 
     return parse_osv_scanner_output(payload, target_root), []

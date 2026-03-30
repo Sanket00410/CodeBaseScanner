@@ -809,6 +809,13 @@ select {
   border-radius: 10px;
   padding: 9px 12px;
   backdrop-filter: none;
+  color-scheme: dark;
+}
+
+select option,
+select optgroup {
+  background-color: #071a2a;
+  color: #dbe9f5;
 }
 
 .app-shell {

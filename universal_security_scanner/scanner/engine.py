@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import logging
+import os
 from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import datetime, timezone
@@ -31,33 +32,21 @@ LOGGER = logging.getLogger(__name__)
 
 ProgressCallback = Callable[[float, str, str | None, str | None], None]
 
-ALWAYS_RELEVANT_TOOLS = {"semgrep", "codeql", "gitleaks", "trivy"}
+ALWAYS_RELEVANT_TOOLS = {"semgrep", "gitleaks"}
 TOOL_FILE_HINTS: dict[str, dict[str, set[str]]] = {
     "bandit": {"extensions": {".py"}, "files": {"requirements.txt", "pyproject.toml", "poetry.lock", "pipfile"}},
     "brakeman": {"extensions": {".rb", ".erb"}, "files": {"gemfile", "gemfile.lock"}},
     "checkov": {"extensions": {".tf", ".yaml", ".yml", ".json"}, "files": {"dockerfile", "docker-compose.yml"}},
     "clair": {"extensions": {".yaml", ".yml", ".json"}, "files": {"dockerfile", "containerfile"}},
-    "cppcheck": {"extensions": {".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx"}, "files": set()},
+    "codeql": {
+        "extensions": {".py", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".java", ".go", ".rb", ".cs", ".cpp", ".c", ".h"},
+        "files": {"package.json", "requirements.txt", "pom.xml", "build.gradle", "go.mod", "cargo.toml", ".sln"},
+    },
     "eslint-security": {"extensions": {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"}, "files": {"package.json"}},
-    "findsecbugs": {"extensions": {".java", ".class", ".jar", ".war", ".ear"}, "files": {"pom.xml", "build.gradle", "build.gradle.kts"}},
-    "flawfinder": {"extensions": {".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx"}, "files": set()},
     "gosec": {"extensions": {".go"}, "files": {"go.mod", "go.sum"}},
     "govulncheck": {"extensions": {".go"}, "files": {"go.mod", "go.sum"}},
     "hadolint": {"extensions": set(), "files": {"dockerfile", "containerfile"}},
     "infer": {"extensions": {".c", ".cc", ".cpp", ".cxx", ".m", ".mm", ".java"}, "files": {"compile_commands.json"}},
-    "npm-audit": {"extensions": {".js", ".jsx", ".ts", ".tsx"}, "files": {"package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml"}},
-    "owasp-dependency-check": {
-        "extensions": {".java", ".jar", ".war", ".ear", ".py", ".js", ".ts", ".go"},
-        "files": {"package.json", "requirements.txt", "pom.xml", "build.gradle", "go.mod", "cargo.lock"},
-    },
-    "pip-audit": {"extensions": {".py"}, "files": {"requirements.txt", "pyproject.toml", "poetry.lock", "pipfile.lock"}},
-    "safety": {"extensions": {".py"}, "files": {"requirements.txt", "pyproject.toml", "poetry.lock", "pipfile.lock"}},
-    "snyk": {
-        "extensions": {".py", ".js", ".ts", ".java", ".go", ".rb", ".cs"},
-        "files": {"package.json", "requirements.txt", "pom.xml", "go.mod", "gemfile", "composer.json"},
-    },
-    "sonarqube": {"extensions": {".py", ".js", ".ts", ".java", ".go", ".rb", ".cs", ".c", ".cpp"}, "files": set()},
-    "spotbugs": {"extensions": {".java", ".class", ".jar", ".war", ".ear"}, "files": {"pom.xml", "build.gradle", "build.gradle.kts"}},
     "tfsec": {"extensions": {".tf"}, "files": {"main.tf", "versions.tf"}},
     "grype": {
         "extensions": {".json", ".yaml", ".yml", ".lock"},
@@ -67,6 +56,26 @@ TOOL_FILE_HINTS: dict[str, dict[str, set[str]]] = {
         "extensions": {".json", ".lock", ".mod"},
         "files": {"package-lock.json", "yarn.lock", "poetry.lock", "pipfile.lock", "go.mod", "cargo.lock"},
     },
+}
+
+_DEPENDENCY_TOOLS = {
+    "grype",
+    "osv-scanner",
+    "govulncheck",
+}
+
+_DEEP_TOOLS = {"codeql"}
+
+_DEPENDENCY_TOOL_PRIORITIES: dict[str, tuple[str, ...]] = {
+    "python": ("osv-scanner", "grype"),
+    "javascript": ("osv-scanner", "grype"),
+    "go": ("govulncheck", "osv-scanner", "grype"),
+    "java": ("osv-scanner", "grype"),
+    "ruby": ("osv-scanner", "grype"),
+    "php": ("osv-scanner", "grype"),
+    "dotnet": ("osv-scanner", "grype"),
+    "rust": ("osv-scanner", "grype"),
+    "generic": ("osv-scanner", "grype"),
 }
 
 
@@ -95,6 +104,102 @@ def _is_tool_relevant(tool_name: str, extensions: set[str], filenames: set[str])
     if not extension_hints and not file_hints:
         return True
     return False
+
+
+def _detect_dependency_ecosystems(extensions: set[str], filenames: set[str]) -> set[str]:
+    ecosystems: set[str] = set()
+    if filenames.intersection({"requirements.txt", "pyproject.toml", "poetry.lock", "pipfile", "pipfile.lock"}):
+        ecosystems.add("python")
+    if filenames.intersection({"package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "npm-shrinkwrap.json"}):
+        ecosystems.add("javascript")
+    if filenames.intersection({"go.mod", "go.sum"}):
+        ecosystems.add("go")
+    if filenames.intersection({"pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"}):
+        ecosystems.add("java")
+    if filenames.intersection({"gemfile", "gemfile.lock"}):
+        ecosystems.add("ruby")
+    if filenames.intersection({"composer.json", "composer.lock"}):
+        ecosystems.add("php")
+    if filenames.intersection({"cargo.toml", "cargo.lock"}):
+        ecosystems.add("rust")
+    if filenames.intersection({"packages.lock.json", "nuget.config"}) or ".csproj" in extensions or ".sln" in extensions:
+        ecosystems.add("dotnet")
+    return ecosystems
+
+
+def _allow_dependency_corroboration(role: str, scan_preset: str) -> bool:
+    if os.getenv("USS_DEPENDENCY_CORROBORATION", "").strip().lower() in {"1", "true", "yes", "on"}:
+        return True
+    normalized_role = role.strip().lower()
+    return normalized_role in {"admin", "administrator"} and scan_preset.strip().lower() == "deep"
+
+
+def _select_primary_dependency_tools(
+    dependency_tools: set[str],
+    ecosystems: set[str],
+) -> set[str]:
+    if not dependency_tools:
+        return set()
+    selected: set[str] = set()
+    resolved_ecosystems = ecosystems or {"generic"}
+    for ecosystem in sorted(resolved_ecosystems):
+        for candidate in _DEPENDENCY_TOOL_PRIORITIES.get(ecosystem, _DEPENDENCY_TOOL_PRIORITIES["generic"]):
+            if candidate in dependency_tools:
+                selected.add(candidate)
+                break
+    if not selected:
+        for candidate in _DEPENDENCY_TOOL_PRIORITIES["generic"]:
+            if candidate in dependency_tools:
+                selected.add(candidate)
+                break
+    return selected
+
+
+def _apply_tool_execution_strategy(
+    selected_tools: list[str],
+    *,
+    extensions: set[str],
+    filenames: set[str],
+    role: str,
+    scan_preset: str,
+) -> tuple[list[str], dict[str, str]]:
+    retained: list[str] = []
+    skipped_reasons: dict[str, str] = {}
+    allow_deep_tools = role.strip().lower() in {"admin", "administrator"} or scan_preset.strip().lower() == "deep"
+
+    for tool_name in selected_tools:
+        normalized = tool_name.strip().lower()
+        if normalized in _DEEP_TOOLS and not allow_deep_tools:
+            skipped_reasons[tool_name] = (
+                "Skipped by execution policy: deep analyzer is restricted to Admin role or deep scan preset."
+            )
+            continue
+        if not _is_tool_relevant(tool_name, extensions, filenames):
+            skipped_reasons[tool_name] = (
+                "Skipped for speed optimization: no relevant language/manifests detected for this analyzer."
+            )
+            continue
+        retained.append(tool_name)
+
+    dependency_candidates = {tool.strip().lower() for tool in retained if tool.strip().lower() in _DEPENDENCY_TOOLS}
+    if dependency_candidates and not _allow_dependency_corroboration(role, scan_preset):
+        ecosystems = _detect_dependency_ecosystems(extensions, filenames)
+        primary = _select_primary_dependency_tools(dependency_candidates, ecosystems)
+        if primary:
+            ecosystem_label = ", ".join(sorted(ecosystems)) if ecosystems else "generic"
+            filtered: list[str] = []
+            for tool_name in retained:
+                normalized = tool_name.strip().lower()
+                if normalized in _DEPENDENCY_TOOLS and normalized not in primary:
+                    skipped_reasons[tool_name] = (
+                        "Skipped dependency overlap for cleaner output: "
+                        f"primary scanner selected for {ecosystem_label} ecosystem(s)."
+                    )
+                    continue
+                filtered.append(tool_name)
+            retained = filtered
+
+    return retained, skipped_reasons
 
 
 class ScanEngine:
@@ -309,6 +414,13 @@ class ScanEngine:
         ]
         runner_supported = set(supported_runner_tools("codebase"))
         selected_runner_tools = [tool for tool in active_external_tools if tool in runner_supported]
+        selected_runner_tools, tool_strategy_skips = _apply_tool_execution_strategy(
+            selected_runner_tools,
+            extensions=file_extensions,
+            filenames=file_names,
+            role=self.role_scope.role,
+            scan_preset=self.config.scan_preset,
+        )
         control_analyzer = ExistingSecurityMeasuresAnalyzer()
         scan_cache = FileScanCache.from_config(self.config)
         toolchain_status: dict[str, dict[str, object]] = {}
@@ -598,9 +710,26 @@ class ScanEngine:
                 status_payload["selected"] = tool_name in active_external_tools
                 status_payload["runner_available"] = tool_name in runner_supported
 
-                if tool_name in active_external_tools and tool_name in runner_supported and selected_status and not selected_status.available:
+                if tool_name in tool_strategy_skips:
+                    status_payload["message"] = tool_strategy_skips[tool_name]
+                    status_payload["execution"] = {
+                        "attempted": False,
+                        "status": "skipped_strategy",
+                        "duration_ms": 0,
+                        "findings_count": 0,
+                        "errors": [],
+                        "evidence": [],
+                    }
+
+                if (
+                    tool_name in active_external_tools
+                    and tool_name in runner_supported
+                    and selected_status
+                    and not selected_status.available
+                    and tool_name not in tool_strategy_skips
+                ):
                     errors.append(f"[{tool_name}] {selected_status.message}")
-                if tool_name in active_external_tools and tool_name not in runner_supported:
+                if tool_name in active_external_tools and tool_name not in runner_supported and tool_name not in tool_strategy_skips:
                     status_payload["message"] = (
                         "Tool discovered in catalog, but normalized finding ingestion is not implemented yet."
                     )
@@ -653,6 +782,18 @@ class ScanEngine:
                             payload = {"status_payload": {}, "findings": [], "errors": []}
                         status = toolchain_status.get(tool_name, {})
                         status.update(payload.get("status_payload") or {})
+                        execution = status.get("execution") if isinstance(status.get("execution"), dict) else {}
+                        exec_status = str(execution.get("status") or "").strip().lower()
+                        exec_errors = [str(item) for item in execution.get("errors", []) if str(item).strip()]
+                        if exec_status in {"failed", "partial_success"}:
+                            status["message"] = (
+                                exec_errors[0]
+                                if exec_errors
+                                else f"Analyzer execution {exec_status}."
+                            )
+                        elif exec_status in {"success", "skipped", "skipped_irrelevant", "skipped_strategy"} and status.get("message"):
+                            # Keep bootstrap/discovery message for ready/successful states only.
+                            pass
                         for error in payload.get("errors") or []:
                             errors.append(str(error))
                         for finding in payload.get("findings") or []:

@@ -61,6 +61,51 @@ type RoleExportPreset = {
   }>;
 };
 
+type HelpGuideSection = {
+  id: string;
+  title: string;
+  lines: string[];
+};
+
+function slugifyHelpAnchor(input: string): string {
+  return String(input || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "section";
+}
+
+function parseHelpGuideSections(markdown: string): HelpGuideSection[] {
+  const lines = String(markdown || "").replace(/\r\n/g, "\n").split("\n");
+  const sections: HelpGuideSection[] = [];
+  let current: HelpGuideSection | null = null;
+
+  for (const raw of lines) {
+    const line = String(raw || "");
+    const h2 = /^##\s+(.+)$/.exec(line);
+    if (h2) {
+      if (current) {
+        sections.push(current);
+      }
+      const title = h2[1].trim();
+      current = {
+        id: `help-${slugifyHelpAnchor(title)}`,
+        title,
+        lines: [],
+      };
+      continue;
+    }
+    if (!current) {
+      continue;
+    }
+    current.lines.push(line);
+  }
+  if (current) {
+    sections.push(current);
+  }
+  return sections;
+}
+
 const TABS: Array<{ key: AppTab; label: string; icon: string }> = [
   { key: "dashboard", label: "Code Risk Overview", icon: "CM" },
   { key: "existing", label: "Secure Coding Controls", icon: "ES" },
@@ -617,6 +662,7 @@ export default function App(): React.JSX.Element {
   const [helpGuideMarkdown, setHelpGuideMarkdown] = useState<string>("");
   const [helpGuideMarkdownPath, setHelpGuideMarkdownPath] = useState<string>("");
   const [helpGuidePdfPath, setHelpGuidePdfPath] = useState<string>("");
+  const [helpSearchText, setHelpSearchText] = useState<string>("");
   const [lastExport, setLastExport] = useState("");
   const [isExporting, setIsExporting] = useState(false);
   const [vulnerabilityReportStyle, setVulnerabilityReportStyle] = useState<ReportStyle>("classic");
@@ -1217,6 +1263,20 @@ export default function App(): React.JSX.Element {
     setHelpGuidePdfPath(payload.pdfPath || "");
   };
 
+  const helpSections = useMemo(() => parseHelpGuideSections(helpGuideMarkdown), [helpGuideMarkdown]);
+  const filteredHelpSections = useMemo(() => {
+    const query = helpSearchText.trim().toLowerCase();
+    if (!query) {
+      return helpSections;
+    }
+    return helpSections.filter((section) => {
+      if (section.title.toLowerCase().includes(query)) {
+        return true;
+      }
+      return section.lines.some((line) => line.toLowerCase().includes(query));
+    });
+  }, [helpSections, helpSearchText]);
+
   const toggleReportSelection = (fullPath: string): void => {
     setSelectedReportPaths((prev) => {
       const next = new Set(prev);
@@ -1719,6 +1779,14 @@ export default function App(): React.JSX.Element {
       return;
     }
     setStatusText("Opened Help markdown file.");
+  };
+
+  const scrollHelpToSection = (sectionId: string): void => {
+    const target = document.getElementById(sectionId);
+    if (!target) {
+      return;
+    }
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const windowMenuActions = useMemo<
@@ -3085,6 +3153,80 @@ export default function App(): React.JSX.Element {
   };
 
   const renderHelp = (): React.JSX.Element => {
+    const renderHelpLines = (lines: string[]): React.JSX.Element[] => {
+      const blocks: React.JSX.Element[] = [];
+      let bulletBuffer: string[] = [];
+      let numberBuffer: string[] = [];
+
+      const flushBullets = (keyPrefix: string): void => {
+        if (!bulletBuffer.length) {
+          return;
+        }
+        blocks.push(
+          <ul key={`${keyPrefix}-bullets`} className="landing-story-list" style={{ marginTop: 8 }}>
+            {bulletBuffer.map((item, idx) => (
+              <li key={`${keyPrefix}-b-${idx}`}>{item}</li>
+            ))}
+          </ul>,
+        );
+        bulletBuffer = [];
+      };
+
+      const flushNumbers = (keyPrefix: string): void => {
+        if (!numberBuffer.length) {
+          return;
+        }
+        blocks.push(
+          <ol key={`${keyPrefix}-numbers`} style={{ marginTop: 8, paddingLeft: 20 }}>
+            {numberBuffer.map((item, idx) => (
+              <li key={`${keyPrefix}-n-${idx}`} style={{ marginBottom: 6 }}>{item}</li>
+            ))}
+          </ol>,
+        );
+        numberBuffer = [];
+      };
+
+      lines.forEach((raw, index) => {
+        const line = String(raw || "");
+        const key = `help-line-${index}`;
+        const h3 = /^###\s+(.+)$/.exec(line);
+        const bullet = /^-\s+(.+)$/.exec(line);
+        const numbered = /^(\d+)\.\s+(.+)$/.exec(line);
+        if (h3) {
+          flushBullets(`${key}-before-h3`);
+          flushNumbers(`${key}-before-h3`);
+          blocks.push(<h4 key={key} style={{ marginTop: 14, marginBottom: 8 }}>{h3[1].trim()}</h4>);
+          return;
+        }
+        if (bullet) {
+          flushNumbers(`${key}-before-bullet`);
+          bulletBuffer.push(bullet[1].trim());
+          return;
+        }
+        if (numbered) {
+          flushBullets(`${key}-before-numbered`);
+          numberBuffer.push(numbered[2].trim());
+          return;
+        }
+        if (!line.trim()) {
+          flushBullets(`${key}-blank`);
+          flushNumbers(`${key}-blank`);
+          return;
+        }
+        flushBullets(`${key}-before-text`);
+        flushNumbers(`${key}-before-text`);
+        blocks.push(
+          <p key={key} className="muted-text" style={{ marginBottom: 8 }}>
+            {line}
+          </p>,
+        );
+      });
+
+      flushBullets("help-end");
+      flushNumbers("help-end");
+      return blocks;
+    };
+
     return (
       <section className="panel stack-gap">
         <div className="subpanel">
@@ -3110,9 +3252,57 @@ export default function App(): React.JSX.Element {
         <div className="subpanel">
           <h3>Guide Content</h3>
           {helpGuideMarkdown.trim() ? (
-            <pre className="log-console" style={{ maxHeight: 680, whiteSpace: "pre-wrap" }}>
-              {helpGuideMarkdown}
-            </pre>
+            <>
+              <div className="button-row" style={{ marginBottom: 12 }}>
+                <input
+                  type="search"
+                  value={helpSearchText}
+                  onChange={(event) => setHelpSearchText(event.target.value)}
+                  placeholder="Search help sections and content..."
+                  style={{ minWidth: 360 }}
+                />
+                <button type="button" onClick={() => setHelpSearchText("")} disabled={!helpSearchText.trim()}>
+                  Clear Search
+                </button>
+                <span className="muted-text">
+                  Sections: {filteredHelpSections.length}/{helpSections.length}
+                </span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 14 }}>
+                <div
+                  className="table-frame"
+                  style={{ padding: 10, position: "sticky", top: 8, alignSelf: "start", maxHeight: 680, overflowY: "auto" }}
+                >
+                  <h4 style={{ marginBottom: 10 }}>Section Navigation</h4>
+                  {filteredHelpSections.length ? (
+                    <ol style={{ margin: 0, paddingLeft: 18 }}>
+                      {filteredHelpSections.map((section) => (
+                        <li key={section.id} style={{ marginBottom: 8 }}>
+                          <button
+                            type="button"
+                            className="fix-link"
+                            onClick={() => scrollHelpToSection(section.id)}
+                            style={{ background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer" }}
+                          >
+                            {section.title}
+                          </button>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <p className="muted-text">No section matches your search.</p>
+                  )}
+                </div>
+                <div style={{ maxHeight: 680, overflowY: "auto", paddingRight: 6 }}>
+                  {filteredHelpSections.map((section) => (
+                    <article key={section.id} id={section.id} className="table-frame" style={{ padding: 14, marginBottom: 12 }}>
+                      <h3 style={{ marginBottom: 8 }}>{section.title}</h3>
+                      {renderHelpLines(section.lines)}
+                    </article>
+                  ))}
+                </div>
+              </div>
+            </>
           ) : (
             <EmptyState text="Help guide is not loaded yet." />
           )}

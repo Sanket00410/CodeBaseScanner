@@ -304,6 +304,64 @@ def _normalize_snippet(value: str | None) -> str:
     return re.sub(r"\s+", " ", value.strip())
 
 
+def _normalize_rule_id(raw: str | None) -> str:
+    value = str(raw or "").strip().upper()
+    if not value:
+        return ""
+    value = value.replace(" ", "-").replace("_", "-")
+    value = re.sub(r"-{2,}", "-", value)
+    return value
+
+
+def _tool_from_rule_id(rule_id: str | None) -> str:
+    normalized = _normalize_rule_id(rule_id)
+    if not normalized:
+        return ""
+    head = normalized.split("-", 1)[0].strip().lower()
+    return {"osv": "osv-scanner"}.get(head, head)
+
+
+def _source_reliability(item: dict) -> int:
+    candidates: set[str] = set()
+    tool = str(item.get("tool") or "").strip().lower()
+    if tool:
+        candidates.add(tool)
+    origin = str(item.get("origin") or "").strip().lower()
+    if origin:
+        candidates.add(origin)
+    candidates.add(_tool_from_rule_id(item.get("rule_id")))
+    for source in item.get("evidence_sources", []) or []:
+        candidates.add(_tool_from_rule_id(source))
+    return max((_SOURCE_RELIABILITY_RANK.get(name, 0) for name in candidates if name), default=0)
+
+
+def _is_sast_overlap_candidate(item: dict) -> bool:
+    tool = _tool_from_rule_id(item.get("rule_id"))
+    if tool in {"bandit", "gosec", "checkov", "tfsec"}:
+        return True
+    source_tools = {_tool_from_rule_id(source) for source in (item.get("evidence_sources") or [])}
+    return bool(source_tools.intersection({"bandit", "gosec", "checkov", "tfsec"}))
+
+
+def _canonical_sast_family(item: dict) -> str:
+    cwe = str(item.get("cwe_id") or item.get("cwe") or "").strip().upper()
+    owasp = normalize_owasp_top10_label(str(item.get("owasp_mapping") or item.get("owasp_category") or ""))
+    title = str(item.get("vulnerability_title") or item.get("vulnerability_type") or "").strip().lower()
+    if cwe:
+        return f"cwe:{cwe}"
+    if owasp and owasp != "N/A":
+        return f"owasp:{owasp.lower()}"
+    if "sql injection" in title:
+        return "family:sql-injection"
+    if "command injection" in title:
+        return "family:command-injection"
+    if "path traversal" in title:
+        return "family:path-traversal"
+    if "cross-site scripting" in title or "xss" in title:
+        return "family:xss"
+    return f"title:{title or 'generic'}"
+
+
 PY_KEYWORDS = {
     "and",
     "as",
@@ -580,6 +638,7 @@ def _enriched_findings(findings: list[Finding]) -> list[dict]:
     enriched: list[dict] = []
     for finding in findings:
         base = finding.to_dict()
+        base["rule_id"] = _normalize_rule_id(base.get("rule_id"))
         attack_scenario, exploitation_example, proof_of_concept_template, secure_fix_example = _scenario_for(
             finding.vulnerability_type
         )
@@ -627,12 +686,47 @@ def _enriched_findings(findings: list[Finding]) -> list[dict]:
 def _deduplicate_enriched_findings(findings: list[dict]) -> list[dict]:
     unique: dict[tuple[str, int, str, str], dict] = {}
     for item in findings:
-        key = (
-            str(item.get("file_path", "")).replace("\\", "/").lower(),
-            int(item.get("line_number", 0)),
-            str(item.get("vulnerability_title", item.get("vulnerability_type", ""))).strip().lower(),
-            _normalize_snippet(str(item.get("original_code", "") or item.get("vulnerable_code_snippet", ""))).lower(),
+        normalized_path = str(item.get("file_path", "")).replace("\\", "/").lower()
+        line_number = int(item.get("line_number", 0) or 0)
+        line_block = max(1, line_number // 5) if line_number > 0 else 0
+        advisory_tokens = sorted(
+            {
+                token
+                for token in (
+                    normalize_cve_id(value)
+                    for value in list(item.get("cve_ids") or [])
+                )
+                if token
+            }
+            | {
+                str(value).strip().upper()
+                for value in list(item.get("advisory_ids") or [])
+                if str(value).strip()
+            }
+            | ({str(item.get("dependency_id")).strip().upper()} if item.get("dependency_id") else set())
         )
+        is_dependency = _is_dependency_finding_payload(item)
+        if is_dependency and advisory_tokens:
+            key = (
+                normalized_path,
+                0,
+                f"dependency::{str(item.get('dependency_name') or '').strip().lower()}::{str(item.get('dependency_version') or '').strip().lower()}",
+                "|".join(advisory_tokens),
+            )
+        elif _is_sast_overlap_candidate(item):
+            key = (
+                normalized_path,
+                line_block,
+                f"sast::{_canonical_sast_family(item)}",
+                _normalize_snippet(str(item.get("vulnerable_code_snippet", "") or item.get("original_code", ""))).lower(),
+            )
+        else:
+            key = (
+                normalized_path,
+                line_number,
+                str(item.get("vulnerability_title", item.get("vulnerability_type", ""))).strip().lower(),
+                _normalize_snippet(str(item.get("original_code", "") or item.get("vulnerable_code_snippet", ""))).lower(),
+            )
         current = unique.get(key)
         if current is None:
             unique[key] = item
@@ -641,18 +735,49 @@ def _deduplicate_enriched_findings(findings: list[dict]) -> list[dict]:
         existing_rank = SEVERITY_RANK.get(str(current.get("severity", "Info")), 99)
         incoming_rank = SEVERITY_RANK.get(str(item.get("severity", "Info")), 99)
 
-        if incoming_rank < existing_rank:
+        incoming_reliability = _source_reliability(item)
+        existing_reliability = _source_reliability(current)
+        incoming_wins = incoming_rank < existing_rank or (incoming_rank == existing_rank and incoming_reliability > existing_reliability)
+        if incoming_wins:
             merged = item
             merged_sources = set(current.get("evidence_sources", [])) | {str(item.get("rule_id", ""))}
             merged["evidence_sources"] = sorted(source for source in merged_sources if source)
             merged_origins = set(current.get("evidence_origins", [])) | {str(item.get("origin") or "rule_engine")}
             merged["evidence_origins"] = sorted(origin for origin in merged_origins if origin)
+            merged["cve_ids"] = sorted(
+                {
+                    str(token).strip().upper()
+                    for token in list(current.get("cve_ids") or []) + list(item.get("cve_ids") or [])
+                    if str(token).strip()
+                }
+            )
+            merged["advisory_ids"] = sorted(
+                {
+                    str(token).strip().upper()
+                    for token in list(current.get("advisory_ids") or []) + list(item.get("advisory_ids") or [])
+                    if str(token).strip()
+                }
+            )
             unique[key] = merged
         else:
             merged_sources = set(current.get("evidence_sources", [])) | {str(item.get("rule_id", ""))}
             current["evidence_sources"] = sorted(source for source in merged_sources if source)
             merged_origins = set(current.get("evidence_origins", [])) | {str(item.get("origin") or "rule_engine")}
             current["evidence_origins"] = sorted(origin for origin in merged_origins if origin)
+            current["cve_ids"] = sorted(
+                {
+                    str(token).strip().upper()
+                    for token in list(current.get("cve_ids") or []) + list(item.get("cve_ids") or [])
+                    if str(token).strip()
+                }
+            )
+            current["advisory_ids"] = sorted(
+                {
+                    str(token).strip().upper()
+                    for token in list(current.get("advisory_ids") or []) + list(item.get("advisory_ids") or [])
+                    if str(token).strip()
+                }
+            )
             if not current.get("recommendation") and item.get("recommendation"):
                 current["recommendation"] = item["recommendation"]
             if not current.get("fixed_code") and item.get("fixed_code"):
@@ -696,6 +821,18 @@ _REPORT_NOISE_SEGMENTS = {
     "temp",
     "logs",
     "packages",
+}
+
+_SOURCE_RELIABILITY_RANK = {
+    "grype": 4,
+    "osv": 3,
+    "osv-scanner": 3,
+    "codeql": 3,
+    "semgrep": 3,
+    "bandit": 2,
+    "gosec": 2,
+    "checkov": 2,
+    "tfsec": 2,
 }
 
 
@@ -856,7 +993,7 @@ def _affected_folders(findings: list[dict], limit: int = 20) -> list[dict[str, i
     return rows
 
 
-def _build_action_plan(distribution: dict[str, int]) -> list[str]:
+def _build_action_plan(distribution: dict[str, int], findings: list[dict]) -> list[str]:
     plan: list[str] = []
 
     if distribution.get("Critical", 0) > 0:
@@ -868,13 +1005,99 @@ def _build_action_plan(distribution: dict[str, int]) -> list[str]:
     if distribution.get("Low", 0) > 0:
         plan.append("Track Low findings in backlog and resolve during maintenance windows.")
 
-    plan.extend(
-        [
-            "Enforce secure coding guardrails in CI (SAST, secrets, dependency checks).",
-            "Establish monthly dependency update cadence and quarterly security review.",
-            "Add security-focused test cases for input validation, authz, and output encoding.",
-        ]
+    ranked_findings = sorted(
+        findings,
+        key=lambda item: (
+            SEVERITY_RANK.get(str(item.get("severity", "Info")), 99),
+            -float(item.get("cvss_score", 0.0)),
+        ),
     )
+    top_specific: list[dict] = []
+    seen_specific: set[tuple[str, str, str, str]] = set()
+    for item in ranked_findings:
+        severity = str(item.get("severity", "Info"))
+        if severity not in {"Critical", "High", "Medium"}:
+            continue
+        title = str(item.get("vulnerability_title") or item.get("vulnerability_type") or "Issue").strip()
+        cwe = str(item.get("cwe_id") or item.get("cwe") or "").strip().upper()
+        owasp = str(item.get("owasp_mapping") or item.get("owasp_category") or "").strip()
+        file_path = str(item.get("file_path") or "unknown").replace("\\", "/").strip()
+        dedup_key = (severity, title.lower(), cwe or "N/A", file_path.lower())
+        if dedup_key in seen_specific:
+            continue
+        seen_specific.add(dedup_key)
+        top_specific.append(
+            {
+                "severity": severity,
+                "title": title,
+                "cwe": cwe or "N/A",
+                "owasp": owasp or "N/A",
+                "file_path": file_path,
+                "line": int(item.get("line_number", 1) or 1),
+            }
+        )
+        if len(top_specific) >= 5:
+            break
+    for idx, finding in enumerate(top_specific, start=1):
+        plan.append(
+            f"Top-{idx} {finding['severity']} focus: {finding['title']} ({finding['cwe']} / {finding['owasp']}) at {finding['file_path']}:{finding['line']}."
+        )
+
+    text_blob = " ".join(
+        " ".join(
+            [
+                str(item.get("vulnerability_title") or item.get("vulnerability_type") or ""),
+                str(item.get("owasp_mapping") or item.get("owasp_category") or ""),
+                str(item.get("cwe_id") or item.get("cwe") or ""),
+                str(item.get("description") or ""),
+            ]
+        )
+        for item in findings
+    ).lower()
+    dependency_findings = sum(
+        1
+        for item in findings
+        if str(item.get("dependency_name") or "").strip()
+        or "dependency" in str(item.get("vulnerability_title") or item.get("vulnerability_type") or "").lower()
+        or str(item.get("owasp_mapping") or "").upper().startswith("A06:")
+    )
+    secret_findings = sum(
+        1
+        for item in findings
+        if "secret" in str(item.get("vulnerability_title") or item.get("vulnerability_type") or "").lower()
+        or "credential" in str(item.get("vulnerability_title") or item.get("vulnerability_type") or "").lower()
+        or "api key" in str(item.get("description") or "").lower()
+    )
+    auth_findings = sum(
+        1
+        for item in findings
+        if "auth" in str(item.get("vulnerability_title") or item.get("vulnerability_type") or "").lower()
+        or "session" in str(item.get("vulnerability_title") or item.get("vulnerability_type") or "").lower()
+        or str(item.get("owasp_mapping") or "").upper().startswith(("A01:", "A07:"))
+    )
+
+    if dependency_findings > 0:
+        plan.append(
+            f"Prioritize dependency remediation for {dependency_findings} advisory-backed finding(s), starting with runtime-reachable packages."
+        )
+    if secret_findings > 0:
+        plan.append(
+            f"Rotate and revoke exposed credentials/secrets ({secret_findings} finding(s)); enforce secret scanning and pre-commit protections."
+        )
+    if auth_findings > 0:
+        plan.append(
+            f"Strengthen authorization/session controls for {auth_findings} auth-related finding(s), including object-level access checks and session hardening."
+        )
+    if any(token in text_blob for token in ("sql injection", "cwe-89", "command injection", "cwe-78", "xss", "cwe-79", "path traversal", "cwe-22")):
+        plan.append(
+            "Add targeted regression tests for injection/path-traversal classes and enforce parameterized queries + strict input validation."
+        )
+    if any(token in text_blob for token in ("misconfig", "cwe-16", "dockerfile", "terraform", "kubernetes", "checkov", "tfsec")):
+        plan.append(
+            "Harden infrastructure/config baselines in CI (IaC policy checks, container hardening rules, and mandatory review gates)."
+        )
+    if not plan:
+        plan.append("Maintain secure coding guardrails in CI and verify remediation through targeted validation runs.")
 
     return list(dict.fromkeys(plan))
 
@@ -2139,7 +2362,7 @@ def build_report(scan_result: ScanResult) -> dict:
         "affected_modules": _affected_modules(scoped_findings),
         "affected_files": _affected_files(scoped_findings),
         "affected_folders": _affected_folders(scoped_findings),
-        "recommended_action_plan": _build_action_plan(scoped_distribution),
+        "recommended_action_plan": _build_action_plan(scoped_distribution, scoped_findings),
         "implemented_controls": controls_summary["implemented_controls"],
         "scan_profile": profile_compliance["scan_profile"],
         "scan_profile_label": profile_compliance["scan_profile_label"],

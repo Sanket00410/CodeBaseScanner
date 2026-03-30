@@ -335,6 +335,13 @@ function buildScanEnvironment(
   env.USS_SUPPRESSION_LIFECYCLE_FILE = path.join(scannerRoot, "exports", ".integrity", "suppression_lifecycle.json");
   env.USS_SCAN_CACHE_FILE = env.USS_SCAN_CACHE_FILE || path.join(scannerRoot, "exports", ".integrity", "scan_cache.json");
   env.USS_QUALITY_BENCHMARK_FILE = env.USS_QUALITY_BENCHMARK_FILE || path.join(scannerRoot, "exports", ".integrity", "benchmark_truth_set.json");
+  const autoCodeqlSearchPath = resolveCodeqlSearchPath(scannerRoot);
+  if (autoCodeqlSearchPath && !env.USS_CODEQL_SEARCH_PATH) {
+    env.USS_CODEQL_SEARCH_PATH = autoCodeqlSearchPath;
+  }
+  if (autoCodeqlSearchPath && !env.CODEQL_SEARCH_PATH) {
+    env.CODEQL_SEARCH_PATH = autoCodeqlSearchPath;
+  }
   if (scmContext) {
     if (scmContext.diffBaseRef) {
       env.USS_DIFF_BASE_REF = String(scmContext.diffBaseRef);
@@ -352,12 +359,16 @@ function buildScanEnvironment(
       env.USS_CHANGED_LINES_JSON = String(scmContext.changedLinesJson);
     }
   }
-  applyScanPreset(env, scanPreset);
+  applyScanPreset(env, scanPreset, role);
 
   return env;
 }
 
-function applyScanPreset(env: NodeJS.ProcessEnv, preset: "fast" | "standard" | "deep"): void {
+function applyScanPreset(
+  env: NodeJS.ProcessEnv,
+  preset: "fast" | "standard" | "deep",
+  role?: ScanRequest["role"],
+): void {
   const logicalCores = Math.max(2, Math.min(16, os.cpus().length || 4));
   const toolPresets: Record<NonNullable<ScanRequest["scanPreset"]>, string[]> = {
     fast: ["semgrep", "gitleaks", "bandit", "checkov"],
@@ -369,49 +380,39 @@ function applyScanPreset(env: NodeJS.ProcessEnv, preset: "fast" | "standard" | "
       "gosec",
       "govulncheck",
       "eslint-security",
-      "cppcheck",
-      "spotbugs",
-      "findsecbugs",
-      "flawfinder",
       "hadolint",
       "tfsec",
       "grype",
       "osv-scanner",
-      "npm-audit",
-      "pip-audit",
-      "safety",
     ],
     deep: [
       "bandit",
       "checkov",
       "codeql",
-      "findsecbugs",
-      "flawfinder",
       "gitleaks",
       "gosec",
       "govulncheck",
       "grype",
       "hadolint",
       "infer",
-      "npm-audit",
       "osv-scanner",
-      "owasp-dependency-check",
-      "pip-audit",
-      "safety",
       "semgrep",
-      "snyk",
-      "sonarqube",
-      "spotbugs",
       "tfsec",
-      "trivy",
     ],
   };
+  const roleScopedTools = resolveRoleScopedTools(role, preset, toolPresets);
   env.USS_SCAN_PRESET = preset;
   if (!env.USS_CODEBASE_TOOLS) {
-    env.USS_CODEBASE_TOOLS = toolPresets[preset].join(",");
+    env.USS_CODEBASE_TOOLS = roleScopedTools.join(",");
   }
   if (!env.USS_EXTERNAL_TOOLS) {
     env.USS_EXTERNAL_TOOLS = env.USS_CODEBASE_TOOLS;
+  }
+  if (!env.USS_DEPENDENCY_CORROBORATION) {
+    const normalizedRole = String(role || "Security Analyst").trim().toLowerCase();
+    env.USS_DEPENDENCY_CORROBORATION = normalizedRole === "admin" || normalizedRole === "administrator"
+      ? preset === "deep" ? "1" : "0"
+      : "0";
   }
   if (!env.USS_TOOL_WORKERS) {
     env.USS_TOOL_WORKERS = String(Math.max(2, Math.min(8, logicalCores)));
@@ -452,6 +453,63 @@ function applyScanPreset(env: NodeJS.ProcessEnv, preset: "fast" | "standard" | "
   env.USS_NATIVE_ANALYSIS_FAMILIES = env.USS_NATIVE_ANALYSIS_FAMILIES || "sql-injection,command-injection,path-traversal,unsafe-eval,xss,prototype-pollution,server-side-request-forgery,open-redirect,template-injection,insecure-deserialization";
   env.USS_ACTIVE_POC_MODE = "1";
   env.USS_ACTIVE_POC_MAX_FINDINGS = "80";
+}
+
+function resolveCodeqlSearchPath(scannerRoot: string): string {
+  const explicit = String(process.env.USS_CODEQL_SEARCH_PATH || process.env.CODEQL_SEARCH_PATH || "").trim();
+  if (explicit) {
+    return explicit;
+  }
+  const candidates = [
+    path.join(scannerRoot, ".toolchain", "codeql", "packs"),
+    path.join(scannerRoot, ".toolchain", "codeql", "codeql-repo"),
+    path.join(scannerRoot, ".toolchain", "codeql", "codeql-main"),
+    path.join(scannerRoot, ".toolchain", "codeql", "codeql"),
+  ];
+  const valid = candidates.filter((item) => fs.existsSync(item));
+  if (valid.length === 0) {
+    return "";
+  }
+  return valid.join(path.delimiter);
+}
+
+function resolveRoleScopedTools(
+  role: ScanRequest["role"] | undefined,
+  preset: "fast" | "standard" | "deep",
+  basePresets: Record<NonNullable<ScanRequest["scanPreset"]>, string[]>,
+): string[] {
+  const normalized = String(role || "Security Analyst").trim().toLowerCase();
+  const base = [...basePresets[preset]];
+  if (normalized === "admin" || normalized === "administrator") {
+    return base;
+  }
+  if (normalized === "security analyst" || normalized === "securityanalyst") {
+    return base.filter((tool) => !["codeql", "grype"].includes(tool));
+  }
+  if (normalized === "developer") {
+    return [
+      "semgrep",
+      "bandit",
+      "eslint-security",
+      "gosec",
+      "checkov",
+      "hadolint",
+      "gitleaks",
+    ];
+  }
+  if (normalized === "auditor") {
+    return [
+      "checkov",
+      "tfsec",
+      "hadolint",
+      "gitleaks",
+      "osv-scanner",
+    ];
+  }
+  if (normalized === "management" || normalized === "manager" || normalized === "board") {
+    return ["semgrep", "gitleaks", "checkov"];
+  }
+  return base;
 }
 
 function resolveRoleScanPreset(role?: ScanRequest["role"]): "fast" | "standard" | "deep" {

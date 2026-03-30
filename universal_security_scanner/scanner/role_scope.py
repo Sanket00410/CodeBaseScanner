@@ -45,47 +45,29 @@ _ALL_CODEBASE_TOOLS = {
     "checkov",
     "clair",
     "codeql",
-    "cppcheck",
     "eslint-security",
-    "findsecbugs",
-    "flawfinder",
     "gitleaks",
     "gosec",
     "govulncheck",
     "grype",
     "hadolint",
     "infer",
-    "npm-audit",
     "osv-scanner",
-    "owasp-dependency-check",
-    "pip-audit",
-    "safety",
     "semgrep",
-    "snyk",
-    "sonarqube",
-    "spotbugs",
     "tfsec",
-    "trivy",
 }
 
 _STANDARD_CODEBASE_TOOLS = {
     "bandit",
     "checkov",
-    "cppcheck",
     "eslint-security",
-    "findsecbugs",
-    "flawfinder",
     "gitleaks",
     "gosec",
     "govulncheck",
     "grype",
     "hadolint",
-    "npm-audit",
     "osv-scanner",
-    "pip-audit",
-    "safety",
     "semgrep",
-    "spotbugs",
     "tfsec",
 }
 
@@ -98,30 +80,25 @@ _FAST_CODEBASE_TOOLS = {
 
 _ROLE_TOOL_ALLOWLIST = {
     "Admin": frozenset(_ALL_CODEBASE_TOOLS),
-    "Security Analyst": frozenset(_STANDARD_CODEBASE_TOOLS | {"codeql", "snyk", "trivy"}),
+    "Security Analyst": frozenset(_STANDARD_CODEBASE_TOOLS),
     "Developer": frozenset(
         {
             "bandit",
             "checkov",
-            "cppcheck",
             "eslint-security",
-            "flawfinder",
             "gitleaks",
-            "semgrep",
+            "gosec",
+            "govulncheck",
             "hadolint",
+            "semgrep",
         }
     ),
     "Auditor": frozenset(
         {
             "checkov",
             "gitleaks",
-            "grype",
             "hadolint",
-            "npm-audit",
             "osv-scanner",
-            "pip-audit",
-            "safety",
-            "semgrep",
             "tfsec",
         }
     ),
@@ -129,14 +106,7 @@ _ROLE_TOOL_ALLOWLIST = {
         {
             "checkov",
             "gitleaks",
-            "grype",
-            "hadolint",
-            "npm-audit",
-            "osv-scanner",
-            "pip-audit",
-            "safety",
             "semgrep",
-            "tfsec",
         }
     ),
 }
@@ -307,9 +277,41 @@ def scope_findings_for_role(findings: list[dict[str, Any]], role: str | None) ->
     scope = resolve_role_scope(role)
     if scope.findings_empty:
         return []
+    scoped_rows = [_include_finding_for_role(item, scope.role) for item in findings]
+    visible = [item for item in scoped_rows if item is not None]
     if not scope.redact_findings:
-        return deepcopy(findings)
-    return [_redact_finding_for_audit(item) for item in findings]
+        return deepcopy(visible)
+    return [_redact_finding_for_audit(item) for item in visible]
+
+
+def _include_finding_for_role(finding: dict[str, Any], role_name: str) -> dict[str, Any] | None:
+    severity = str(finding.get("severity") or "Info")
+    cvss = float(finding.get("cvss_score") or 0.0)
+    rule_confidence = float(finding.get("rule_confidence") or 0.0)
+    rule_confidence_label = str(finding.get("rule_confidence_label") or "").strip().lower()
+    has_dependency_identity = bool(
+        finding.get("dependency_id")
+        or finding.get("dependency_name")
+        or finding.get("cve_ids")
+        or finding.get("advisory_ids")
+    )
+    is_sast = not has_dependency_identity
+
+    if role_name == "Developer":
+        if severity in {"Critical", "High", "Medium"}:
+            return finding
+        return None
+
+    if role_name in {"Admin", "Security Analyst", "Auditor", "Management"}:
+        if has_dependency_identity:
+            return finding if cvss >= 7.0 else None
+        if is_sast:
+            if severity in {"Critical", "High"}:
+                return finding
+            if rule_confidence_label == "high" or rule_confidence >= 0.82:
+                return finding
+            return None
+    return finding
 
 
 def scope_report_for_role(report: dict[str, Any], role: str | None) -> dict[str, Any]:
