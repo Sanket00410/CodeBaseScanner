@@ -1990,6 +1990,7 @@ def _build_auth_abuse_session_security(findings: list[dict]) -> dict[str, object
 
 
 def _build_false_positive_report(findings: list[dict]) -> dict[str, object] | None:
+    default_owner = str(os.getenv("USS_SUPPRESSION_DEFAULT_OWNER", "security-triage").strip() or "security-triage")
     candidates: list[dict[str, object]] = []
     for item in findings:
         active_poc = item.get("active_poc") or {}
@@ -2010,7 +2011,7 @@ def _build_false_positive_report(findings: list[dict]) -> dict[str, object] | No
                     or "Deterministic validation did not fully confirm exploitability in this code path."
                 ),
                 "confidence": float(item.get("rule_confidence") or active_poc.get("confidence") or 0.0),
-                "owner": str(item.get("suppression_owner") or ""),
+                "owner": str(item.get("triage_owner") or item.get("suppression_owner") or default_owner),
                 "review_by": str(item.get("suppression_review_by") or ""),
                 "requires_expiry": bool(item.get("suppression_requires_expiry")),
                 "verification_steps": [str(item.get("ai_validation_steps") or "").splitlines()[0]] if str(item.get("ai_validation_steps") or "").strip() else [],

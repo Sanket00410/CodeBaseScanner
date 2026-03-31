@@ -271,6 +271,7 @@ def annotate_findings(findings: list[dict[str, Any]]) -> tuple[list[dict[str, An
         item["suppression_reason"] = decision["reason_summary"]
         item["suppression_detail"] = decision["reason_detail"]
         item["suppression_tags"] = decision["tags"]
+        item["triage_owner"] = default_owner
         item["suppression_owner"] = default_owner if decision["candidate"] else ""
         item["suppression_review_by"] = review_by if decision["candidate"] else ""
         item["suppression_requires_expiry"] = bool(decision["candidate"] and require_expiry)

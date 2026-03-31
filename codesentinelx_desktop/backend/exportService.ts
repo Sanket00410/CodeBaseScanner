@@ -5785,13 +5785,18 @@ function fullFindingLocation(targetPath: string, filePath: string, line: number)
 
 function displayFindingOwner(finding: Partial<VulnerabilityFinding> & Record<string, unknown>): string {
   const candidates = [
+    String(finding.triage_owner || "").trim(),
     String(finding.code_owner || "").trim(),
     String(finding.suppression_owner || "").trim(),
     String(finding.assigned_owner || "").trim(),
     String(finding.owner || "").trim(),
     String(finding.module_owner || "").trim(),
   ].filter(Boolean);
-  return candidates[0] || "Unassigned";
+  if (candidates[0]) {
+    return candidates[0];
+  }
+  const fallback = String(process.env.USS_SUPPRESSION_DEFAULT_OWNER || "security-triage").trim();
+  return fallback || "security-triage";
 }
 
 function displayReportToolName(tool: unknown): string {

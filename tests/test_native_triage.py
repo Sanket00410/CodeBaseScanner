@@ -55,10 +55,33 @@ def test_native_triage_marks_test_artifact_for_suppression_review() -> None:
     assert findings[0]["suppression_candidate"] is True
     assert "test-artifact" in findings[0]["suppression_tags"]
     assert findings[0]["suppression_owner"] == summary["default_owner"]
+    assert findings[0]["triage_owner"] == summary["default_owner"]
     assert bool(findings[0]["suppression_review_by"]) is True
     assert findings[0]["suppression_requires_expiry"] is True
     assert summary["candidate_count"] == 1
     assert summary["expiry_required_count"] == 1
+
+
+def test_native_triage_assigns_default_triage_owner_for_all_findings() -> None:
+    findings, summary = annotate_findings(
+        [
+            {
+                "rule_id": "PY-A01-INP-001",
+                "vulnerability_title": "Input Validation",
+                "severity": "Low",
+                "file_path": "app.py",
+                "line_number": 1,
+                "cwe_id": "CWE-20",
+                "owasp_mapping": "A01:2021 - Broken Access Control",
+                "vulnerable_code_snippet": "value = request.args.get('id')",
+                "active_poc": {"status": "not_applicable", "confidence": 0.2},
+                "dependency_reachability": {},
+                "evidence_sources": ["PY-A01-INP-001"],
+            }
+        ]
+    )
+    assert findings[0]["triage_owner"] == summary["default_owner"]
+    assert findings[0]["suppression_owner"] == ""
 
 
 def test_build_report_populates_rule_confidence_and_suppression_lifecycle(tmp_path: Path) -> None:

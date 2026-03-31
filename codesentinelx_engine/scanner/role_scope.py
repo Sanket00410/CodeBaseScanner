@@ -253,6 +253,7 @@ def _redact_finding_for_audit(finding: dict[str, Any]) -> dict[str, Any]:
         "suppression_reason",
         "suppression_detail",
         "suppression_tags",
+        "triage_owner",
         "suppression_owner",
         "suppression_review_by",
         "suppression_requires_expiry",
