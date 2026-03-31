@@ -69,6 +69,7 @@ def test_report_builder_enriches_native_dependency_findings_with_reachability(tm
             errors=[],
             existing_security_measures=[],
             toolchain_status={},
+            scan_role="Developer",
         )
     )
     enriched = report["vulnerability_fixed_code_report"]["findings"][0]

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from codesentinelx_engine.models import Finding
+from codesentinelx_engine.scanner.dependency_auth import build_dependency_inventory
 from codesentinelx_engine.scanner.external.common import extract_cwe, first_reference, normalize_path, run_command, safe_json_loads, to_severity
 
 
@@ -89,6 +90,12 @@ def run_osv_scanner_scan(
     timeout_seconds: int,
     binary: str = "osv-scanner",
 ) -> tuple[list[Finding], list[str]]:
+    inventory = build_dependency_inventory(target_root)
+    if not inventory:
+        return [], [
+            "OSV-Scanner skipped: no supported dependency manifests or lockfiles were detected in this target."
+        ]
+
     with tempfile.NamedTemporaryFile(prefix="osv-scan-", suffix=".json", delete=False) as tmp_file:
         output_path = tmp_file.name
     command = [

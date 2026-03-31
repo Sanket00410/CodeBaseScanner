@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -40,6 +41,12 @@ QUERY_SUITES = {
         "ruby/ql/src/codeql-suites/ruby-security-and-quality.qls",
         "ruby/ql/src/codeql-suites/ruby-code-scanning.qls",
     ],
+}
+
+CODEQL_PACK_SPECS = {
+    "python": ("codeql/python-queries",),
+    "javascript": ("codeql/javascript-queries",),
+    "ruby": ("codeql/ruby-queries",),
 }
 
 
@@ -85,7 +92,86 @@ def _candidate_query_suites(search_path: str, language: str) -> list[str]:
                 if resolved not in seen:
                     seen.add(resolved)
                     candidates.append(resolved)
+        for suite_name in QUERY_SUITES.get(language, []):
+            for discovered in root.rglob(Path(suite_name).name):
+                if discovered.is_file():
+                    resolved = str(discovered.resolve())
+                    if resolved not in seen:
+                        seen.add(resolved)
+                        candidates.append(resolved)
     return candidates
+
+
+def _codeql_pack_root(binary: str) -> Path | None:
+    binary_path = Path(binary)
+    if not binary_path.is_absolute():
+        return None
+    return binary_path.parent.parent / "packs"
+
+
+def _bootstrap_codeql_packs(
+    binary: str,
+    target_languages: list[str],
+    *,
+    search_path: str,
+    timeout_seconds: int,
+) -> tuple[bool, str]:
+    pack_root = _codeql_pack_root(binary)
+    if pack_root is None:
+        return False, "CodeQL pack bootstrap skipped: binary path is not absolute."
+
+    if any(_candidate_query_suites(search_path, language) for language in target_languages):
+        return True, "CodeQL packs already available in the configured search path."
+
+    mirror_path_value = str(os.getenv("USS_CODEQL_PACK_MIRROR") or os.getenv("CODEQL_PACK_MIRROR") or "").strip()
+    if mirror_path_value:
+        mirror_path = Path(mirror_path_value)
+        if mirror_path.exists() and mirror_path.is_dir():
+            try:
+                pack_root.mkdir(parents=True, exist_ok=True)
+                for item in mirror_path.iterdir():
+                    destination = pack_root / item.name
+                    if item.is_dir():
+                        shutil.copytree(item, destination, dirs_exist_ok=True)
+                    else:
+                        shutil.copy2(item, destination)
+                return True, f"Copied CodeQL packs from local mirror: {mirror_path}"
+            except Exception as exc:
+                return False, f"CodeQL local mirror bootstrap failed: {exc}"
+
+    auto_bootstrap = str(os.getenv("USS_AUTO_BOOTSTRAP_TOOLS") or "").strip().lower() in {"1", "true", "yes", "on"}
+    if not auto_bootstrap:
+        return False, "CodeQL pack bootstrap skipped: auto bootstrap is disabled and no local mirror was configured."
+
+    specs: list[str] = []
+    seen_specs: set[str] = set()
+    for language in target_languages:
+        for spec in CODEQL_PACK_SPECS.get(language, ()):
+            if spec not in seen_specs:
+                seen_specs.add(spec)
+                specs.append(spec)
+    if not specs:
+        return False, "CodeQL pack bootstrap skipped: no supported query packs map to the detected languages."
+
+    command = [binary, "pack", "download", "-d", str(pack_root)]
+    if search_path.strip():
+        command.extend(["--search-path", search_path])
+    command.append("--")
+    command.extend(specs)
+
+    try:
+        return_code, _stdout, stderr = run_command(command, timeout_seconds=timeout_seconds)
+    except Exception as exc:
+        return False, f"CodeQL pack bootstrap failed: {exc}"
+
+    if return_code != 0:
+        short_error = " | ".join((stderr or "").strip().splitlines()[:3])
+        return False, f"CodeQL pack bootstrap failed: {short_error}"
+
+    if not any(_candidate_query_suites(search_path, language) for language in target_languages):
+        return False, "CodeQL pack bootstrap completed, but query suites were still not discoverable in the search path."
+
+    return True, f"Bootstrapped CodeQL query packs into {pack_root}"
 
 
 def _detect_languages(target_root: Path) -> list[str]:
@@ -218,11 +304,27 @@ def run_codeql_scan(
 
             suites = _candidate_query_suites(search_path, lang)
             if not suites:
-                errors.append(
-                    f"CodeQL skipped: query packs for {lang} were not found in the configured search path. "
-                    "Install the matching CodeQL packs or point USS_CODEQL_SEARCH_PATH to a pack repository before rerunning."
+                bootstrapped, bootstrap_message = _bootstrap_codeql_packs(
+                    binary,
+                    [lang],
+                    search_path=search_path,
+                    timeout_seconds=timeout_seconds,
                 )
-                continue
+                if bootstrapped:
+                    search_path = _auto_codeql_search_path(binary, explicit_search_path)
+                    suites = _candidate_query_suites(search_path, lang)
+                    if not suites:
+                        errors.append(
+                            f"CodeQL skipped: query packs for {lang} were still not discoverable after bootstrap. "
+                            f"{bootstrap_message}"
+                        )
+                        continue
+                else:
+                    errors.append(
+                        f"CodeQL skipped: query packs for {lang} were not found in the configured search path. "
+                        f"{bootstrap_message} Install the matching CodeQL packs or point USS_CODEQL_SEARCH_PATH to a pack repository before rerunning."
+                    )
+                    continue
             analyze_errors: list[str] = []
             analyze_success = False
             for suite in suites:

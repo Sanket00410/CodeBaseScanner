@@ -13,9 +13,47 @@ from codesentinelx_engine.scanner.external.common import (
 )
 
 
+_SEMGRPE_CONFIG_FILENAMES = (
+    ".semgrep.yml",
+    ".semgrep.yaml",
+    "semgrep.yml",
+    "semgrep.yaml",
+)
+
+
+def _discover_local_semgrep_configs(target_root: Path) -> list[str]:
+    configs: list[str] = []
+    seen: set[str] = set()
+    for filename in _SEMGRPE_CONFIG_FILENAMES:
+        candidate = target_root / filename
+        if candidate.exists() and candidate.is_file():
+            resolved = str(candidate.resolve())
+            if resolved not in seen:
+                seen.add(resolved)
+                configs.append(resolved)
+
+    semgrep_dir = target_root / ".semgrep"
+    if semgrep_dir.exists() and semgrep_dir.is_dir():
+        for candidate in sorted(semgrep_dir.rglob("*.yml")) + sorted(semgrep_dir.rglob("*.yaml")):
+            if candidate.is_file():
+                resolved = str(candidate.resolve())
+                if resolved not in seen:
+                    seen.add(resolved)
+                    configs.append(resolved)
+
+    return configs
+
+
 def _semgrep_command_candidates(binary: str, target_root: Path) -> list[list[str]]:
     binary_path = Path(str(binary))
     candidates: list[list[str]] = []
+    local_configs = _discover_local_semgrep_configs(target_root)
+    config_args = ["--config", "auto"]
+    for config_path in local_configs:
+        config_args.extend(["--config", config_path])
+
+    def _build_command(executable: str) -> list[str]:
+        return [executable, "scan", *config_args, "--json", "--quiet", "--disable-version-check", str(target_root)]
 
     if binary_path.name.lower().startswith("semgrep-core"):
         seen_semgrep: set[str] = set()
@@ -35,15 +73,11 @@ def _semgrep_command_candidates(binary: str, target_root: Path) -> list[list[str
                 if sibling.exists() and sibling.is_file():
                     resolved = str(sibling.resolve())
                     if resolved not in seen_semgrep:
-                        candidates.append([resolved, "scan", "--config", "auto", "--json", "--quiet", "--disable-version-check", str(target_root)])
+                        candidates.append(_build_command(resolved))
                         seen_semgrep.add(resolved)
 
     if not binary_path.name.lower().startswith("semgrep-core"):
-        candidates.extend(
-            [
-                [binary, "scan", "--config", "auto", "--json", "--quiet", "--disable-version-check", str(target_root)],
-            ]
-        )
+        candidates.append(_build_command(binary))
     return candidates
 
 

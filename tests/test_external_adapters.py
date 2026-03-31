@@ -6,6 +6,7 @@ from codesentinelx_engine.config import ScannerConfig
 from codesentinelx_engine.models import Severity
 from codesentinelx_engine.scanner.external import codeql_adapter
 from codesentinelx_engine.scanner.external import semgrep_adapter
+from codesentinelx_engine.scanner.external import osv_scanner_adapter
 from codesentinelx_engine.scanner.external.gitleaks_adapter import parse_gitleaks_output
 from codesentinelx_engine.scanner.external.registry import external_tool_names
 from codesentinelx_engine.scanner.external.semgrep_adapter import parse_semgrep_output
@@ -69,6 +70,39 @@ def test_semgrep_scan_uses_semgrep_executable(monkeypatch) -> None:
     assert "semgrep.__main__" not in captured["command"]
 
 
+def test_semgrep_scan_includes_local_config_when_present(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    captured: dict[str, list[str]] = {}
+
+    def fake_run_command(command, timeout_seconds, cwd=None, env_overrides=None):  # type: ignore[no-untyped-def]
+        captured["command"] = list(command)
+        return 0, '{"results":[]}', ""
+
+    monkeypatch.setattr(semgrep_adapter, "run_command", fake_run_command)
+
+    target_root = tmp_path / "repo"
+    target_root.mkdir()
+    (target_root / ".semgrep.yml").write_text("rules: []", encoding="utf-8")
+
+    findings, errors = semgrep_adapter.run_semgrep_scan(target_root, 30, binary="semgrep")
+
+    assert findings == []
+    assert errors == []
+    assert "--config" in captured["command"]
+    assert str((target_root / ".semgrep.yml").resolve()) in captured["command"]
+
+
+def test_osv_scan_skips_without_manifests(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(osv_scanner_adapter, "build_dependency_inventory", lambda root: {})  # type: ignore[arg-type]
+
+    target_root = tmp_path / "repo"
+    target_root.mkdir()
+
+    findings, errors = osv_scanner_adapter.run_osv_scanner_scan(target_root, 30, binary="osv-scanner")
+
+    assert findings == []
+    assert any("no supported dependency manifests" in error.lower() for error in errors)
+
+
 def test_codeql_scan_skips_when_query_packs_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     captured: dict[str, int] = {"calls": 0}
 
@@ -89,6 +123,47 @@ def test_codeql_scan_skips_when_query_packs_missing(monkeypatch: pytest.MonkeyPa
     assert findings == []
     assert any("CodeQL skipped" in error for error in errors)
     assert captured["calls"] == 1
+
+
+def test_codeql_bootstraps_from_local_mirror(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / "app.py").write_text("print('hello')", encoding="utf-8")
+
+    tool_root = tmp_path / ".toolchain" / "codeql"
+    codeql_dir = tool_root / "codeql"
+    codeql_dir.mkdir(parents=True)
+    codeql_binary = codeql_dir / "codeql.exe"
+    codeql_binary.write_text("", encoding="utf-8")
+
+    mirror = tmp_path / "mirror"
+    suite = mirror / "python" / "ql" / "src" / "codeql-suites" / "python-security-and-quality.qls"
+    suite.parent.mkdir(parents=True, exist_ok=True)
+    suite.write_text("queries: []", encoding="utf-8")
+
+    def fake_run_command(command, timeout_seconds, cwd=None, env_overrides=None):  # type: ignore[no-untyped-def]
+        command_text = " ".join(str(item) for item in command)
+        if "database create" in command_text:
+            return 0, "", ""
+        if "database analyze" in command_text:
+            output_path = None
+            for item in command:
+                if isinstance(item, str) and item.startswith("--output="):
+                    output_path = item.split("=", 1)[1]
+                    break
+            assert output_path is not None
+            Path(output_path).write_text('{"version":"2.1.0","runs":[{"results":[]}]}', encoding="utf-8")
+            return 0, "", ""
+        return 0, "", ""
+
+    monkeypatch.setattr(codeql_adapter, "run_command", fake_run_command)
+    monkeypatch.setenv("USS_CODEQL_PACK_MIRROR", str(mirror))
+    monkeypatch.setenv("USS_AUTO_BOOTSTRAP_TOOLS", "1")
+
+    findings, errors = codeql_adapter.run_codeql_scan(repo_root, 30, binary=str(codeql_binary))
+
+    assert findings == []
+    assert errors == []
 
 
 def test_parse_trivy_output() -> None:
