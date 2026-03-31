@@ -122,17 +122,20 @@ def _default_codebase_tools_for_preset(preset: str) -> list[str]:
             "semgrep",
             "gitleaks",
             "bandit",
+            "brakeman",
             "checkov",
             "gosec",
             "govulncheck",
             "eslint-security",
             "hadolint",
+            "infer",
             "tfsec",
             "grype",
             "osv-scanner",
         ],
         "deep": [
             "bandit",
+            "brakeman",
             "checkov",
             "codeql",
             "gitleaks",
@@ -144,6 +147,7 @@ def _default_codebase_tools_for_preset(preset: str) -> list[str]:
             "osv-scanner",
             "semgrep",
             "tfsec",
+            "eslint-security",
         ],
     }
     return list(presets.get(normalized, _default_codebase_tools()))

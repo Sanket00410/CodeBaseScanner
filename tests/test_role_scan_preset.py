@@ -29,3 +29,27 @@ def test_role_defaults_drive_scan_preset(monkeypatch: pytest.MonkeyPatch, role: 
     if forbidden_tool:
         assert forbidden_tool not in config.codebase_external_tools
 
+
+@pytest.mark.parametrize("role", ["Admin", "Security Analyst", "Developer", "Auditor", "Management"])
+def test_role_defaults_exclude_removed_noise_tools(monkeypatch: pytest.MonkeyPatch, role: str) -> None:
+    monkeypatch.delenv("USS_SCAN_PRESET", raising=False)
+    monkeypatch.delenv("USS_CODEBASE_TOOLS", raising=False)
+    monkeypatch.delenv("USS_EXTERNAL_TOOLS", raising=False)
+
+    config = ScannerConfig.from_env(role)
+    removed_tools = {
+        "pip-audit",
+        "npm-audit",
+        "safety",
+        "owasp-dependency-check",
+        "snyk",
+        "findsecbugs",
+        "spotbugs",
+        "cppcheck",
+        "flawfinder",
+        "trivy",
+        "sonarqube",
+    }
+
+    assert not removed_tools.intersection({tool.lower() for tool in config.codebase_external_tools})
+

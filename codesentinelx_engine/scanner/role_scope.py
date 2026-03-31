@@ -59,6 +59,7 @@ _ALL_CODEBASE_TOOLS = {
 
 _STANDARD_CODEBASE_TOOLS = {
     "bandit",
+    "brakeman",
     "checkov",
     "eslint-security",
     "gitleaks",
@@ -66,6 +67,7 @@ _STANDARD_CODEBASE_TOOLS = {
     "govulncheck",
     "grype",
     "hadolint",
+    "infer",
     "osv-scanner",
     "semgrep",
     "tfsec",
@@ -90,7 +92,9 @@ _ROLE_TOOL_ALLOWLIST = {
             "gosec",
             "govulncheck",
             "hadolint",
+            "infer",
             "semgrep",
+            "tfsec",
         }
     ),
     "Auditor": frozenset(
@@ -99,12 +103,12 @@ _ROLE_TOOL_ALLOWLIST = {
             "gitleaks",
             "hadolint",
             "osv-scanner",
+            "semgrep",
             "tfsec",
         }
     ),
     "Management": frozenset(
         {
-            "checkov",
             "gitleaks",
             "semgrep",
         }
