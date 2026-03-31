@@ -35,40 +35,14 @@ def _semgrep_command_candidates(binary: str, target_root: Path) -> list[list[str
                 if sibling.exists() and sibling.is_file():
                     resolved = str(sibling.resolve())
                     if resolved not in seen_semgrep:
-                        candidates.append(
-                            [
-                                resolved,
-                                "scan",
-                                "--config",
-                                "auto",
-                                "--json",
-                                "--quiet",
-                                "--disable-version-check",
-                                str(target_root),
-                            ]
-                        )
+                        candidates.append([resolved, "scan", "--config", "auto", "--json", "--quiet", "--disable-version-check", str(target_root)])
                         seen_semgrep.add(resolved)
 
-            python_candidate = parent / "Scripts" / "python.exe"
-            if python_candidate.exists() and python_candidate.is_file():
-                candidates.append(
-                    [
-                        str(python_candidate.resolve()),
-                        "-m",
-                        "semgrep.__main__",
-                        "scan",
-                        "--config",
-                        "auto",
-                        "--json",
-                        "--quiet",
-                        "--disable-version-check",
-                        str(target_root),
-                    ]
-                )
-
     if not binary_path.name.lower().startswith("semgrep-core"):
-        candidates.append(
-            [binary, "scan", "--config", "auto", "--json", "--quiet", "--disable-version-check", str(target_root)]
+        candidates.extend(
+            [
+                [binary, "scan", "--config", "auto", "--json", "--quiet", "--disable-version-check", str(target_root)],
+            ]
         )
     return candidates
 
@@ -152,8 +126,6 @@ def run_semgrep_scan(
         if return_code not in {0, 1}:
             short_stderr = " | ".join(stderr.strip().splitlines()[:2])
             last_error = f"Semgrep returned code {return_code}: {short_stderr}"
-            if "unknown option '--config'" in short_stderr.lower():
-                continue
             return [], [last_error]
 
         payload = safe_json_loads(stdout)

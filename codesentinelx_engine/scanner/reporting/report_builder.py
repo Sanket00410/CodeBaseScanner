@@ -1682,12 +1682,16 @@ def _build_toolchain_execution_summary(toolchain_status: dict[str, dict[str, obj
             total_attempted_duration_ms += duration_ms
             if status in {"success", "partial_success"}:
                 successful_tools += 1
+            elif status in {"skipped", "skipped_irrelevant", "skipped_strategy", "unavailable", "no_runner"}:
+                skipped_tools += 1
             else:
                 failed_tools += 1
         else:
             skipped_tools += 1
 
-        if status not in {"success", "partial_success"} and (error_rows or attempted or not available or not runner_available):
+        if status not in {"success", "partial_success", "skipped", "skipped_irrelevant", "skipped_strategy", "unavailable", "no_runner"} and (
+            error_rows or attempted or not available or not runner_available
+        ):
             failures.append(
                 {
                     "tool": tool_name,

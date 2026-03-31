@@ -140,6 +140,8 @@ def run_external_tool(
         "errors": list(errors),
         "evidence": evidence,
     }
+    if not findings and errors and all("skipped" in str(item).lower() for item in errors):
+        execution["status"] = "skipped"
     return findings, errors, execution
 
 

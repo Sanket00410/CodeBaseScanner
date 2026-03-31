@@ -1,7 +1,11 @@
 from pathlib import Path
 
+import pytest
+
 from codesentinelx_engine.config import ScannerConfig
 from codesentinelx_engine.models import Severity
+from codesentinelx_engine.scanner.external import codeql_adapter
+from codesentinelx_engine.scanner.external import semgrep_adapter
 from codesentinelx_engine.scanner.external.gitleaks_adapter import parse_gitleaks_output
 from codesentinelx_engine.scanner.external.registry import external_tool_names
 from codesentinelx_engine.scanner.external.semgrep_adapter import parse_semgrep_output
@@ -45,6 +49,46 @@ def test_parse_semgrep_output() -> None:
     assert findings[0].severity == Severity.CRITICAL
     assert findings[0].cwe == "CWE-95"
     assert findings[0].vulnerability_type == "Unsafe eval usage"
+
+
+def test_semgrep_scan_uses_semgrep_executable(monkeypatch) -> None:
+    captured: dict[str, list[str]] = {}
+
+    def fake_run_command(command, timeout_seconds, cwd=None, env_overrides=None):  # type: ignore[no-untyped-def]
+        captured["command"] = list(command)
+        return 0, '{"results":[]}', ""
+
+    monkeypatch.setattr(semgrep_adapter, "run_command", fake_run_command)
+
+    findings, errors = semgrep_adapter.run_semgrep_scan(Path("C:/repo"), 30, binary="semgrep")
+
+    assert findings == []
+    assert errors == []
+    assert captured["command"][0] == "semgrep"
+    assert "-m" not in captured["command"]
+    assert "semgrep.__main__" not in captured["command"]
+
+
+def test_codeql_scan_skips_when_query_packs_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    captured: dict[str, int] = {"calls": 0}
+
+    def fake_run_command(command, timeout_seconds, cwd=None, env_overrides=None):  # type: ignore[no-untyped-def]
+        captured["calls"] += 1
+        return 0, "", ""
+
+    monkeypatch.setattr(codeql_adapter, "run_command", fake_run_command)
+
+    target_root = tmp_path / "repo"
+    target_root.mkdir()
+    (target_root / "app.py").write_text("print('hello')", encoding="utf-8")
+    codeql_binary = tmp_path / "codeql.exe"
+    codeql_binary.write_text("", encoding="utf-8")
+
+    findings, errors = codeql_adapter.run_codeql_scan(target_root, 1, binary=str(codeql_binary))
+
+    assert findings == []
+    assert any("CodeQL skipped" in error for error in errors)
+    assert captured["calls"] == 1
 
 
 def test_parse_trivy_output() -> None:

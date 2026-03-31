@@ -29,19 +29,16 @@ INTERPRETED_LANGUAGES = {"python", "javascript", "ruby"}
 
 QUERY_SUITES = {
     "python": [
-        "codeql/python-queries:codeql-suites/python-security-and-quality.qls",
-        "codeql/python-queries:codeql-suites/python-code-scanning.qls",
-        "codeql/python-queries",
+        "python/ql/src/codeql-suites/python-security-and-quality.qls",
+        "python/ql/src/codeql-suites/python-code-scanning.qls",
     ],
     "javascript": [
-        "codeql/javascript-queries:codeql-suites/javascript-security-and-quality.qls",
-        "codeql/javascript-queries:codeql-suites/javascript-code-scanning.qls",
-        "codeql/javascript-queries",
+        "javascript/ql/src/codeql-suites/javascript-security-and-quality.qls",
+        "javascript/ql/src/codeql-suites/javascript-code-scanning.qls",
     ],
     "ruby": [
-        "codeql/ruby-queries:codeql-suites/ruby-security-and-quality.qls",
-        "codeql/ruby-queries:codeql-suites/ruby-code-scanning.qls",
-        "codeql/ruby-queries",
+        "ruby/ql/src/codeql-suites/ruby-security-and-quality.qls",
+        "ruby/ql/src/codeql-suites/ruby-code-scanning.qls",
     ],
 }
 
@@ -62,6 +59,33 @@ def _auto_codeql_search_path(binary: str, explicit_search_path: str) -> str:
     if not valid:
         return ""
     return os.pathsep.join(valid)
+
+
+def _candidate_query_suites(search_path: str, language: str) -> list[str]:
+    if not search_path.strip():
+        return []
+
+    candidates: list[str] = []
+    seen: set[str] = set()
+    for root_text in search_path.split(os.pathsep):
+        root = Path(root_text).expanduser()
+        if not root.exists():
+            continue
+        for relative in QUERY_SUITES.get(language, []):
+            suite_path = root / relative
+            if suite_path.exists():
+                resolved = str(suite_path.resolve())
+                if resolved not in seen:
+                    seen.add(resolved)
+                    candidates.append(resolved)
+        for suite_name in QUERY_SUITES.get(language, []):
+            alt = root / "codeql" / f"{language}-queries" / "codeql-suites" / Path(suite_name).name
+            if alt.exists():
+                resolved = str(alt.resolve())
+                if resolved not in seen:
+                    seen.add(resolved)
+                    candidates.append(resolved)
+    return candidates
 
 
 def _detect_languages(target_root: Path) -> list[str]:
@@ -192,7 +216,13 @@ def run_codeql_scan(
                 errors.append(f"CodeQL database create failed ({lang}): {' | '.join(short_stderr)}")
                 continue
 
-            suites = QUERY_SUITES.get(lang, [f"codeql/{lang}-queries"])
+            suites = _candidate_query_suites(search_path, lang)
+            if not suites:
+                errors.append(
+                    f"CodeQL skipped: query packs for {lang} were not found in the configured search path. "
+                    "Install the matching CodeQL packs or point USS_CODEQL_SEARCH_PATH to a pack repository before rerunning."
+                )
+                continue
             analyze_errors: list[str] = []
             analyze_success = False
             for suite in suites:

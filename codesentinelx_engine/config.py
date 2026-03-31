@@ -227,7 +227,7 @@ class ScannerConfig:
     exclude_dirs: set[str] = field(default_factory=lambda: set(DEFAULT_EXCLUDE_DIRS))
     include_extensions: set[str] = field(default_factory=lambda: set(DEFAULT_EXTENSIONS))
     special_files: set[str] = field(default_factory=lambda: set(SPECIAL_FILES))
-    export_dir: Path = Path("CodeSentinelX_Reports/export")
+    export_dir: Path = Path.home() / "Documents" / "CodeSentinelX_Reports" / "export"
     log_level: str = "INFO"
     use_external_tools: bool = True
     external_tools: list[str] = field(default_factory=_default_codebase_tools)
@@ -247,7 +247,7 @@ class ScannerConfig:
     file_scan_workers: int = field(default_factory=lambda: max(1, min(8, os.cpu_count() or 4)))
     external_tool_workers: int = field(default_factory=lambda: max(1, min(6, os.cpu_count() or 4)))
     scan_cache_enabled: bool = True
-    scan_cache_file: Path = Path("CodeSentinelX_Reports/export/.integrity/scan_cache.json")
+    scan_cache_file: Path = Path.home() / "Documents" / "CodeSentinelX_Reports" / "export" / ".integrity" / "scan_cache.json"
     scan_cache_max_files: int = 50000
     scan_preset: str = "standard"
     suppression_review_days: int = 30
@@ -255,7 +255,7 @@ class ScannerConfig:
     suppression_default_owner: str = "security-triage"
     suppression_require_expiry: bool = True
     quality_benchmark_enabled: bool = True
-    quality_benchmark_file: Path = Path("CodeSentinelX_Reports/export/.integrity/benchmark_truth_set.json")
+    quality_benchmark_file: Path = Path.home() / "Documents" / "CodeSentinelX_Reports" / "export" / ".integrity" / "benchmark_truth_set.json"
     quality_benchmark_min_precision: float = 90.0
     quality_benchmark_min_recall: float = 85.0
     quality_benchmark_min_f1: float = 88.0
@@ -269,7 +269,7 @@ class ScannerConfig:
         if user_excludes.strip():
             exclude_dirs.update({part.strip() for part in user_excludes.split(",") if part.strip()})
 
-        export_dir = Path(os.getenv("USS_EXPORT_DIR", "CodeSentinelX_Reports/export"))
+        export_dir = Path(os.getenv("USS_EXPORT_DIR", str(Path.home() / "Documents" / "CodeSentinelX_Reports" / "export")))
         log_level = os.getenv("USS_LOG_LEVEL", "INFO").upper()
         resolved_role = (scan_role or os.getenv("USS_SCAN_ROLE", "Security Analyst")).strip() or "Security Analyst"
         resolved_scan_preset = (os.getenv("USS_SCAN_PRESET", "").strip().lower() or role_default_scan_preset(resolved_role)).strip()
@@ -322,14 +322,14 @@ class ScannerConfig:
                 _read_int("USS_TOOL_WORKERS", max(1, min(6, os.cpu_count() or 4))),
             ),
             scan_cache_enabled=_read_bool("USS_SCAN_CACHE_ENABLED", True),
-            scan_cache_file=Path(os.getenv("USS_SCAN_CACHE_FILE", "CodeSentinelX_Reports/export/.integrity/scan_cache.json")),
+            scan_cache_file=Path(os.getenv("USS_SCAN_CACHE_FILE", str(Path.home() / "Documents" / "CodeSentinelX_Reports" / "export" / ".integrity" / "scan_cache.json"))),
             scan_cache_max_files=_read_int("USS_SCAN_CACHE_MAX_FILES", 50000),
             suppression_review_days=_read_int("USS_SUPPRESSION_REVIEW_DAYS", 30),
             use_project_rules=_read_bool("USS_USE_PROJECT_RULES", resolved_scan_preset != "fast"),
             suppression_default_owner=os.getenv("USS_SUPPRESSION_DEFAULT_OWNER", "security-triage").strip() or "security-triage",
             suppression_require_expiry=_read_bool("USS_SUPPRESSION_REQUIRE_EXPIRY", True),
             quality_benchmark_enabled=_read_bool("USS_QUALITY_BENCHMARK_ENABLED", True),
-            quality_benchmark_file=Path(os.getenv("USS_QUALITY_BENCHMARK_FILE", "CodeSentinelX_Reports/export/.integrity/benchmark_truth_set.json")),
+            quality_benchmark_file=Path(os.getenv("USS_QUALITY_BENCHMARK_FILE", str(Path.home() / "Documents" / "CodeSentinelX_Reports" / "export" / ".integrity" / "benchmark_truth_set.json"))),
             quality_benchmark_min_precision=_read_float("USS_QUALITY_BENCHMARK_MIN_PRECISION", 90.0),
             quality_benchmark_min_recall=_read_float("USS_QUALITY_BENCHMARK_MIN_RECALL", 85.0),
             quality_benchmark_min_f1=_read_float("USS_QUALITY_BENCHMARK_MIN_F1", 88.0),

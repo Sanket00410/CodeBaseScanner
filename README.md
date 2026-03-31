@@ -206,7 +206,7 @@ npm run typecheck
 CodeSentinelX includes a starter benchmark truth set so the quality gate section can appear on first run.
 
 - Starter file in the repo: `codesentinelx_engine/resources/benchmark_truth_set.json`
-- Default runtime file: `CodeSentinelX_Reports/export/.integrity/benchmark_truth_set.json`
+- Default runtime file: `C:\\Users\\sanketa\\Documents\\CodeSentinelX_Reports\\export\\.integrity\\benchmark_truth_set.json`
 - Optional override: set `USS_QUALITY_BENCHMARK_FILE` to a custom JSON file path
 
 To use your own repo-specific truth set:
@@ -214,7 +214,7 @@ To use your own repo-specific truth set:
 1. Copy the starter file into the runtime location:
 
 ```powershell
-Copy-Item codesentinelx_engine\resources\benchmark_truth_set.json CodeSentinelX_Reports\export\.integrity\benchmark_truth_set.json
+Copy-Item codesentinelx_engine\resources\benchmark_truth_set.json C:\Users\sanketa\Documents\CodeSentinelX_Reports\export\.integrity\benchmark_truth_set.json
 ```
 
 2. Add benchmark cases for findings you want to measure. Each case should include:

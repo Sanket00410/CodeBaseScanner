@@ -270,7 +270,7 @@ Feature-by-feature build plan
 
 Deterministic Evidence Replay Pack
 Build: per-finding replay bundle with exact command, tool version, env fingerprint, output hash, replay script.
-Add: replay_pack object on each finding + export folder CodeSentinelX_Reports/export/replay/<scan_id>/<finding_uid>/.
+Add: replay_pack object on each finding + export folder C:\\Users\\sanketa\\Documents\\CodeSentinelX_Reports\\export\\replay\\<scan_id>\\<finding_uid>/.
 Files:
 codesentinelx_engine/scanner/engine.py
 codesentinelx_engine/scanner/reporting/report_builder.py

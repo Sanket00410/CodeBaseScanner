@@ -46,7 +46,12 @@ def _collect_cve_ids(payload: Any) -> set[str]:
 
 
 def _local_cache_path() -> Path:
-    return Path(os.getenv("USS_KEV_CACHE_FILE", "CodeSentinelX_Reports/export/.integrity/cisa_kev_catalog.json"))
+    return Path(
+        os.getenv(
+            "USS_KEV_CACHE_FILE",
+            str(Path.home() / "Documents" / "CodeSentinelX_Reports" / "export" / ".integrity" / "cisa_kev_catalog.json"),
+        )
+    )
 
 
 def _read_catalog_file(path: Path) -> tuple[set[str], dict[str, Any]]:
