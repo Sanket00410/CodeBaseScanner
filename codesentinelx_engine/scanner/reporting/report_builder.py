@@ -110,7 +110,7 @@ def _build_ai_summary(finding: dict, active_poc: dict) -> str:
     elif status == "inconclusive":
         prefix = f"{title} has partial source validation at {location}; remediation is still recommended, but manual review should confirm exploitability."
     else:
-        prefix = f"{title} is present in the recorded source path {location} based on scanner evidence."
+        prefix = f"{title} is present in the recorded source path {location} based on CodeSentinelX evidence."
     return f"{prefix} {recommendation}".strip()
 
 
@@ -618,7 +618,7 @@ def _fix_artifacts(vulnerability_type: str, evidence: str | None, recommendation
         confidence = "Low"
 
     if not original:
-        original = "# Source snippet unavailable from scanner evidence."
+        original = "# Source snippet unavailable from CodeSentinelX evidence."
     if not fixed:
         fixed = "# Manual remediation required."
 
@@ -1811,7 +1811,7 @@ def _build_enterprise_assurance(
     benchmark_status = str(benchmark.get("benchmark_status") or "").strip().lower()
     benchmark_advisories: list[str] = []
     if benchmark:
-        benchmark_name = str(benchmark.get("benchmark_name") or "scanner quality benchmark")
+        benchmark_name = str(benchmark.get("benchmark_name") or "CodeSentinelX quality benchmark")
         precision = float(benchmark.get("precision_percent") or 0.0)
         recall = float(benchmark.get("recall_percent") or 0.0)
         f1 = float(benchmark.get("f1_percent") or 0.0)

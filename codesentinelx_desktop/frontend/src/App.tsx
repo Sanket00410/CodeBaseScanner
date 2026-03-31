@@ -343,7 +343,7 @@ const LANDING_FEATURES: Array<{ title: string; body: string }> = [
   },
   {
     title: "Why Teams Use It",
-    body: "It keeps the workflow grounded in real code context: file, line, evidence, validation basis, ownership, and release impact instead of shallow scanner output.",
+    body: "It keeps the workflow grounded in real code context: file, line, evidence, validation basis, ownership, and release impact instead of generic analyzer output.",
   },
   {
     title: "What Makes It Different",
@@ -4083,7 +4083,7 @@ function LandingPage(props: { onEnter: () => void }): React.JSX.Element {
           <p className="landing-section-tag">Feature importance</p>
           <h3>Why this matters in real use</h3>
           <ul className="landing-story-list">
-            <li>Developers get file, line, evidence, and fix direction without hunting through raw scanner logs.</li>
+            <li>Developers get file, line, evidence, and fix direction without hunting through raw analysis logs.</li>
             <li>Security analysts can work from code-context findings instead of generic risk labels.</li>
             <li>Leadership gets export-ready reporting that explains risk in a cleaner, more operational way.</li>
           </ul>
