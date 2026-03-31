@@ -1,6 +1,6 @@
 {
   "benchmark_name": "CodeSentinelX Starter Quality Benchmark",
-  "benchmark_description": "Starter truth set used to surface the scanner quality benchmark section on the first real scan. Copy this file to exports/.integrity/benchmark_truth_set.json and replace the placeholder cases with repo-specific truth cases.",
+  "benchmark_description": "Starter truth set used to surface the scanner quality benchmark section on the first real scan. Copy this file to CodeSentinelX_Reports/export/.integrity/benchmark_truth_set.json and replace the placeholder cases with repo-specific truth cases.",
   "version": 1,
   "cases": []
 }

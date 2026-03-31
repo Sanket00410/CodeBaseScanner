@@ -209,6 +209,40 @@ const ROLE_EXPORT_PROFILES: Record<ReportRole, RoleExportProfile> = {
   },
 };
 
+function roleFolderName(role: ReportRole): string {
+  switch (role) {
+    case "Admin":
+      return "Admin";
+    case "Security Analyst":
+      return "Security_Analyst";
+    case "Developer":
+      return "Developer";
+    case "Auditor":
+      return "Auditor";
+    case "Management":
+      return "Management";
+    default:
+      return sanitizeExportToken(role, "Role");
+  }
+}
+
+function reportFolderName(reportType: ExportRequest["reportType"], role: ReportRole): string {
+  switch (role) {
+    case "Admin":
+      return "Full_Scope_Reports";
+    case "Security Analyst":
+      return "Security_Analysis_Reports";
+    case "Developer":
+      return "Remediation_Reports";
+    case "Auditor":
+      return "Audit_Compliance_Reports";
+    case "Management":
+      return "Executive_Summary_Reports";
+    default:
+      return sanitizeExportToken(exportReportTypeToken(reportType), "Reports");
+  }
+}
+
 function normalizeReportRole(value: unknown): string {
   const label = String(value || "").trim().toLowerCase();
   switch (label) {
@@ -840,6 +874,7 @@ export class ExportService {
     reportType: ExportRequest["reportType"],
     format: ExportRequest["format"],
     reportStyle?: ExportRequest["reportStyle"],
+    role?: ExportRequest["role"],
   ): string {
     const timestampSource = new Date().toISOString();
     const { datePart, timePart } = extractExportDateTimeParts(timestampSource);
@@ -847,7 +882,12 @@ export class ExportService {
     const targetToken = extractExportTargetName(scan);
     const extension = exportFormatExtension(format);
     const fileName = `${datePart}_${timePart}_${typeToken}_${targetToken}.${extension}`;
-    return path.join(this.outputDir, fileName);
+    const resolvedRole = normalizeReportRole(role ?? resolveReportRole(scan)) as ReportRole;
+    const roleDir = roleFolderName(resolvedRole);
+    const reportDir = reportFolderName(reportType, resolvedRole);
+    const destination = path.join(this.outputDir, roleDir, reportDir, fileName);
+    mkdirSync(path.dirname(destination), { recursive: true });
+    return destination;
   }
 
   renderReportHtml(
@@ -862,7 +902,7 @@ export class ExportService {
 
   async exportReport(scan: ScanView, request: ExportRequest): Promise<string> {
     const profile = assertExportAllowed(scan, request);
-    const destination = this.resolveOutputPath(scan, request.reportType, request.format, request.reportStyle);
+    const destination = this.resolveOutputPath(scan, request.reportType, request.format, request.reportStyle, request.role);
 
     if (request.format === "json") {
       await fs.writeFile(destination, JSON.stringify(this.selectPayload(scan, request.reportType), null, 2), "utf-8");

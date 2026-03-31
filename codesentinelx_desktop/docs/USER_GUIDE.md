@@ -29,7 +29,7 @@ Default local state paths on Windows:
 - App state store: `%APPDATA%\\Electron\\codesentinelx-store.json`
 - App-managed tool cache: disabled by policy (no `.toolchain` cache is required)
 - Tool run outputs: `%USERPROFILE%\\Documents\\CodeSentinelX\\tool-runs`
-- Report exports: `%USERPROFILE%\\Documents\\CodeSentinelX\\exports`
+- Report exports: `%USERPROFILE%\\Documents\\CodeSentinelX_Reports\\export`
 
 These are automatically managed by the app.
 

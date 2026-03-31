@@ -316,6 +316,7 @@ function buildScanEnvironment(
     PYTHONUTF8: "1",
     USS_SCAN_CONTROL_FILE: controlFile,
     USS_SCAN_ROLE: role || process.env.USS_SCAN_ROLE || "Security Analyst",
+    USS_EXPORT_DIR: process.env.USS_EXPORT_DIR || path.join(scannerRoot, "CodeSentinelX_Reports", "export"),
     USS_MAX_FINDINGS: "0",
     USS_USE_EXTERNAL_TOOLS: process.env.USS_USE_EXTERNAL_TOOLS || "1",
     USS_AUTO_BOOTSTRAP_TOOLS: "0",
@@ -331,10 +332,12 @@ function buildScanEnvironment(
   delete env.USS_CHANGED_FILES_FILE;
   delete env.USS_CHANGED_FILES_JSON;
   delete env.USS_CHANGED_LINES_JSON;
-  env.USS_REPORT_CHAIN_FILE = path.join(scannerRoot, "exports", ".integrity", "report_chain.json");
-  env.USS_SUPPRESSION_LIFECYCLE_FILE = path.join(scannerRoot, "exports", ".integrity", "suppression_lifecycle.json");
-  env.USS_SCAN_CACHE_FILE = env.USS_SCAN_CACHE_FILE || path.join(scannerRoot, "exports", ".integrity", "scan_cache.json");
-  env.USS_QUALITY_BENCHMARK_FILE = env.USS_QUALITY_BENCHMARK_FILE || path.join(scannerRoot, "exports", ".integrity", "benchmark_truth_set.json");
+  const exportRoot = env.USS_EXPORT_DIR || path.join(scannerRoot, "CodeSentinelX_Reports", "export");
+  env.USS_REPORT_CHAIN_FILE = path.join(exportRoot, ".integrity", "report_chain.json");
+  env.USS_SUPPRESSION_LIFECYCLE_FILE = path.join(exportRoot, ".integrity", "suppression_lifecycle.json");
+  env.USS_SCAN_CACHE_FILE = env.USS_SCAN_CACHE_FILE || path.join(exportRoot, ".integrity", "scan_cache.json");
+  env.USS_QUALITY_BENCHMARK_FILE = env.USS_QUALITY_BENCHMARK_FILE || path.join(exportRoot, ".integrity", "benchmark_truth_set.json");
+  env.USS_KEV_CACHE_FILE = env.USS_KEV_CACHE_FILE || path.join(exportRoot, ".integrity", "cisa_kev_catalog.json");
   const autoCodeqlSearchPath = resolveCodeqlSearchPath(scannerRoot);
   if (autoCodeqlSearchPath && !env.USS_CODEQL_SEARCH_PATH) {
     env.USS_CODEQL_SEARCH_PATH = autoCodeqlSearchPath;

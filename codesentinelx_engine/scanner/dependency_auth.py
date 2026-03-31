@@ -59,6 +59,7 @@ def build_dependency_usage_map(root: Path) -> dict[str, list[str]]:
         ".toolchain",
         "coverage",
         "exports",
+        "CodeSentinelX_Reports",
     }
     source_suffixes = {".py", ".js", ".jsx", ".ts", ".tsx"}
     for path in root.rglob("*"):

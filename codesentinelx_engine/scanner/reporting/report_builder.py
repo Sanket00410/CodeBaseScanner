@@ -1344,7 +1344,7 @@ def _run_fix_verification(item: dict, target_path: str) -> dict[str, object]:
             shutil.copytree(
                 target_root,
                 workspace,
-                ignore=shutil.ignore_patterns(".git", "node_modules", ".venv", "venv", "__pycache__", ".toolchain", "dist", "build", "exports"),
+                ignore=shutil.ignore_patterns(".git", "node_modules", ".venv", "venv", "__pycache__", ".toolchain", "dist", "build", "exports", "CodeSentinelX_Reports"),
             )
             temp_target = workspace / relative_file
             temp_target.parent.mkdir(parents=True, exist_ok=True)
