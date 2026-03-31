@@ -36,7 +36,10 @@ ALWAYS_RELEVANT_TOOLS = {"semgrep", "gitleaks"}
 TOOL_FILE_HINTS: dict[str, dict[str, set[str]]] = {
     "bandit": {"extensions": {".py"}, "files": {"requirements.txt", "pyproject.toml", "poetry.lock", "pipfile"}},
     "brakeman": {"extensions": {".rb", ".erb"}, "files": {"gemfile", "gemfile.lock"}},
-    "checkov": {"extensions": {".tf", ".yaml", ".yml", ".json"}, "files": {"dockerfile", "docker-compose.yml"}},
+    "checkov": {
+        "extensions": {".tf", ".tfvars", ".yaml", ".yml", ".json"},
+        "files": {"dockerfile", "containerfile", "docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml", "kustomization.yaml", "helmfile.yaml", "chart.yaml", "values.yaml"},
+    },
     "clair": {"extensions": {".yaml", ".yml", ".json"}, "files": {"dockerfile", "containerfile"}},
     "cppcheck": {"extensions": {".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx"}},
     "codeql": {
@@ -48,7 +51,7 @@ TOOL_FILE_HINTS: dict[str, dict[str, set[str]]] = {
     "flawfinder": {"extensions": {".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx"}},
     "gosec": {"extensions": {".go"}, "files": {"go.mod", "go.sum"}},
     "govulncheck": {"extensions": {".go"}, "files": {"go.mod", "go.sum"}},
-    "hadolint": {"extensions": set(), "files": {"dockerfile", "containerfile"}},
+    "hadolint": {"extensions": set(), "files": {"dockerfile", "containerfile", "docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}},
     "infer": {"extensions": {".c", ".cc", ".cpp", ".cxx", ".m", ".mm", ".java"}, "files": {"compile_commands.json"}},
     "npm-audit": {"extensions": {".json", ".lock"}, "files": {"package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "npm-shrinkwrap.json"}},
     "owasp-dependency-check": {"extensions": {".xml", ".json", ".jar", ".war", ".ear", ".lock"}, "files": {"pom.xml", "build.gradle", "build.gradle.kts", "package-lock.json", "yarn.lock", "go.mod", "cargo.lock"}},
@@ -58,7 +61,7 @@ TOOL_FILE_HINTS: dict[str, dict[str, set[str]]] = {
     "sonarqube": {"files": {"sonarqube-report.json", "sonar-report.json", "sonar_issues.json", "issues.json"}},
     "spotbugs": {"extensions": {".class", ".jar", ".war", ".ear"}, "files": {"pom.xml", "build.gradle", "build.gradle.kts"}},
     "trivy": {"extensions": {".json", ".yaml", ".yml", ".lock", ".mod", ".tf"}, "files": {"package-lock.json", "yarn.lock", "pnpm-lock.yaml", "poetry.lock", "pipfile.lock", "go.mod", "cargo.lock", "dockerfile", "containerfile"}},
-    "tfsec": {"extensions": {".tf"}, "files": {"main.tf", "versions.tf"}},
+    "tfsec": {"extensions": {".tf", ".tfvars"}, "files": {"main.tf", "versions.tf", "terraform.tfvars"}},
     "grype": {
         "extensions": {".json", ".yaml", ".yml", ".lock"},
         "files": {"package-lock.json", "yarn.lock", "poetry.lock", "pipfile.lock", "go.sum", "cargo.lock"},
@@ -86,6 +89,8 @@ _DEPENDENCY_TOOL_PRIORITIES: dict[str, tuple[str, ...]] = {
     "php": ("osv-scanner", "grype"),
     "dotnet": ("osv-scanner", "grype"),
     "rust": ("osv-scanner", "grype"),
+    "iac": ("osv-scanner", "grype"),
+    "container": ("grype", "osv-scanner"),
     "generic": ("osv-scanner", "grype"),
 }
 
@@ -135,6 +140,10 @@ def _detect_dependency_ecosystems(extensions: set[str], filenames: set[str]) -> 
         ecosystems.add("rust")
     if filenames.intersection({"packages.lock.json", "nuget.config"}) or ".csproj" in extensions or ".sln" in extensions:
         ecosystems.add("dotnet")
+    if filenames.intersection({"dockerfile", "containerfile", "docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}):
+        ecosystems.add("container")
+    if extensions.intersection({".tf", ".tfvars"}) or filenames.intersection({"main.tf", "versions.tf", "terraform.tfvars"}):
+        ecosystems.add("iac")
     return ecosystems
 
 

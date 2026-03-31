@@ -1797,16 +1797,36 @@ def _build_enterprise_assurance(
     critical_count = sum(1 for item in findings if str(item.get("severity")) == "Critical")
     high_count = sum(1 for item in findings if str(item.get("severity")) == "High")
     blockers: list[str] = []
+    advisories: list[str] = []
     if critical_count:
         blockers.append(f"{critical_count} critical finding(s) still require remediation before release.")
     if required_tools_total and required_tools_attempted == 0:
-        blockers.append("Selected analyzers did not produce execution evidence for this scan.")
+        advisories.append("Selected analyzers did not produce execution evidence for this scan.")
     for failure in (toolchain_execution.get("failures") or [])[:6]:
         if not isinstance(failure, dict):
             continue
-        blockers.append(
-            f"{failure.get('tool', 'analyzer')} status={failure.get('status', 'failed')}: {failure.get('message', 'Analyzer did not complete successfully.')}"
+        tool_name = str(failure.get("tool", "analyzer"))
+        status_label = str(failure.get("status", "failed"))
+        message = str(failure.get("message", "Analyzer did not complete successfully."))
+        advisory_message = (
+            f"{tool_name} status={status_label}: {message}"
         )
+        lower_message = advisory_message.lower()
+        if any(
+            token in lower_message
+            for token in (
+                "non-json output",
+                "query pack",
+                "not found in path/toolchain",
+                "install or bootstrap",
+                "skipped by execution policy",
+                "skipped for speed optimization",
+                "skipped dependency overlap",
+            )
+        ):
+            advisories.append(advisory_message)
+            continue
+        advisories.append(advisory_message)
 
     benchmark_status = str(benchmark.get("benchmark_status") or "").strip().lower()
     benchmark_advisories: list[str] = []
@@ -1858,20 +1878,24 @@ def _build_enterprise_assurance(
         status = "warning"
     elif benchmark and benchmark_status in {"blocked", "warning"}:
         status = "blocked" if benchmark_status == "blocked" else "warning"
+    elif advisories:
+        status = "warning"
 
     recommendation = "Release criteria met with current analyzer coverage."
     if status == "blocked":
         recommendation = "Resolve critical findings and failed analyzer coverage before relying on this report for release sign-off."
     elif status == "warning":
         recommendation = "Increase analyzer coverage and resolve high-priority findings before production deployment."
-    if any("codeql" in str(item).lower() or "query pack" in str(item).lower() for item in blockers):
+    if advisories and not blockers:
+        recommendation = f"{recommendation} Review the coverage notes for analyzer setup or execution issues."
+    if any("codeql" in str(item).lower() or "query pack" in str(item).lower() for item in advisories):
         recommendation = (
             f"{recommendation} CodeQL coverage is currently incomplete; install the repository-specific packs or point CodeQL at the correct search path before rerunning. "
             "Management should treat this as reduced confidence in language coverage, and developers should treat it as a tool-setup issue rather than a product defect."
         )
     if benchmark and benchmark_status == "blocked" and benchmark_advisories:
         recommendation = f"{recommendation} Scanner quality benchmark requires attention before sign-off."
-    advisories = benchmark_advisories
+    advisories = benchmark_advisories + advisories
     if status == "warning" and benchmark_status == "warning" and not benchmark_advisories:
         advisories.append("Scanner quality benchmark is partially configured.")
 

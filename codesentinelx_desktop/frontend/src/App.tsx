@@ -199,6 +199,44 @@ const ROLE_DRILLDOWN: Array<{ role: UserRole; purpose: string; drillDownUse: str
   },
 ];
 
+const ROLE_SCAN_SCOPE: Record<UserRole, string[]> = {
+  Admin: [
+    "Semgrep",
+    "Gitleaks",
+    "Bandit",
+    "Brakeman",
+    "Checkov",
+    "Clair",
+    "CodeQL",
+    "ESLint Security",
+    "Gosec",
+    "Govulncheck",
+    "Grype",
+    "Hadolint",
+    "Infer",
+    "OSV-Scanner",
+    "Tfsec",
+  ],
+  "Security Analyst": [
+    "Semgrep",
+    "Gitleaks",
+    "Bandit",
+    "Brakeman",
+    "Checkov",
+    "ESLint Security",
+    "Gosec",
+    "Govulncheck",
+    "Grype",
+    "Hadolint",
+    "Infer",
+    "OSV-Scanner",
+    "Tfsec",
+  ],
+  Developer: ["Semgrep", "Gitleaks", "Bandit", "Checkov", "ESLint Security", "Gosec", "Govulncheck", "Hadolint", "Infer", "Tfsec"],
+  Auditor: ["Semgrep", "Gitleaks", "Checkov", "Hadolint", "OSV-Scanner", "Tfsec"],
+  Management: ["Semgrep", "Gitleaks"],
+};
+
 const ROLE_CAPABILITIES: Record<UserRole, RoleCapabilities> = {
   Admin: {
     canRunScan: true,
@@ -2225,6 +2263,16 @@ export default function App(): React.JSX.Element {
                   ))}
                   {(enterpriseAssurance?.blockers || []).length === 0 && <li>No enterprise blockers detected.</li>}
                 </ul>
+                {(enterpriseAssurance?.advisories || []).length > 0 && (
+                  <>
+                    <h3>Coverage Notes</h3>
+                    <ul className="action-list">
+                      {(enterpriseAssurance?.advisories || []).slice(0, 10).map((item, index) => (
+                        <li key={`${index}-${item}`}>{item}</li>
+                      ))}
+                    </ul>
+                  </>
+                )}
               </div>
             </div>
           </>
@@ -3902,6 +3950,9 @@ export default function App(): React.JSX.Element {
           </p>
           <p className="role-hint">
             Role Drill-Down ({role}): {roleDrilldownSummary(role)}
+          </p>
+          <p className="role-hint">
+            This role will scan: {ROLE_SCAN_SCOPE[role].join(", ")}. Export scope stays locked to the same role.
           </p>
           <p className="role-hint">
             Access: scan={roleCaps.canRunScan ? "yes" : "no"} | review={roleCaps.canReviewFindings ? "yes" : "no"} |

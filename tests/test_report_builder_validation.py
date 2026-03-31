@@ -214,3 +214,37 @@ def test_dependency_reachability_includes_manifest_lockfile_and_advisory_data(tm
     assert "package-lock.json" in reachability["lockfile_paths"][0]
     assert reachability["advisory_verified"] is True
 
+
+def test_enterprise_assurance_keeps_semgrep_parse_noise_out_of_blockers(tmp_path: Path) -> None:
+    report = build_report(
+        ScanResult(
+            target_path=str(tmp_path),
+            started_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(timezone.utc),
+            files_scanned=0,
+            findings=[],
+            errors=[],
+            existing_security_measures=[],
+            toolchain_status={
+                "semgrep": {
+                    "selected": True,
+                    "available": True,
+                    "runner_available": True,
+                    "execution": {
+                        "attempted": True,
+                        "status": "failed",
+                        "duration_ms": 120,
+                        "findings_count": 0,
+                        "errors": ["Semgrep produced non-JSON output."],
+                        "evidence": [],
+                    },
+                }
+            },
+        )
+    )
+
+    enterprise = report["executive_summary"]["enterprise_assurance"]
+    assert enterprise["status"] == "warning"
+    assert enterprise["blockers"] == []
+    assert any("semgrep" in advisory.lower() for advisory in enterprise["advisories"])
+

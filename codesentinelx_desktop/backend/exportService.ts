@@ -409,21 +409,36 @@ function resolveEnterpriseAssurance(
   const criticalFindings = findings.filter((finding) => finding.severity === "Critical").length;
   const highFindings = findings.filter((finding) => finding.severity === "High").length;
   const blockers: string[] = [];
+  const advisories: string[] = [];
   if (criticalFindings > 0) {
     blockers.push(`${criticalFindings} critical finding(s) still require remediation before release.`);
   }
   for (const failure of failures.slice(0, 6)) {
-    blockers.push(`${failure.tool}: ${failure.message}`);
+    const message = `${failure.tool}: ${failure.message}`;
+    const lower = message.toLowerCase();
+    if (
+      lower.includes("non-json output") ||
+      lower.includes("query pack") ||
+      lower.includes("not found in path/toolchain") ||
+      lower.includes("install or bootstrap") ||
+      lower.includes("skipped by execution policy") ||
+      lower.includes("skipped for speed optimization") ||
+      lower.includes("skipped dependency overlap")
+    ) {
+      advisories.push(message);
+    } else {
+      advisories.push(message);
+    }
   }
   if (!blockers.length && requiredTools.length && (toolchainExecution?.attempted_tools || 0) === 0) {
-    blockers.push("Selected analyzers did not produce execution evidence for this scan.");
+    advisories.push("Selected analyzers did not produce execution evidence for this scan.");
   }
   const successRate = Number(toolchainExecution?.success_rate_percent || 0);
   const readinessScore = Math.max(
     0,
     Math.min(100, Math.round(requiredCoverage * 0.45 + successRate * 0.35 + Math.max(0, 25 - criticalFindings * 7 - highFindings * 2) * 100) / 100),
   );
-  const status = blockers.length ? "blocked" : requiredCoverage < 100 || successRate < 80 ? "warning" : "ready";
+  const status = blockers.length ? "blocked" : requiredCoverage < 100 || successRate < 80 || advisories.length ? "warning" : "ready";
   return {
     status,
     is_enterprise_ready: status === "ready",
@@ -443,12 +458,12 @@ function resolveEnterpriseAssurance(
     toolchain_no_runner_tools: Number(toolchainExecution?.no_runner_tools || 0),
     readiness_score: readinessScore,
     blockers,
-    advisories: [],
+    advisories,
     recommendation:
       status === "blocked"
         ? "Resolve critical findings and failed analyzer coverage before using this export for release sign-off."
         : status === "warning"
-          ? "Increase analyzer coverage and close high-priority risks before production deployment."
+          ? `Increase analyzer coverage and close high-priority risks before production deployment.${advisories.length ? " Review the coverage notes for tool availability and execution issues." : ""}`
           : "Release criteria met with current analyzer coverage.",
     quality_benchmark: benchmark || undefined,
   };
@@ -3562,7 +3577,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
 
   ${riskIntelSection}
 
-  ${hasEnterpriseData ? `<section class="panel">
+    ${hasEnterpriseData ? `<section class="panel">
     <h2>Enterprise Assurance</h2>
     <p class="muted">Status meaning: READY=release criteria met, WARNING=partial readiness, BLOCKED=release gate not satisfied.</p>
     ${enterpriseRows.trim() ? `<div class="table-scroll">
@@ -3572,6 +3587,10 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       </table>
     </div>` : ""}
     ${enterpriseBlockers ? `<h3>Enterprise Blockers</h3><ul>${enterpriseBlockers}</ul>` : ""}
+    ${enterprise?.advisories?.length ? `<h3>Coverage Notes</h3><ul>${(enterprise?.advisories || [])
+      .slice(0, 10)
+      .map((item) => `<li>${escapeHtml(String(item))}</li>`)
+      .join("")}</ul>` : ""}
   </section>` : ""}
 
   ${hasDataQualityData ? `<section class="panel">
@@ -4628,6 +4647,10 @@ function renderFixesHtml(scan: ScanView): string {
               </table>
             </div>
             ${enterpriseBlockers ? `<div style="padding:0 14px 14px"><h3>Enterprise Blockers</h3><ul>${enterpriseBlockers}</ul></div>` : ""}
+            ${enterprise?.advisories?.length ? `<div style="padding:0 14px 14px"><h3>Coverage Notes</h3><ul>${(enterprise?.advisories || [])
+              .slice(0, 10)
+              .map((item) => `<li>${escapeHtml(String(item))}</li>`)
+              .join("")}</ul></div>` : ""}
           </div>` : ""}
           <div class="table-frame">
             <h2 style="padding:12px 14px 0">Data Quality</h2>
