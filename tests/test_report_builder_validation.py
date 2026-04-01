@@ -5,6 +5,7 @@ from pathlib import Path
 
 from codesentinelx_engine.models import Finding, ScanResult, Severity
 from codesentinelx_engine.scanner.reporting import report_builder
+from codesentinelx_engine.scanner.reporting.exporters import ReportExporter
 from codesentinelx_engine.scanner.reporting.report_builder import build_report
 from codesentinelx_engine.scanner.role_scope import scope_findings_for_role
 
@@ -307,4 +308,44 @@ def test_report_builder_annotates_stable_alert_grouping_and_preserves_it_for_aud
     assert audit_scope
     assert audit_scope[0]["alert_group_uid"] == scoped[0]["alert_group_uid"]
     assert audit_scope[0]["alert_title_group_uid"] == scoped[0]["alert_title_group_uid"]
+
+
+def test_fix_report_queue_rows_link_to_detail_cards(tmp_path: Path) -> None:
+    (tmp_path / "app.py").write_text(
+        "user_id = request.args.get('id')\n"
+        "cursor.execute(f\"SELECT * FROM users WHERE id = {user_id}\")\n",
+        encoding="utf-8",
+    )
+    finding = Finding(
+        vulnerability_type="SQL Injection",
+        severity=Severity.CRITICAL,
+        file_path="app.py",
+        line_number=2,
+        business_impact="Database compromise",
+        recommendation="Use parameterized queries / prepared statements and strict input validation.",
+        reference="https://owasp.org/Top10/A03_2021-Injection/",
+        owasp_category="A03:2021 - Injection",
+        description="Dynamic SQL query construction can allow attacker-controlled query manipulation.",
+        rule_id="OWASP-A03-SQLI-001",
+        cwe="CWE-89",
+        evidence='cursor.execute(f"SELECT * FROM users WHERE id = {user_id}")',
+    )
+    report = build_report(
+        ScanResult(
+            target_path=str(tmp_path),
+            started_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(timezone.utc),
+            files_scanned=1,
+            findings=[finding],
+            errors=[],
+            existing_security_measures=[],
+            toolchain_status={},
+        )
+    )
+
+    html_output = ReportExporter(tmp_path)._render_fixes_html(report)
+
+    assert "<th>Details</th>" in html_output
+    assert "fix-card-1" in html_output
+    assert "href='#fix-card-1'" in html_output
 

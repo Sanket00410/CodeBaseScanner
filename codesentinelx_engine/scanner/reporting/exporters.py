@@ -1416,6 +1416,7 @@ class ReportExporter:
                 f"<td align='center'>{int(item.get('line_number', 1))}</td>"
                 f"<td>{html.escape(str(item.get('cwe_id') or item.get('cwe') or 'N/A'))}</td>"
                 f"<td>{html.escape(str(item.get('owasp_mapping') or item.get('owasp_category') or 'N/A'))}</td>"
+                f"<td><a href='#fix-card-{idx + 1}'>Open</a></td>"
                 "</tr>"
             )
             for idx, item in enumerate(findings)
@@ -1423,7 +1424,7 @@ class ReportExporter:
 
         detail_sections = "".join(
             (
-                "<section class='fix-card'>"
+                f"<section class='fix-card' id='fix-card-{idx + 1}'>"
                 f"<h3>[{html.escape(str(item.get('severity', 'Info')))}] {html.escape(str(item.get('vulnerability_title') or item.get('vulnerability_type') or 'Issue'))}</h3>"
                 f"<p><strong>Location:</strong> {html.escape(_normalize_path(str(item.get('file_path', 'unknown'))))}:{int(item.get('line_number', 1))}</p>"
                 f"<p><strong>CWE:</strong> {html.escape(str(item.get('cwe_id') or item.get('cwe') or 'N/A'))} | "
@@ -1458,7 +1459,7 @@ class ReportExporter:
                 f"<h4>Patch Preview</h4><pre>{html.escape(str(item.get('patch_preview', 'No patch preview available.')))}</pre>"
                 "</section>"
             )
-            for item in findings[:220]
+            for idx, item in enumerate(findings[:220])
         )
 
         truncated_note = (
@@ -1519,7 +1520,7 @@ class ReportExporter:
   <section class='panel'>
     <h2>Fix Queue</h2>
     <table>
-      <thead><tr><th>#</th><th>Severity</th><th>Issue</th><th>File</th><th>Line</th><th>CWE</th><th>OWASP</th></tr></thead>
+      <thead><tr><th>#</th><th>Severity</th><th>Issue</th><th>File</th><th>Line</th><th>CWE</th><th>OWASP</th><th>Details</th></tr></thead>
       <tbody>{queue_rows or "<tr><td colspan='7'>No findings available.</td></tr>"}</tbody>
     </table>
   </section>

@@ -4154,9 +4154,12 @@ function renderFixesHtml(scan: ScanView): string {
   const detailFindings = queueFindings;
   const detailFindingsWithAnchors = detailFindings.map((finding) => ({
     finding,
+    key: String(finding.finding_uid || `${finding.file_path}:${finding.line_number || 1}`),
     anchorId: stableAnchorId("fix", String(finding.finding_uid || `${finding.file_path}:${finding.line_number || 1}`)),
+    instanceAnchorId: stableAnchorId("fix-instance", String(finding.finding_uid || `${finding.file_path}:${finding.line_number || 1}`)),
   }));
-  const findingAnchorByUid = new Map(detailFindingsWithAnchors.map((entry) => [String(entry.finding.finding_uid || ""), entry.anchorId]));
+  const findingAnchorByUid = new Map(detailFindingsWithAnchors.map((entry) => [entry.key, entry.anchorId]));
+  const findingInstanceAnchorByUid = new Map(detailFindingsWithAnchors.map((entry) => [entry.key, entry.instanceAnchorId]));
   const enterprise = resolveEnterpriseAssurance(scan, report.summary);
   const toolchainExecution = resolveToolchainExecution(scan, report.summary);
   const dataQualityRaw = report.summary.data_quality || scan.report.executive_summary.data_quality || null;
@@ -4277,7 +4280,11 @@ function renderFixesHtml(scan: ScanView): string {
 
   const rows = queueFindings
     .map(
-      (finding, index) => `<tr>
+      (finding, index) => {
+        const findingKey = String(finding.finding_uid || `${finding.file_path}:${finding.line_number || 1}`);
+        const sectionAnchorId = findingAnchorByUid.get(findingKey) || stableAnchorId("fix", findingKey);
+        const instanceAnchorId = findingInstanceAnchorByUid.get(findingKey) || stableAnchorId("fix-instance", findingKey);
+        return `<tr>
     <td>${index + 1}</td>
     <td><span class="sev sev-${finding.severity}">${escapeHtml(finding.severity)}</span></td>
     <td>${escapeHtml(normalizedFindingTitle(finding))}</td>
@@ -4286,8 +4293,9 @@ function renderFixesHtml(scan: ScanView): string {
     <td>${renderCvssLink(finding.cvss_score)}</td>
     <td>${renderCweLink(finding.cwe_id || "")}</td>
     <td>${escapeHtml(String(finding.owasp_mapping || ""))}</td>
-    <td><a class="fix-link" href="#${escapeHtml(findingAnchorByUid.get(String(finding.finding_uid || "")) || stableAnchorId("fix", String(finding.finding_uid || `${finding.file_path}:${finding.line_number || 1}`)))}" data-target-id="${escapeHtml(findingAnchorByUid.get(String(finding.finding_uid || "")) || stableAnchorId("fix", String(finding.finding_uid || `${finding.file_path}:${finding.line_number || 1}`)))}">Open</a></td>
-  </tr>`,
+    <td><a class="fix-link" href="#${escapeHtml(instanceAnchorId)}" data-target-id="${escapeHtml(sectionAnchorId)}" data-instance-target-id="${escapeHtml(instanceAnchorId)}">Open</a></td>
+  </tr>`;
+      },
   )
     .join("");
   const moduleAggAll = aggregateModules(findings);
@@ -4307,6 +4315,7 @@ function renderFixesHtml(scan: ScanView): string {
 
   const detailSections = detailFindingsWithAnchors
     .map(({ finding, anchorId }) => {
+      const findingKey = String(finding.finding_uid || `${finding.file_path}:${finding.line_number || 1}`);
       const activeStatus = String(finding.active_poc?.status || "").toLowerCase();
       const advisoryLinks = renderAdvisoryLinks(finding);
       const hasAdvisories = advisoryValues(finding).length > 0;
@@ -4343,6 +4352,7 @@ function renderFixesHtml(scan: ScanView): string {
       const patchPreview = String(finding.patch_preview || "").trim();
       const recommendation = String(finding.recommendation || "").trim();
       const groundingNotes = aiGroundingNotes(finding);
+      const instanceBaseId = stableAnchorId("fix-instance", findingKey);
 
       sectionIssue.push(`<h3>[${escapeHtml(finding.severity)}] ${escapeHtml(normalizedFindingTitle(finding))}</h3>`);
       sectionIssue.push(`<table class="results"><tbody>
@@ -4506,7 +4516,9 @@ function renderFixesHtml(scan: ScanView): string {
         .slice(0, 200)
         .map((item) => {
           const itemAny = item as unknown as Record<string, unknown>;
-          return `<tr>
+          const itemKey = String(item.finding_uid || `${item.file_path}:${item.line_number || 1}`);
+          const itemInstanceId = itemKey === findingKey ? instanceBaseId : stableAnchorId("fix-instance", `${instanceBaseId}::${itemKey}`);
+          return `<tr id="${escapeHtml(itemInstanceId)}" data-instance-id="${escapeHtml(itemInstanceId)}">
           <td>${escapeHtml(fullFindingLocation(scan.report.executive_summary.target_path, item.file_path, Number(item.line_number || 1)))}</td>
           <td>${escapeHtml(String(itemAny.workflow_status || "Open"))}</td>
           <td>${escapeHtml(displayReportToolName(itemAny.source_tool || itemAny.tool || "CodeSentinelX"))}</td>
@@ -4792,9 +4804,15 @@ function renderFixesHtml(scan: ScanView): string {
         }
       }
 
-      function focusFixDetail(id, updateHash) {
+      function focusFixDetail(id, updateHash, instanceId) {
         if (!id) return;
         var section = document.getElementById(id);
+        if (!section) {
+          var instance = document.getElementById(instanceId || id) || document.querySelector('[data-instance-id="' + String(instanceId || id).replace(/"/g, '\\"') + '"]');
+          if (instance && instance.closest) {
+            section = instance.closest(".fix-detail");
+          }
+        }
         if (!section) return;
         document.querySelectorAll(".fix-detail.is-active").forEach(function (item) {
           item.classList.remove("is-active");
@@ -4804,7 +4822,15 @@ function renderFixesHtml(scan: ScanView): string {
           section.scrollIntoView({ behavior: "smooth", block: "start" });
         }
         if (updateHash && window.history && window.history.replaceState) {
-          window.history.replaceState(null, "", "#" + id);
+          window.history.replaceState(null, "", "#" + (instanceId || id));
+        }
+        if (instanceId && instanceId !== id) {
+          window.setTimeout(function () {
+            var instance = document.getElementById(instanceId);
+            if (instance && instance.scrollIntoView) {
+              instance.scrollIntoView({ behavior: "smooth", block: "center" });
+            }
+          }, 120);
         }
         window.setTimeout(function () {
           section.classList.remove("is-active");
@@ -4833,14 +4859,18 @@ function renderFixesHtml(scan: ScanView): string {
           if (event && event.preventDefault) {
             event.preventDefault();
           }
-          focusFixDetail(link.getAttribute("data-target-id") || String(link.getAttribute("href") || "").replace(/^#/, ""), true);
+          focusFixDetail(
+            link.getAttribute("data-target-id") || String(link.getAttribute("href") || "").replace(/^#/, ""),
+            true,
+            link.getAttribute("data-instance-target-id") || undefined
+          );
         });
       });
 
       function syncHashTarget() {
         var hash = String(window.location.hash || "").replace(/^#/, "");
         if (hash) {
-          focusFixDetail(hash, false);
+          focusFixDetail(hash, false, undefined);
         }
       }
 
