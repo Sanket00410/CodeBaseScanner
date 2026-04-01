@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from codesentinelx_engine.models import Finding
-from codesentinelx_engine.scanner.dependency_auth import build_dependency_inventory
+from codesentinelx_engine.scanner.dependency_auth import build_dependency_inventory, build_dependency_usage_map, normalize_package_name
 from codesentinelx_engine.scanner.external.common import extract_cwe, first_reference, normalize_path, run_command, safe_json_loads, to_severity
 
 
@@ -24,8 +24,37 @@ def _vuln_severity(vulnerability: dict[str, Any], groups: list[dict[str, Any]]) 
     return "medium"
 
 
-def parse_osv_scanner_output(data: dict, target_root: Path) -> list[Finding]:
+def _reachability_label(
+    package_name: str,
+    *,
+    inventory_row: dict[str, object] | None,
+    usage_map: dict[str, list[str]],
+) -> tuple[str, list[str]]:
+    normalized = normalize_package_name(package_name)
+    usage_paths = list(usage_map.get(normalized, []))
+    manifest_paths = sorted({str(item) for item in (inventory_row or {}).get("manifest_paths", set())})
+    lockfile_paths = sorted({str(item) for item in (inventory_row or {}).get("lockfile_paths", set())})
+    if usage_paths:
+        return "reachable", usage_paths
+    if manifest_paths and lockfile_paths:
+        return "declared_and_locked", []
+    if lockfile_paths:
+        return "lockfile_only", []
+    if manifest_paths:
+        return "declared_only", []
+    return "unmapped", []
+
+
+def parse_osv_scanner_output(
+    data: dict,
+    target_root: Path,
+    *,
+    inventory: dict[str, dict[str, object]] | None = None,
+    usage_map: dict[str, list[str]] | None = None,
+) -> list[Finding]:
     findings: list[Finding] = []
+    inventory = inventory or {}
+    usage_map = usage_map or {}
     for result in data.get("results", []) or []:
         if not isinstance(result, dict):
             continue
@@ -61,6 +90,19 @@ def parse_osv_scanner_output(data: dict, target_root: Path) -> list[Finding]:
 
                 reference = first_reference(reference_urls, f"https://osv.dev/vulnerability/{vuln_id}")
                 cwe = extract_cwe(vulnerability.get("database_specific", {}).get("cwe_ids")) or extract_cwe(aliases) or "CWE-1104"
+                inventory_row = inventory.get(normalize_package_name(package_name))
+                reachability, usage_paths = _reachability_label(package_name, inventory_row=inventory_row, usage_map=usage_map)
+                manifest_paths = sorted({str(item) for item in (inventory_row or {}).get("manifest_paths", set())})
+                lockfile_paths = sorted({str(item) for item in (inventory_row or {}).get("lockfile_paths", set())})
+                declared_versions = sorted({str(item) for item in (inventory_row or {}).get("declared_versions", set()) if str(item).strip()})
+                locked_versions = sorted({str(item) for item in (inventory_row or {}).get("locked_versions", set()) if str(item).strip()})
+                advisory_ids = sorted(
+                    {
+                        str(item).strip().upper()
+                        for item in ([vuln_id, *aliases] if isinstance(aliases, list) else [vuln_id])
+                        if str(item).strip()
+                    }
+                )
 
                 findings.append(
                     Finding(
@@ -68,7 +110,11 @@ def parse_osv_scanner_output(data: dict, target_root: Path) -> list[Finding]:
                         severity=to_severity(_vuln_severity(vulnerability, groups if isinstance(groups, list) else [])),
                         file_path=source_path,
                         line_number=1,
-                        business_impact="Vulnerable dependency detected in project dependency graph.",
+                        business_impact=(
+                            "Vulnerable dependency detected in project dependency graph."
+                            if reachability == "reachable"
+                            else "Vulnerable dependency detected in the declared or locked dependency graph."
+                        ),
                         recommendation=f"Upgrade {package_name} to a fixed version and validate transitive dependencies.",
                         reference=reference,
                         owasp_category="A06:2021 - Vulnerable and Outdated Components",
@@ -79,7 +125,21 @@ def parse_osv_scanner_output(data: dict, target_root: Path) -> list[Finding]:
                         ),
                         rule_id=f"OSV-{vuln_id}",
                         cwe=cwe,
-                        evidence=f"{package_name} {package_version}".strip(),
+                        evidence=f"{package_name} {package_version} | {reachability}".strip(),
+                        provenance={
+                            "dependency_name": package_name,
+                            "dependency_version": package_version,
+                            "dependency_manifest_paths": manifest_paths,
+                            "dependency_lockfile_paths": lockfile_paths,
+                            "dependency_declared_versions": declared_versions,
+                            "dependency_locked_versions": locked_versions,
+                            "dependency_usage_paths": usage_paths,
+                            "dependency_reachability": reachability,
+                            "advisory_ids": advisory_ids,
+                            "advisory_verified": any(
+                                str(item).startswith(("CVE-", "GHSA-")) for item in advisory_ids
+                            ),
+                        },
                     )
                 )
     return findings
@@ -95,6 +155,7 @@ def run_osv_scanner_scan(
         return [], [
             "OSV-Scanner skipped: no supported dependency manifests or lockfiles were detected in this target."
         ]
+    usage_map = build_dependency_usage_map(target_root)
 
     with tempfile.NamedTemporaryFile(prefix="osv-scan-", suffix=".json", delete=False) as tmp_file:
         output_path = tmp_file.name
@@ -139,5 +200,5 @@ def run_osv_scanner_scan(
             return [], []
         return [], ["OSV-Scanner produced non-JSON output."]
 
-    return parse_osv_scanner_output(payload, target_root), []
+    return parse_osv_scanner_output(payload, target_root, inventory=inventory, usage_map=usage_map), []
 

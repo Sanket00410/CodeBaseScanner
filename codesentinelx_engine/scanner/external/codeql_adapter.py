@@ -230,6 +230,8 @@ def _parse_sarif(raw: str, target_root: Path) -> list[Finding]:
             recommendation = (rule.get("help") or {}).get("text") or "Review CodeQL guidance and apply secure refactoring."
             reference = str(rule.get("helpUri") or "https://codeql.github.com/docs/")
 
+            rule_properties = rule.get("properties") or {}
+            rule_tags = rule_properties.get("tags") if isinstance(rule_properties, dict) else []
             findings.append(
                 Finding(
                     vulnerability_type=str(short_description),
@@ -244,6 +246,11 @@ def _parse_sarif(raw: str, target_root: Path) -> list[Finding]:
                     rule_id=f"CODEQL-{rule_id}",
                     cwe=cwe,
                     evidence=str(message)[:240],
+                    provenance={
+                        "codeql_rule_id": rule_id,
+                        "codeql_rule_tags": [str(tag) for tag in rule_tags if str(tag).strip()] if isinstance(rule_tags, list) else [],
+                        "codeql_search_path": search_path,
+                    },
                 )
             )
 

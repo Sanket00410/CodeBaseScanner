@@ -100,19 +100,12 @@ _ROLE_TOOL_ALLOWLIST = {
     "Auditor": frozenset(
         {
             "checkov",
-            "gitleaks",
             "hadolint",
             "osv-scanner",
-            "semgrep",
             "tfsec",
         }
     ),
-    "Management": frozenset(
-        {
-            "gitleaks",
-            "semgrep",
-        }
-    ),
+    "Management": frozenset(),
 }
 
 _ROLE_SCOPES = {

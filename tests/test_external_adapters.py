@@ -10,6 +10,7 @@ from codesentinelx_engine.scanner.external import osv_scanner_adapter
 from codesentinelx_engine.scanner.external.gitleaks_adapter import parse_gitleaks_output
 from codesentinelx_engine.scanner.external.registry import external_tool_names
 from codesentinelx_engine.scanner.external.semgrep_adapter import parse_semgrep_output
+from codesentinelx_engine.scanner.role_scope import role_allows_tool
 from codesentinelx_engine.scanner.external.trivy_adapter import parse_trivy_output
 
 
@@ -19,6 +20,16 @@ def test_external_tool_names_deduplicates_and_respects_switch() -> None:
 
     disabled = ScannerConfig(use_external_tools=False)
     assert external_tool_names(disabled) == []
+
+
+def test_role_allowlists_match_execution_policy() -> None:
+    assert role_allows_tool("Admin", "codeql")
+    assert role_allows_tool("Security Analyst", "osv-scanner")
+    assert role_allows_tool("Developer", "semgrep")
+    assert role_allows_tool("Auditor", "checkov")
+    assert not role_allows_tool("Auditor", "semgrep")
+    assert not role_allows_tool("Management", "gitleaks")
+    assert not role_allows_tool("Management", "semgrep")
 
 
 def test_parse_semgrep_output() -> None:
@@ -196,6 +207,46 @@ def test_osv_scan_skips_without_manifests(monkeypatch: pytest.MonkeyPatch, tmp_p
 
     assert findings == []
     assert any("no supported dependency manifests" in error.lower() for error in errors)
+
+
+def test_parse_osv_scanner_output_tracks_reachability_and_advisories(tmp_path: Path) -> None:
+    payload = {
+        "results": [
+            {
+                "source": {"path": "package-lock.json"},
+                "packages": [
+                    {
+                        "package": {"name": "lodash", "version": "4.17.19"},
+                        "vulnerabilities": [
+                            {
+                                "id": "CVE-2021-23337",
+                                "aliases": ["GHSA-xxxx-yyyy-zzzz"],
+                                "summary": "Prototype Pollution",
+                                "details": "Unsafe function",
+                                "references": [{"url": "https://osv.dev/vulnerability/CVE-2021-23337"}],
+                                "database_specific": {"severity": "HIGH", "cwe_ids": ["CWE-1321"]},
+                            }
+                        ],
+                    }
+                ],
+            }
+        ]
+    }
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / "package-lock.json").write_text("{}", encoding="utf-8")
+    (root / "src").mkdir()
+    (root / "src" / "index.js").write_text("require('lodash')", encoding="utf-8")
+
+    inventory = osv_scanner_adapter.build_dependency_inventory(root)
+    usage_map = osv_scanner_adapter.build_dependency_usage_map(root)
+    findings = osv_scanner_adapter.parse_osv_scanner_output(payload, root, inventory=inventory, usage_map=usage_map)
+
+    assert len(findings) == 1
+    assert findings[0].severity == Severity.HIGH
+    assert findings[0].provenance["dependency_reachability"] == "reachable"
+    assert findings[0].provenance["advisory_verified"] is True
+    assert "CVE-2021-23337" in findings[0].provenance["advisory_ids"]
 
 
 def test_codeql_scan_skips_when_query_packs_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
