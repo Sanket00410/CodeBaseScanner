@@ -186,12 +186,41 @@ function renderHelpGuideSectionBody(lines: string[]): string {
 
 function renderHelpGuideHtml(markdown: string, markdownPath: string, generatedAt: string): string {
   const sections = parseHelpGuideSections(markdown);
-  const navItems = sections
+  const sectionGroups: Array<{ title: string; items: HelpGuideSection[] }> = [
+    {
+      title: "Overview",
+      items: sections.filter((section) => ["Getting Started", "Core Concepts"].includes(section.title)),
+    },
+    {
+      title: "Workflows",
+      items: sections.filter((section) => section.title === "Step-by-Step Workflows"),
+    },
+    {
+      title: "Reference",
+      items: sections.filter((section) => ["Tooling & Coverage", "Report Guide"].includes(section.title)),
+    },
+    {
+      title: "Operations",
+      items: sections.filter((section) => ["Troubleshooting", "Security & Data Handling", "Performance Tuning"].includes(section.title)),
+    },
+    {
+      title: "Governance",
+      items: sections.filter((section) => ["FAQ", "Versioned Changelog"].includes(section.title)),
+    },
+  ].filter((group) => group.items.length > 0);
+  const navItems = sectionGroups
     .map(
-      (section) => `<a href="#${escapeHtml(section.id)}" class="help-nav-link">
-        <span class="help-nav-title">${escapeHtml(section.title)}</span>
-        <span class="help-nav-sub">Jump to section</span>
-      </a>`,
+      (group) => `<div class="help-nav-group">
+        <h3>${escapeHtml(group.title)}</h3>
+        ${group.items
+          .map(
+            (section) => `<a href="#${escapeHtml(section.id)}" class="help-nav-link" data-help-title="${escapeHtml(section.title.toLowerCase())}" data-help-body="${escapeHtml(section.lines.join(" "))}">
+              <span class="help-nav-title">${escapeHtml(section.title)}</span>
+              <span class="help-nav-sub">Jump to section</span>
+            </a>`,
+          )
+          .join("")}
+      </div>`,
     )
     .join("");
   const sectionCards = sections
@@ -227,6 +256,9 @@ function renderHelpGuideHtml(markdown: string, markdownPath: string, generatedAt
     })
     .filter(Boolean)
     .join("");
+  const searchableIndex = sections
+    .map((section) => `${section.title} ${section.lines.join(" ")}`)
+    .join(" \n ");
 
   return `<!doctype html>
 <html lang="en">
@@ -375,10 +407,41 @@ function renderHelpGuideHtml(markdown: string, markdownPath: string, generatedAt
       font-size: 1.1rem;
       letter-spacing: -.02em;
     }
+    .help-nav-group + .help-nav-group { margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(118, 173, 214, 0.12); }
+    .help-nav-group h3 { margin: 0 0 10px; font-size: .88rem; letter-spacing: .08em; text-transform: uppercase; color: var(--accent-2); }
     .nav p, .meta, .section-note {
       color: var(--muted);
       margin: 0 0 12px;
       font-size: .92rem;
+    }
+    .help-searchbar {
+      display: grid;
+      grid-template-columns: minmax(240px, 1fr) auto auto;
+      gap: 10px;
+      margin: 18px 0 0;
+      align-items: center;
+    }
+    .help-searchbar input {
+      width: 100%;
+      min-width: 0;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(118, 173, 214, 0.2);
+      background: rgba(8, 20, 33, 0.68);
+      color: var(--text);
+      outline: none;
+    }
+    .help-searchbar button {
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(118, 173, 214, 0.2);
+      background: rgba(9, 26, 42, 0.72);
+      color: var(--text);
+      cursor: pointer;
+    }
+    .help-searchbar .help-count {
+      color: var(--muted);
+      font-size: .9rem;
     }
     .help-nav-link {
       display: block;
@@ -388,6 +451,7 @@ function renderHelpGuideHtml(markdown: string, markdownPath: string, generatedAt
       border: 1px solid rgba(118, 173, 214, 0.14);
       background: rgba(8, 20, 33, 0.5);
     }
+    .help-nav-link.is-hidden, .help-card.is-hidden { display: none !important; }
     .help-nav-title {
       display: block;
       color: var(--text);
@@ -402,6 +466,9 @@ function renderHelpGuideHtml(markdown: string, markdownPath: string, generatedAt
     .content {
       display: grid;
       gap: 14px;
+    }
+    .help-card {
+      scroll-margin-top: 20px;
     }
     .card {
       padding: 22px;
@@ -490,6 +557,11 @@ function renderHelpGuideHtml(markdown: string, markdownPath: string, generatedAt
         <div class="meta">Path: ${escapeHtml(markdownPath.replace(/README_USER_GUIDE\.md$/i, "help/README_USER_GUIDE.html"))}</div>
         <div class="meta">Generated: ${escapeHtml(generatedAt)}</div>
       </div>
+      <div class="help-searchbar">
+        <input id="helpSearch" type="search" placeholder="Search sections, steps, and terms..." />
+        <button type="button" id="helpSearchClear">Clear Search</button>
+        <span class="help-count" id="helpSearchCount">Sections: ${sections.length}/${sections.length}</span>
+      </div>
     </header>
 
     <main class="layout">
@@ -510,6 +582,47 @@ function renderHelpGuideHtml(markdown: string, markdownPath: string, generatedAt
       </section>
     </main>
   </div>
+  <script>
+    (function () {
+      var input = document.getElementById("helpSearch");
+      var clear = document.getElementById("helpSearchClear");
+      var count = document.getElementById("helpSearchCount");
+      var navLinks = Array.from(document.querySelectorAll(".help-nav-link"));
+      var cards = Array.from(document.querySelectorAll(".help-card"));
+      var searchableIndex = ${JSON.stringify(searchableIndex)};
+      function applyFilter() {
+        var query = (input && input.value ? input.value : "").trim().toLowerCase();
+        var visible = 0;
+        cards.forEach(function (card) {
+          var text = String(card.textContent || searchableIndex).toLowerCase();
+          var match = !query || text.indexOf(query) >= 0;
+          card.classList.toggle("is-hidden", !match);
+          if (match) visible += 1;
+        });
+        navLinks.forEach(function (link) {
+          var title = String(link.getAttribute("data-help-title") || "").toLowerCase();
+          var body = String(link.getAttribute("data-help-body") || "").toLowerCase();
+          var match = !query || title.indexOf(query) >= 0 || body.indexOf(query) >= 0;
+          link.classList.toggle("is-hidden", !match);
+        });
+        if (count) {
+          count.textContent = "Sections: " + visible + "/" + cards.length;
+        }
+      }
+      if (input) {
+        input.addEventListener("input", applyFilter);
+      }
+      if (clear) {
+        clear.addEventListener("click", function () {
+          if (input) {
+            input.value = "";
+          }
+          applyFilter();
+        });
+      }
+      applyFilter();
+    })();
+  </script>
 </body>
 </html>`;
 }
@@ -5352,16 +5465,58 @@ function renderFindingDetailsHtml(scan: ScanView): string {
   const findings = sortedFindings(scan.report.vulnerability_fixed_code_report.findings || []);
   const report = scan.report.vulnerability_fixed_code_report;
   const exportedAt = formatDisplayTimestamp(resolveReportGeneratedAt(scan, "finding_details"));
-  const rows = findings
+  const findingEntries = findings.map((item, index) => {
+    const findingKey = String(item.finding_uid || `${item.file_path}:${item.line_number || 1}`);
+    const sectionId = stableAnchorId("finding-detail", findingKey);
+    const instanceId = stableAnchorId("finding-detail-instance", findingKey);
+    return { item, index, sectionId, instanceId, findingKey };
+  });
+  const rows = findingEntries
     .map(
-      (item) => `<tr>
+      ({ item, index, sectionId, instanceId }) => `<tr>
         <td>${escapeHtml(normalizedFindingTitle(item))}</td>
         <td>${escapeHtml(item.severity)}</td>
-        <td>${escapeHtml(`${normalizePath(item.file_path)}:${item.line_number || 1}`)}</td>
+        <td>${escapeHtml(fullFindingLocation(scan.report.executive_summary.target_path, item.file_path, Number(item.line_number || 1)))}</td>
         <td>${escapeHtml(item.description || item.business_impact || "N/A")}</td>
         <td>${escapeHtml(preferredFindingFix(item))}</td>
+        <td><a href="#${escapeHtml(instanceId)}" class="finding-detail-link" data-target-id="${escapeHtml(sectionId)}" data-instance-target-id="${escapeHtml(instanceId)}">Open</a></td>
       </tr>`,
     )
+    .join("");
+  const details = findingEntries
+    .map(({ item, index, sectionId, instanceId }) => {
+      const location = fullFindingLocation(scan.report.executive_summary.target_path, item.file_path, Number(item.line_number || 1));
+      const instanceRows = findings
+        .filter((candidate) => normalizedFindingTitle(candidate) === normalizedFindingTitle(item))
+        .slice(0, 30)
+        .map((candidate, idx) => {
+          const candidateId = stableAnchorId("finding-detail-instance", String(candidate.finding_uid || `${candidate.file_path}:${candidate.line_number || 1}`));
+          return `<tr id="${escapeHtml(candidateId)}" data-instance-id="${escapeHtml(candidateId)}">
+            <td align="center">${idx + 1}</td>
+            <td>${escapeHtml(fullFindingLocation(scan.report.executive_summary.target_path, candidate.file_path, Number(candidate.line_number || 1)))}</td>
+            <td>${escapeHtml(String(candidate.severity || "Info"))}</td>
+            <td>${escapeHtml(String(candidate.status || "Open"))}</td>
+          </tr>`;
+        })
+        .join("");
+      return `<article id="${escapeHtml(sectionId)}" class="finding-detail">
+        <h3>[${escapeHtml(item.severity)}] ${escapeHtml(normalizedFindingTitle(item))}</h3>
+        <table class="results">
+          <tr><th width="18%">Severity</th><td>${escapeHtml(item.severity)}</td></tr>
+          <tr><th>Location</th><td>${escapeHtml(location)}</td></tr>
+          <tr><th>Description</th><td>${escapeHtml(item.description || item.business_impact || "N/A")}</td></tr>
+          <tr><th>Remediation</th><td>${escapeHtml(preferredFindingFix(item))}</td></tr>
+          <tr><th>Owner</th><td>${escapeHtml(displayFindingOwner(item as Partial<VulnerabilityFinding> & Record<string, unknown>))}</td></tr>
+        </table>
+        <h4>Instances</h4>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>#</th><th>File / Line</th><th>Severity</th><th>Status</th></tr></thead>
+            <tbody>${instanceRows || `<tr id="${escapeHtml(instanceId)}" data-instance-id="${escapeHtml(instanceId)}"><td colspan="4">No additional grouped instances.</td></tr>`}</tbody>
+          </table>
+        </div>
+      </article>`;
+    })
     .join("");
   const hasRows = Boolean(rows.trim());
 
@@ -5383,7 +5538,10 @@ function renderFindingDetailsHtml(scan: ScanView): string {
     </section>
     ${hasRows ? `<section class="section">
       <h2>Finding Details</h2>
-      <div class="toolbar"><input id="findingDetailsSearch" type="search" placeholder="Search finding, severity, location, description, or remediation" /></div>
+      <div class="toolbar">
+        <input id="findingDetailsSearch" type="search" placeholder="Search finding, severity, location, description, or remediation" />
+        <input id="findingDetailsSeverity" type="search" placeholder="Optional severity filter (Critical/High/...)" style="min-width:220px" />
+      </div>
       <div class="table-frame table-scroll">
         <table id="findingDetailsTable">
           <thead>
@@ -5393,27 +5551,63 @@ function renderFindingDetailsHtml(scan: ScanView): string {
               <th width="16%">Location</th>
               <th width="29%">Issue Description</th>
               <th width="23%">Remediation</th>
+              <th width="10%">Details</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
     </section>` : ""}
+    ${details ? `<section class="section">
+      <h2>Finding Drill-Down</h2>
+      ${details}
+    </section>` : ""}
   </div>
   <script>
     (function () {
       var input = document.getElementById("findingDetailsSearch");
+      var severityInput = document.getElementById("findingDetailsSeverity");
       var table = document.getElementById("findingDetailsTable");
       if (!input || !table) return;
       var tbody = table.querySelector("tbody");
       if (!tbody) return;
-      input.addEventListener("input", function () {
+      function applyFilters() {
         var query = (input.value || "").toLowerCase();
+        var severityQuery = severityInput && severityInput.value ? severityInput.value.toLowerCase() : "";
         Array.from(tbody.querySelectorAll("tr")).forEach(function (row) {
           var text = (row.textContent || "").toLowerCase();
-          row.style.display = !query || text.indexOf(query) >= 0 ? "" : "none";
+          var severityText = row.children[1] && row.children[1].textContent ? row.children[1].textContent.toLowerCase() : "";
+          var matchesQuery = !query || text.indexOf(query) >= 0;
+          var matchesSeverity = !severityQuery || severityText.indexOf(severityQuery) >= 0;
+          row.style.display = matchesQuery && matchesSeverity ? "" : "none";
+        });
+      }
+      input.addEventListener("input", applyFilters);
+      if (severityInput) {
+        severityInput.addEventListener("change", applyFilters);
+      }
+      document.querySelectorAll(".finding-detail-link").forEach(function (link) {
+        link.addEventListener("click", function (event) {
+          if (event && event.preventDefault) {
+            event.preventDefault();
+          }
+          var targetId = link.getAttribute("data-target-id") || String(link.getAttribute("href") || "").replace(/^#/, "");
+          var instanceId = link.getAttribute("data-instance-target-id") || "";
+          var target = document.getElementById(targetId) || document.getElementById(instanceId);
+          if (target && target.scrollIntoView) {
+            target.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+          if (instanceId) {
+            var instance = document.getElementById(instanceId);
+            if (instance && instance.scrollIntoView) {
+              window.setTimeout(function () {
+                instance.scrollIntoView({ behavior: "smooth", block: "center" });
+              }, 120);
+            }
+          }
         });
       });
+      applyFilters();
     })();
   </script>
   ${renderReportTableEnhancerTag()}
