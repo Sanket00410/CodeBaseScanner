@@ -141,7 +141,7 @@ def _quality_benchmark_from_report(report: dict) -> dict[str, Any] | None:
         _as_dict(existing.get("summary")).get("quality_benchmark"),
     ]
     for benchmark in candidates:
-        if isinstance(benchmark, dict) and benchmark.get("configured"):
+        if isinstance(benchmark, dict) and benchmark.get("configured") and int(benchmark.get("cases_total", 0) or 0) > 0:
             return benchmark
     return None
 

@@ -1881,33 +1881,35 @@ def _build_enterprise_assurance(
 
     benchmark_status = str(benchmark.get("benchmark_status") or "").strip().lower()
     benchmark_advisories: list[str] = []
+    benchmark_cases_total = int(benchmark.get("cases_total") or 0)
+    benchmark_has_cases = bool(benchmark.get("configured")) and benchmark_cases_total > 0
     if benchmark:
         benchmark_name = str(benchmark.get("benchmark_name") or "CodeSentinelX quality benchmark")
         precision = float(benchmark.get("precision_percent") or 0.0)
         recall = float(benchmark.get("recall_percent") or 0.0)
         f1 = float(benchmark.get("f1_percent") or 0.0)
-        if benchmark_status == "blocked":
+        if benchmark_has_cases and benchmark_status == "blocked":
             blockers.append(
                 f"{benchmark_name} fell below quality thresholds (precision={precision:.2f}%, recall={recall:.2f}%, f1={f1:.2f}%)."
             )
-        elif benchmark_status == "warning":
+        elif benchmark_has_cases and benchmark_status == "warning":
             benchmark_advisories.append(
                 f"{benchmark_name} is configured but incomplete; precision={precision:.2f}%, recall={recall:.2f}%, f1={f1:.2f}%."
             )
-        elif benchmark_status == "not_configured":
+        elif benchmark_has_cases and benchmark_status == "not_configured":
             benchmark_advisories.append("Scanner quality benchmark file is not configured; quality proof remains optional.")
-        else:
+        elif benchmark_has_cases:
             benchmark_advisories.append(
                 f"{benchmark_name} passed quality thresholds with precision={precision:.2f}%, recall={recall:.2f}%, f1={f1:.2f}%."
             )
 
     tool_success_rate_percent = float(toolchain_execution.get("success_rate_percent") or 0.0)
     benchmark_bonus = 0.0
-    if benchmark and benchmark_status == "ready":
+    if benchmark_has_cases and benchmark_status == "ready":
         benchmark_bonus = min(12.0, (float(benchmark.get("precision_percent") or 0.0) + float(benchmark.get("recall_percent") or 0.0) + float(benchmark.get("f1_percent") or 0.0)) / 30.0)
-    elif benchmark and benchmark_status == "warning":
+    elif benchmark_has_cases and benchmark_status == "warning":
         benchmark_bonus = -4.0
-    elif benchmark and benchmark_status == "blocked":
+    elif benchmark_has_cases and benchmark_status == "blocked":
         benchmark_bonus = -12.0
     readiness_score = round(
         max(
@@ -1927,7 +1929,7 @@ def _build_enterprise_assurance(
         status = "blocked"
     elif required_tools_total and (required_tools_coverage_percent < 100 or tool_success_rate_percent < 80):
         status = "warning"
-    elif benchmark and benchmark_status in {"blocked", "warning"}:
+    elif benchmark_has_cases and benchmark_status in {"blocked", "warning"}:
         status = "blocked" if benchmark_status == "blocked" else "warning"
     elif advisories:
         status = "warning"
@@ -1944,10 +1946,10 @@ def _build_enterprise_assurance(
             f"{recommendation} CodeQL coverage is currently incomplete; install the repository-specific packs or point CodeQL at the correct search path before rerunning. "
             "Management should treat this as reduced confidence in language coverage, and developers should treat it as a tool-setup issue rather than a product defect."
         )
-    if benchmark and benchmark_status == "blocked" and benchmark_advisories:
+    if benchmark_has_cases and benchmark_status == "blocked" and benchmark_advisories:
         recommendation = f"{recommendation} Scanner quality benchmark requires attention before sign-off."
     advisories = benchmark_advisories + advisories
-    if status == "warning" and benchmark_status == "warning" and not benchmark_advisories:
+    if benchmark_has_cases and status == "warning" and benchmark_status == "warning" and not benchmark_advisories:
         advisories.append("Scanner quality benchmark is partially configured.")
 
     return {
@@ -1971,7 +1973,7 @@ def _build_enterprise_assurance(
         "blockers": blockers,
         "advisories": advisories,
         "recommendation": recommendation,
-        "quality_benchmark": benchmark if benchmark else None,
+        "quality_benchmark": benchmark if benchmark_has_cases else None,
     }
 
 

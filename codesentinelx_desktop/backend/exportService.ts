@@ -933,6 +933,10 @@ function loadReportGlobeTextureDataUri(): string {
 const REPORT_GLOBE_TEXTURE_PATH = resolveReportGlobeTexturePath();
 const REPORT_GLOBE_TEXTURE_DATA_URI = loadReportGlobeTextureDataUri();
 
+function hasRenderableQualityBenchmark(benchmark?: QualityBenchmarkSummary | null): boolean {
+  return Boolean(benchmark && benchmark.configured && Number(benchmark.cases_total || 0) > 0);
+}
+
 function resolveEnterpriseAssurance(
   scan: ScanView,
   summary: VulnerabilityFixedCodeReport["summary"],
@@ -943,6 +947,8 @@ function resolveEnterpriseAssurance(
     scan.report.executive_summary.data_quality?.quality_benchmark ||
     existing?.quality_benchmark ||
     null;
+  const benchmarkRenderable = hasRenderableQualityBenchmark(benchmark);
+  const benchmarkForReturn = benchmarkRenderable ? (benchmark || undefined) : undefined;
   const existingMeaningful =
     existing &&
     (Number(existing.required_tools_total || 0) > 0 ||
@@ -950,9 +956,9 @@ function resolveEnterpriseAssurance(
       Boolean((existing.blockers || []).length) ||
       Number(existing.toolchain_attempted_tools || 0) > 0 ||
       Boolean(existing.quality_benchmark) ||
-      Boolean(benchmark));
+      benchmarkRenderable);
   if (existingMeaningful) {
-    return benchmark && !existing.quality_benchmark ? { ...existing, quality_benchmark: benchmark } : existing;
+    return benchmarkRenderable && !existing.quality_benchmark ? { ...existing, quality_benchmark: benchmarkForReturn } : existing;
   }
   const toolchainExecution = resolveToolchainExecution(scan, summary);
   const findings = scan.report.vulnerability_fixed_code_report.findings || [];
@@ -1025,12 +1031,13 @@ function resolveEnterpriseAssurance(
         : status === "warning"
           ? `Increase analyzer coverage and close high-priority risks before production deployment.${advisories.length ? " Review the coverage notes for tool availability and execution issues." : ""}`
           : "Release criteria met with current analyzer coverage.",
-    quality_benchmark: benchmark || undefined,
+    quality_benchmark: benchmarkForReturn,
   };
 }
 
 function renderQualityBenchmarkRows(benchmark?: QualityBenchmarkSummary | null): string {
-  if (!benchmark || !benchmark.configured) {
+  const benchmarkCasesTotal = Number(benchmark?.cases_total || 0);
+  if (!benchmark || !benchmark.configured || benchmarkCasesTotal <= 0) {
     return "";
   }
   const rows = [
@@ -1057,7 +1064,8 @@ function renderQualityBenchmarkRows(benchmark?: QualityBenchmarkSummary | null):
 }
 
 function renderQualityBenchmarkSection(benchmark?: QualityBenchmarkSummary | null): string {
-  if (!benchmark || !benchmark.configured) {
+  const benchmarkCasesTotal = Number(benchmark?.cases_total || 0);
+  if (!benchmark || !benchmark.configured || benchmarkCasesTotal <= 0) {
     return "";
   }
   const blockerItems = (benchmark.gate_blockers || [])
