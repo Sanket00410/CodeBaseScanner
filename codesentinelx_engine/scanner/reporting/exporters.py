@@ -383,15 +383,25 @@ def _owasp_counts(findings: list[dict], limit: int = 20) -> list[dict]:
 
 
 def _alert_groups(findings: list[dict]) -> list[dict]:
-    grouped: dict[tuple[str, str, str], dict] = {}
+    grouped: dict[str, dict] = {}
     for finding in findings:
-        title = str(finding.get("vulnerability_title") or finding.get("vulnerability_type") or "Issue")
-        cwe = str(finding.get("cwe_id") or finding.get("cwe") or "N/A")
-        owasp = str(finding.get("owasp_mapping") or finding.get("owasp_category") or "N/A")
-        key = (title, cwe, owasp)
+        title = str(
+            finding.get("alert_group_title")
+            or finding.get("alert_title_group_title")
+            or finding.get("vulnerability_title")
+            or finding.get("vulnerability_type")
+            or "Issue"
+        )
+        cwe = str(finding.get("alert_group_cwe") or finding.get("cwe_id") or finding.get("cwe") or "N/A")
+        owasp = str(finding.get("alert_group_owasp") or finding.get("owasp_mapping") or finding.get("owasp_category") or "N/A")
+        key = str(
+            finding.get("alert_group_uid")
+            or finding.get("alert_title_group_uid")
+            or _slugify(f"{title}::{cwe}::{owasp}")
+        )
         if key not in grouped:
             grouped[key] = {
-                "id": _slugify(f"{title}-{cwe}-{owasp}"),
+                "id": key,
                 "title": title,
                 "severity": str(finding.get("severity", "Info")),
                 "cwe": cwe,
@@ -1306,6 +1316,7 @@ class ReportExporter:
         instance_rows = "".join(
             (
                 "<tr>"
+                f"<td align='center'>{idx}</td>"
                 f"<td>{html.escape(_normalize_path(str(item.get('file_path', 'unknown'))))}</td>"
                 f"<td>{html.escape(_folder_name(str(item.get('file_path', 'unknown'))))}</td>"
                 f"<td align='center'>{int(item.get('line_number', 1))}</td>"
@@ -1316,15 +1327,18 @@ class ReportExporter:
                 f"<td>{html.escape(str(item.get('owasp_mapping') or item.get('owasp_category') or 'N/A'))}</td>"
                 "</tr>"
             )
-            for item in findings
+            for idx, item in enumerate(findings, start=1)
         )
+        instance_count = len(findings)
+        alert_anchor = html.escape(str(alert.get("id", "alert")))
 
         return (
-            f"<section id='{html.escape(str(alert.get('id', 'alert')))}' class='alert-block hidden-section'>"
+            f"<section id='{alert_anchor}' class='alert-block hidden-section'>"
             f"<h3>[{html.escape(str(alert.get('severity', 'Info')))}] {html.escape(str(alert.get('title', 'Issue')))} ({alert.get('count', 0)})</h3>"
             "<table>"
             f"<tr><th width='20%'>CWE</th><td>{html.escape(str(alert.get('cwe', 'N/A')))}</td></tr>"
             f"<tr><th>OWASP</th><td>{html.escape(str(alert.get('owasp', 'N/A')))}</td></tr>"
+            f"<tr><th>Instances</th><td>{instance_count}</td></tr>"
             f"<tr><th>Description</th><td>{html.escape(str(lead.get('description', 'N/A')))}</td></tr>"
             f"<tr><th>Business Impact</th><td>{html.escape(str(lead.get('business_impact', 'N/A')))}</td></tr>"
             f"<tr><th>Recommendation</th><td>{html.escape(str(lead.get('recommendation', 'N/A')))}</td></tr>"
@@ -1337,7 +1351,7 @@ class ReportExporter:
             + "</table>"
             "<h4>Instances</h4>"
             "<table>"
-            "<thead><tr><th>File Path</th><th>Folder</th><th>Line</th><th>Severity</th><th>Status</th><th>Tool</th><th>CWE</th><th>OWASP</th></tr></thead>"
+            "<thead><tr><th>#</th><th>File Path</th><th>Folder</th><th>Line</th><th>Severity</th><th>Status</th><th>Tool</th><th>CWE</th><th>OWASP</th></tr></thead>"
             f"<tbody>{instance_rows}</tbody>"
             "</table>"
             "</section>"

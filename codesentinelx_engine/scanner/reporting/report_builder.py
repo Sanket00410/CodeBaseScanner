@@ -795,6 +795,57 @@ def _deduplicate_enriched_findings(findings: list[dict]) -> list[dict]:
     return deduped
 
 
+def _slugify(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", str(value or "").strip().lower()).strip("-")
+    return slug[:96] if slug else "alert"
+
+
+def _annotate_alert_grouping(findings: list[dict]) -> list[dict]:
+    title_groups: dict[str, list[dict]] = {}
+    full_groups: dict[tuple[str, str, str], list[dict]] = {}
+
+    for item in findings:
+        title = _resolved_vulnerability_title(item)
+        cwe = str(item.get("cwe_id") or item.get("cwe") or "N/A").strip() or "N/A"
+        owasp = normalize_owasp_top10_label(str(item.get("owasp_mapping") or item.get("owasp_category") or "N/A"))
+        title_key = title.strip().lower() or "issue"
+        full_key = (title_key, cwe.lower(), owasp.lower())
+        title_groups.setdefault(title_key, []).append(item)
+        full_groups.setdefault(full_key, []).append(item)
+
+    def sort_key(item: dict) -> tuple[int, float, str, int, str]:
+        return (
+            SEVERITY_RANK.get(str(item.get("severity", "Info")), 99),
+            -float(item.get("cvss_score", 0.0)),
+            str(item.get("file_path", "")),
+            int(item.get("line_number", 0) or 0),
+            str(item.get("finding_uid", "")),
+        )
+
+    for title_key, group in title_groups.items():
+        group_uid = _slugify(title_key)
+        ordered = sorted(group, key=sort_key)
+        for index, item in enumerate(ordered, start=1):
+            item["alert_title_group_uid"] = group_uid
+            item["alert_title_group_title"] = _resolved_vulnerability_title(item)
+            item["alert_title_group_instance_index"] = index
+            item["alert_title_group_instance_count"] = len(ordered)
+            item["alert_title_group_anchor"] = f"alert-title-{group_uid}"
+
+    for (title_key, cwe_key, owasp_key), group in full_groups.items():
+        group_uid = _slugify(f"{title_key}::{cwe_key}::{owasp_key}")
+        ordered = sorted(group, key=sort_key)
+        for index, item in enumerate(ordered, start=1):
+            item["alert_group_uid"] = group_uid
+            item["alert_group_title"] = _resolved_vulnerability_title(item)
+            item["alert_group_cwe"] = str(item.get("cwe_id") or item.get("cwe") or "N/A")
+            item["alert_group_owasp"] = normalize_owasp_top10_label(str(item.get("owasp_mapping") or item.get("owasp_category") or "N/A"))
+            item["alert_group_instance_index"] = index
+            item["alert_group_instance_count"] = len(ordered)
+            item["alert_group_anchor"] = f"alert-group-{group_uid}"
+    return findings
+
+
 _REPORT_NOISE_SEGMENTS = {
     ".venv",
     "venv",
@@ -2313,6 +2364,7 @@ def build_report(scan_result: ScanResult) -> dict:
     enriched_findings = _deduplicate_enriched_findings(raw_enriched)
     enriched_findings, advanced_features = _apply_validation_and_ai(enriched_findings, scan_result.target_path, scan_role)
     enriched_findings, suppression_lifecycle = annotate_findings(enriched_findings)
+    enriched_findings = _annotate_alert_grouping(enriched_findings)
     suppression_lifecycle["generated_at"] = scan_result.completed_at.isoformat()
     scoped_findings = scope_findings_for_role(enriched_findings, scan_role)
     duplicate_reduction = max(0, len(raw_enriched) - len(enriched_findings))

@@ -6,6 +6,7 @@ from pathlib import Path
 from codesentinelx_engine.models import Finding, ScanResult, Severity
 from codesentinelx_engine.scanner.reporting import report_builder
 from codesentinelx_engine.scanner.reporting.report_builder import build_report
+from codesentinelx_engine.scanner.role_scope import scope_findings_for_role
 
 
 def test_report_builder_populates_active_poc_and_fix_verification(tmp_path: Path) -> None:
@@ -247,4 +248,63 @@ def test_enterprise_assurance_keeps_semgrep_parse_noise_out_of_blockers(tmp_path
     assert enterprise["status"] == "warning"
     assert enterprise["blockers"] == []
     assert any("semgrep" in advisory.lower() for advisory in enterprise["advisories"])
+
+
+def test_report_builder_annotates_stable_alert_grouping_and_preserves_it_for_audit_scope(tmp_path: Path) -> None:
+    findings = [
+        Finding(
+            vulnerability_type="SQL Injection",
+            severity=Severity.CRITICAL,
+            file_path="src/app.py",
+            line_number=10,
+            business_impact="Database compromise",
+            recommendation="Use parameterized queries",
+            reference="https://owasp.org/Top10/A03_2021-Injection/",
+            owasp_category="A03:2021 - Injection",
+            description="Unsafe SQL concatenation",
+            rule_id="TEST-SQL-1",
+            cwe="CWE-89",
+            evidence='cursor.execute("SELECT * FROM users WHERE id = " + user_id)',
+        ),
+        Finding(
+            vulnerability_type="SQL Injection",
+            severity=Severity.HIGH,
+            file_path="src/service.py",
+            line_number=44,
+            business_impact="Query manipulation",
+            recommendation="Use parameterized queries",
+            reference="https://owasp.org/Top10/A03_2021-Injection/",
+            owasp_category="A03:2021 - Injection",
+            description="Unsafe SQL concatenation",
+            rule_id="TEST-SQL-2",
+            cwe="CWE-89",
+            evidence='db.query("SELECT * FROM orders WHERE id = " + order_id)',
+        ),
+    ]
+    report = build_report(
+        ScanResult(
+            target_path=str(tmp_path),
+            started_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(timezone.utc),
+            files_scanned=2,
+            findings=findings,
+            errors=[],
+            existing_security_measures=[],
+            toolchain_status={},
+        )
+    )
+
+    scoped = report["vulnerability_fixed_code_report"]["findings"]
+    assert len(scoped) == 2
+    group_uids = {item["alert_group_uid"] for item in scoped}
+    title_group_uids = {item["alert_title_group_uid"] for item in scoped}
+    assert len(group_uids) == 1
+    assert len(title_group_uids) == 1
+    assert scoped[0]["alert_group_instance_count"] == 2
+    assert scoped[0]["alert_title_group_instance_count"] == 2
+
+    audit_scope = scope_findings_for_role(scoped, "Auditor")
+    assert audit_scope
+    assert audit_scope[0]["alert_group_uid"] == scoped[0]["alert_group_uid"]
+    assert audit_scope[0]["alert_title_group_uid"] == scoped[0]["alert_title_group_uid"]
 

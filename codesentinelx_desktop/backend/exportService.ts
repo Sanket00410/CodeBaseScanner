@@ -4947,9 +4947,10 @@ function renderCombinedHtml(scan: ScanView): string {
       const leadCwe = String(lead?.cwe_id || "").trim() || "N/A";
       const leadOwasp = String(lead?.owasp_mapping || "").trim() || "N/A";
       const instanceRows = group.findings
-        .map((finding) => {
+        .map((finding, index) => {
           const findingAny = finding as unknown as Record<string, unknown>;
           return `<tr>
+            <td align="center">${index + 1}</td>
             <td>${escapeHtml(fullFindingLocation(scan.report.executive_summary.target_path, finding.file_path, Number(finding.line_number || 1)))}</td>
             <td>${escapeHtml(displayFindingOwner(finding as Partial<VulnerabilityFinding> & Record<string, unknown>))}</td>
             <td>${escapeHtml(String(findingAny.workflow_status || "Open"))}</td>
@@ -4971,8 +4972,8 @@ function renderCombinedHtml(scan: ScanView): string {
         <h4>Instances</h4>
         <div class="table-scroll">
           <table>
-            <thead><tr><th>File / Line</th><th>Owner</th><th>Workflow Status</th><th>Tool</th></tr></thead>
-            <tbody>${instanceRows || "<tr><td colspan='4'>No instances.</td></tr>"}</tbody>
+            <thead><tr><th>#</th><th>File / Line</th><th>Owner</th><th>Workflow Status</th><th>Tool</th></tr></thead>
+            <tbody>${instanceRows || "<tr><td colspan='5'>No instances.</td></tr>"}</tbody>
           </table>
         </div>
       </section>`;
@@ -5463,15 +5464,18 @@ function normalizedFindingTitle(finding: VulnerabilityFinding): string {
 function groupByAlert(findings: VulnerabilityFinding[]): AlertGroup[] {
   const map = new Map<string, AlertGroup>();
   for (const finding of findings) {
-    const title = normalizedFindingTitle(finding);
-    const key = `${title}::${finding.cwe_id || "N/A"}::${finding.owasp_mapping || "N/A"}`;
+    const findingAny = finding as unknown as Record<string, unknown>;
+    const title = String(findingAny.alert_group_title || findingAny.alert_title_group_title || normalizedFindingTitle(finding));
+    const cwe = String(findingAny.alert_group_cwe || finding.cwe_id || "N/A");
+    const owasp = String(findingAny.alert_group_owasp || finding.owasp_mapping || "N/A");
+    const key = String(findingAny.alert_group_uid || slugify(`${title}::${cwe}::${owasp}`));
     if (!map.has(key)) {
       map.set(key, {
-        id: slugify(key),
+        id: key,
         title,
         severity: finding.severity,
-        cwe: finding.cwe_id || "N/A",
-        owasp: finding.owasp_mapping || "N/A",
+        cwe,
+        owasp,
         count: 0,
         findings: [],
       });
@@ -5517,11 +5521,12 @@ function aggregateFiles(findings: VulnerabilityFinding[]): FileAggregate[] {
 function groupByAlertTitle(findings: VulnerabilityFinding[]): AlertTitleGroup[] {
   const map = new Map<string, AlertTitleGroup>();
   for (const finding of findings) {
-    const title = normalizedFindingTitle(finding);
-    const key = title.toLowerCase();
+    const findingAny = finding as unknown as Record<string, unknown>;
+    const title = String(findingAny.alert_title_group_title || findingAny.alert_group_title || normalizedFindingTitle(finding));
+    const key = String(findingAny.alert_title_group_uid || slugify(title));
     if (!map.has(key)) {
       map.set(key, {
-        id: slugify(title),
+        id: key,
         title,
         severity: finding.severity,
         count: 0,

@@ -104,6 +104,18 @@ export interface VulnerabilityFinding {
   cvss_score: number;
   cwe_id: string;
   owasp_mapping: string;
+  alert_group_uid?: string;
+  alert_group_title?: string;
+  alert_group_cwe?: string;
+  alert_group_owasp?: string;
+  alert_group_instance_index?: number;
+  alert_group_instance_count?: number;
+  alert_group_anchor?: string;
+  alert_title_group_uid?: string;
+  alert_title_group_title?: string;
+  alert_title_group_instance_index?: number;
+  alert_title_group_instance_count?: number;
+  alert_title_group_anchor?: string;
   file_path: string;
   line_number: number;
   business_impact: string;

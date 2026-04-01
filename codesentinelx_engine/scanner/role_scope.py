@@ -209,6 +209,18 @@ def role_default_scan_preset(role: str | None) -> str:
 def _redact_finding_for_audit(finding: dict[str, Any]) -> dict[str, Any]:
     allowed_keys = {
         "finding_uid",
+        "alert_group_uid",
+        "alert_group_title",
+        "alert_group_cwe",
+        "alert_group_owasp",
+        "alert_group_instance_index",
+        "alert_group_instance_count",
+        "alert_group_anchor",
+        "alert_title_group_uid",
+        "alert_title_group_title",
+        "alert_title_group_instance_index",
+        "alert_title_group_instance_count",
+        "alert_title_group_anchor",
         "vulnerability_title",
         "vulnerability_type",
         "severity",
