@@ -52,22 +52,36 @@ def test_parse_semgrep_output() -> None:
     assert findings[0].vulnerability_type == "Unsafe eval usage"
 
 
-def test_semgrep_scan_uses_semgrep_executable(monkeypatch) -> None:
+def test_semgrep_scan_uses_pysemgrep_entrypoint(monkeypatch, tmp_path: Path) -> None:
     captured: dict[str, list[str]] = {}
 
     def fake_run_command(command, timeout_seconds, cwd=None, env_overrides=None):  # type: ignore[no-untyped-def]
         captured["command"] = list(command)
-        return 0, '{"results":[]}', ""
+        output_path = None
+        if "--output" in command:
+            output_index = command.index("--output")
+            output_path = Path(command[output_index + 1])
+            output_path.write_text('{"results":[]}', encoding="utf-8")
+        return 0, "", ""
 
     monkeypatch.setattr(semgrep_adapter, "run_command", fake_run_command)
 
-    findings, errors = semgrep_adapter.run_semgrep_scan(Path("C:/repo"), 30, binary="semgrep")
+    venv_root = tmp_path / ".toolchain" / "semgrep" / ".venv"
+    script = venv_root / "Lib" / "site-packages" / "semgrep" / "console_scripts" / "pysemgrep.py"
+    python_exe = venv_root / "python.exe"
+    script.parent.mkdir(parents=True, exist_ok=True)
+    script.write_text("print('semgrep')", encoding="utf-8")
+    python_exe.write_text("", encoding="utf-8")
+
+    findings, errors = semgrep_adapter.run_semgrep_scan(venv_root.parent.parent, 30, binary=str(venv_root / "Scripts" / "semgrep.exe"))
 
     assert findings == []
     assert errors == []
-    assert captured["command"][0] == "semgrep"
-    assert "-m" not in captured["command"]
-    assert "semgrep.__main__" not in captured["command"]
+    assert captured["command"][0].endswith("python.exe")
+    assert captured["command"][1].endswith("pysemgrep.py")
+    assert "scan" in captured["command"]
+    assert "--output" in captured["command"]
+    assert "--json" in captured["command"]
 
 
 def test_semgrep_scan_includes_local_config_when_present(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -75,20 +89,101 @@ def test_semgrep_scan_includes_local_config_when_present(monkeypatch: pytest.Mon
 
     def fake_run_command(command, timeout_seconds, cwd=None, env_overrides=None):  # type: ignore[no-untyped-def]
         captured["command"] = list(command)
-        return 0, '{"results":[]}', ""
+        if "--output" in command:
+            output_index = command.index("--output")
+            output_path = Path(command[output_index + 1])
+            output_path.write_text('{"results":[]}', encoding="utf-8")
+        return 0, "", ""
 
     monkeypatch.setattr(semgrep_adapter, "run_command", fake_run_command)
 
     target_root = tmp_path / "repo"
     target_root.mkdir()
     (target_root / ".semgrep.yml").write_text("rules: []", encoding="utf-8")
+    venv_root = tmp_path / ".toolchain" / "semgrep" / ".venv"
+    script = venv_root / "Lib" / "site-packages" / "semgrep" / "console_scripts" / "pysemgrep.py"
+    python_exe = venv_root / "python.exe"
+    script.parent.mkdir(parents=True, exist_ok=True)
+    script.write_text("print('semgrep')", encoding="utf-8")
+    python_exe.write_text("", encoding="utf-8")
 
-    findings, errors = semgrep_adapter.run_semgrep_scan(target_root, 30, binary="semgrep")
+    findings, errors = semgrep_adapter.run_semgrep_scan(target_root, 30, binary=str(venv_root / "Scripts" / "semgrep.exe"))
 
     assert findings == []
     assert errors == []
     assert "--config" in captured["command"]
     assert str((target_root / ".semgrep.yml").resolve()) in captured["command"]
+
+
+def test_semgrep_scan_reads_json_from_output_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    captured: dict[str, list[str]] = {}
+
+    def fake_run_command(command, timeout_seconds, cwd=None, env_overrides=None):  # type: ignore[no-untyped-def]
+        captured["command"] = list(command)
+        if "--output" in command:
+            output_index = command.index("--output")
+            output_path = Path(command[output_index + 1])
+            output_path.write_text(
+                '{"results":[{"check_id":"python.lang.security.audit.exec","path":"app.py","start":{"line":3},"extra":{"severity":"ERROR","message":"Detected use of exec().","lines":"exec(user_input)","metadata":{"category":"Unsafe eval usage","cwe":["CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code"],"owasp":["A03:2021 - Injection"]}}}]}',
+                encoding="utf-8",
+            )
+        return 1, "", ""
+
+    monkeypatch.setattr(semgrep_adapter, "run_command", fake_run_command)
+
+    target_root = tmp_path / "repo"
+    target_root.mkdir()
+    venv_root = tmp_path / ".toolchain" / "semgrep" / ".venv"
+    script = venv_root / "Lib" / "site-packages" / "semgrep" / "console_scripts" / "pysemgrep.py"
+    python_exe = venv_root / "python.exe"
+    script.parent.mkdir(parents=True, exist_ok=True)
+    script.write_text("print('semgrep')", encoding="utf-8")
+    python_exe.write_text("", encoding="utf-8")
+
+    findings, errors = semgrep_adapter.run_semgrep_scan(target_root, 30, binary=str(venv_root / "Scripts" / "semgrep.exe"))
+
+    assert errors == []
+    assert len(findings) == 1
+    assert findings[0].vulnerability_type == "Unsafe eval usage"
+    assert captured["command"][0].endswith("python.exe")
+
+
+def test_semgrep_scan_falls_back_to_bundled_rules_on_registry_ssl_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run_command(command, timeout_seconds, cwd=None, env_overrides=None):  # type: ignore[no-untyped-def]
+        calls.append(list(command))
+        if "--config" in command and "auto" in command:
+            return 2, "", "certificate verify failed: unable to get local issuer certificate"
+        if "--config" in command and any("semgrep_fallback.yml" in str(item) for item in command):
+            if "--output" in command:
+                output_index = command.index("--output")
+                output_path = Path(command[output_index + 1])
+                output_path.write_text(
+                    '{"results":[{"check_id":"codesentinelx.python.exec","path":"app.py","start":{"line":7},"extra":{"severity":"ERROR","message":"Avoid executing untrusted input with exec().","lines":"exec(user_input)","metadata":{"category":"Unsafe eval usage","cwe":"CWE-95","owasp":"A03:2021 - Injection"}}}]}',
+                    encoding="utf-8",
+                )
+            return 1, "", ""
+        return 0, '{"results":[]}', ""
+
+    monkeypatch.setattr(semgrep_adapter, "run_command", fake_run_command)
+
+    target_root = tmp_path / "repo"
+    target_root.mkdir()
+    venv_root = tmp_path / ".toolchain" / "semgrep" / ".venv"
+    script = venv_root / "Lib" / "site-packages" / "semgrep" / "console_scripts" / "pysemgrep.py"
+    python_exe = venv_root / "python.exe"
+    script.parent.mkdir(parents=True, exist_ok=True)
+    script.write_text("print('semgrep')", encoding="utf-8")
+    python_exe.write_text("", encoding="utf-8")
+
+    findings, errors = semgrep_adapter.run_semgrep_scan(target_root, 30, binary=str(venv_root / "Scripts" / "semgrep.exe"))
+
+    assert errors == []
+    assert len(findings) == 1
+    assert findings[0].rule_id == "SEMGREP-codesentinelx.python.exec"
+    assert any("auto" in " ".join(command) for command in calls)
+    assert any("semgrep_fallback.yml" in " ".join(command) for command in calls)
 
 
 def test_osv_scan_skips_without_manifests(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

@@ -1,0 +1,112 @@
+rules:
+  - id: codesentinelx.python.exec
+    languages: [python]
+    severity: ERROR
+    message: Avoid executing untrusted input with exec().
+    metadata:
+      category: Unsafe eval usage
+      cwe: CWE-95
+      owasp: A03:2021 - Injection
+      impact: Untrusted input may be executed as code.
+      fix: Replace exec() with explicit allowlisted dispatch.
+    pattern: exec($X)
+
+  - id: codesentinelx.python.eval
+    languages: [python]
+    severity: ERROR
+    message: Avoid evaluating untrusted input with eval().
+    metadata:
+      category: Unsafe eval usage
+      cwe: CWE-95
+      owasp: A03:2021 - Injection
+      impact: Untrusted input may be executed as code.
+      fix: Replace eval() with safe parsing or strict allowlisted behavior.
+    pattern: eval($X)
+
+  - id: codesentinelx.python.subprocess.shell
+    languages: [python]
+    severity: WARNING
+    message: Avoid shell=True when calling subprocess with potentially tainted input.
+    metadata:
+      category: Command Injection
+      cwe: CWE-78
+      owasp: A03:2021 - Injection
+      impact: Shell metacharacters can alter command behavior.
+      fix: Use argument arrays and avoid shell=True.
+    pattern-either:
+      - pattern: subprocess.run(..., shell=True, ...)
+      - pattern: subprocess.Popen(..., shell=True, ...)
+      - pattern: subprocess.call(..., shell=True, ...)
+      - pattern: subprocess.check_call(..., shell=True, ...)
+      - pattern: subprocess.check_output(..., shell=True, ...)
+
+  - id: codesentinelx.python.yaml.unsafe-load
+    languages: [python]
+    severity: WARNING
+    message: Avoid yaml.load without an explicit safe loader.
+    metadata:
+      category: Insecure Deserialization
+      cwe: CWE-502
+      owasp: A08:2021 - Software and Data Integrity Failures
+      impact: Untrusted YAML can trigger code execution or object construction.
+      fix: Use yaml.safe_load() or a loader explicitly constrained to safe types.
+    pattern-either:
+      - pattern: yaml.load($DATA)
+      - pattern: yaml.load($DATA, Loader=yaml.Loader)
+      - pattern: yaml.load($DATA, Loader=Loader)
+
+  - id: codesentinelx.javascript.eval
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: Avoid evaluating untrusted input with eval().
+    metadata:
+      category: Unsafe eval usage
+      cwe: CWE-95
+      owasp: A03:2021 - Injection
+      impact: Untrusted input may be executed as code.
+      fix: Replace eval() with explicit allowlisted dispatch.
+    pattern: eval($X)
+
+  - id: codesentinelx.javascript.function-constructor
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: Avoid creating dynamic code with the Function constructor.
+    metadata:
+      category: Unsafe eval usage
+      cwe: CWE-95
+      owasp: A03:2021 - Injection
+      impact: Untrusted input may be executed as code.
+      fix: Replace dynamic code generation with static functions.
+    pattern-either:
+      - pattern: new Function($X)
+      - pattern: Function($X)
+
+  - id: codesentinelx.javascript.child-process-exec
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: Avoid child_process exec-style command execution with dynamic input.
+    metadata:
+      category: Command Injection
+      cwe: CWE-78
+      owasp: A03:2021 - Injection
+      impact: Shell metacharacters can alter command behavior.
+      fix: Use spawn/execFile with an argument array and avoid shell execution.
+    pattern-either:
+      - pattern: child_process.exec($CMD, ...)
+      - pattern: child_process.execSync($CMD, ...)
+      - pattern: require("child_process").exec($CMD, ...)
+      - pattern: require("child_process").execSync($CMD, ...)
+
+  - id: codesentinelx.javascript.dangerous-inner-html
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: Avoid assigning untrusted content to innerHTML.
+    metadata:
+      category: Cross-Site Scripting (XSS)
+      cwe: CWE-79
+      owasp: A03:2021 - Injection
+      impact: Untrusted HTML can execute script in the browser.
+      fix: Use textContent, safe templating, or sanitized rendering.
+    pattern-either:
+      - pattern: $EL.innerHTML = $VALUE
+      - pattern: $EL.outerHTML = $VALUE

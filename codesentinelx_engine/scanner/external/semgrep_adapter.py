@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 
 from codesentinelx_engine.models import Finding
@@ -19,6 +20,10 @@ _SEMGRPE_CONFIG_FILENAMES = (
     "semgrep.yml",
     "semgrep.yaml",
 )
+
+
+def _semgrep_fallback_config() -> Path:
+    return Path(__file__).resolve().parents[2] / "resources" / "semgrep_fallback.yml"
 
 
 def _discover_local_semgrep_configs(target_root: Path) -> list[str]:
@@ -44,41 +49,66 @@ def _discover_local_semgrep_configs(target_root: Path) -> list[str]:
     return configs
 
 
-def _semgrep_command_candidates(binary: str, target_root: Path) -> list[list[str]]:
+def _semgrep_launcher_candidates(binary: str) -> list[list[str]]:
     binary_path = Path(str(binary))
     candidates: list[list[str]] = []
-    local_configs = _discover_local_semgrep_configs(target_root)
-    config_args = ["--config", "auto"]
-    for config_path in local_configs:
-        config_args.extend(["--config", config_path])
+    seen: set[tuple[str, str]] = set()
 
-    def _build_command(executable: str) -> list[str]:
-        return [executable, "scan", *config_args, "--json", "--quiet", "--disable-version-check", str(target_root)]
+    def add_candidate(python_executable: Path, pysemgrep_script: Path) -> None:
+        if not python_executable.exists() or not pysemgrep_script.exists():
+            return
+        key = (str(python_executable.resolve()), str(pysemgrep_script.resolve()))
+        if key in seen:
+            return
+        seen.add(key)
+        candidates.append([str(python_executable.resolve()), str(pysemgrep_script.resolve())])
+
+    def add_fallback(executable: Path) -> None:
+        resolved = str(executable.resolve()) if executable.exists() else str(executable)
+        if (resolved, "") in seen:
+            return
+        seen.add((resolved, ""))
+        candidates.append([resolved])
 
     if binary_path.name.lower().startswith("semgrep-core"):
-        seen_semgrep: set[str] = set()
         for parent in (binary_path.parent, *binary_path.parents):
-            for sibling in (
-                parent / "semgrep.exe",
-                parent / "semgrep.cmd",
-                parent / "semgrep",
-                parent / "pysemgrep.exe",
-                parent / "pysemgrep.cmd",
-                parent / "pysemgrep",
-                parent / "Scripts" / "semgrep.exe",
-                parent / "Scripts" / "semgrep.cmd",
-                parent / "Scripts" / "pysemgrep.exe",
-                parent / "Scripts" / "pysemgrep.cmd",
-            ):
-                if sibling.exists() and sibling.is_file():
-                    resolved = str(sibling.resolve())
-                    if resolved not in seen_semgrep:
-                        candidates.append(_build_command(resolved))
-                        seen_semgrep.add(resolved)
+            venv_root = parent.parent if parent.name.lower() == "scripts" else parent
+            add_candidate(
+                venv_root / "python.exe",
+                venv_root / "Lib" / "site-packages" / "semgrep" / "console_scripts" / "pysemgrep.py",
+            )
+            add_candidate(
+                venv_root / "Scripts" / "python.exe",
+                venv_root / "Lib" / "site-packages" / "semgrep" / "console_scripts" / "pysemgrep.py",
+            )
+        if not candidates:
+            add_fallback(binary_path)
+        return candidates
 
-    if not binary_path.name.lower().startswith("semgrep-core"):
-        candidates.append(_build_command(binary))
+    for parent in (binary_path.parent, *binary_path.parents):
+        venv_root = parent.parent if parent.name.lower() == "scripts" else parent
+        add_candidate(
+            venv_root / "python.exe",
+            venv_root / "Lib" / "site-packages" / "semgrep" / "console_scripts" / "pysemgrep.py",
+        )
+        add_candidate(
+            venv_root / "Scripts" / "python.exe",
+            venv_root / "Lib" / "site-packages" / "semgrep" / "console_scripts" / "pysemgrep.py",
+        )
+
+    add_fallback(binary_path)
     return candidates
+
+
+def _read_semgrep_payload(stdout: str, output_path: Path | None) -> dict | None:
+    if output_path and output_path.exists():
+        payload = safe_json_loads(output_path.read_text(encoding="utf-8", errors="ignore"))
+        if isinstance(payload, dict):
+            return payload
+    payload = safe_json_loads(stdout)
+    if isinstance(payload, dict):
+        return payload
+    return None
 
 
 def parse_semgrep_output(data: dict, target_root: Path) -> list[Finding]:
@@ -147,27 +177,52 @@ def run_semgrep_scan(
     binary: str = "semgrep",
 ) -> tuple[list[Finding], list[str]]:
     last_error = ""
-    for command in _semgrep_command_candidates(binary, target_root):
-        try:
-            return_code, stdout, stderr = run_command(command, timeout_seconds=timeout_seconds)
-        except FileNotFoundError:
-            last_error = "Semgrep executable was not found."
-            continue
-        except Exception as exc:
-            last_error = f"Semgrep execution failed: {exc}"
-            continue
+    fallback_config = _semgrep_fallback_config()
+    local_configs = _discover_local_semgrep_configs(target_root)
+    config_sets: list[list[str]] = []
+    registry_configs = ["--config", "auto"]
+    for config_path in local_configs:
+        registry_configs.extend(["--config", config_path])
+    config_sets.append(registry_configs)
+    if fallback_config.exists():
+        config_sets.append(["--config", str(fallback_config)])
 
-        if return_code not in {0, 1}:
-            short_stderr = " | ".join(stderr.strip().splitlines()[:2])
-            last_error = f"Semgrep returned code {return_code}: {short_stderr}"
-            return [], [last_error]
+    for prefix in _semgrep_launcher_candidates(binary):
+        for config_args in config_sets:
+            output_path: Path | None = None
+            if prefix and "pysemgrep.py" in prefix[-1].lower():
+                handle = tempfile.NamedTemporaryFile(delete=False, suffix=".codesentinelx-semgrep.json")
+                handle.close()
+                output_path = Path(handle.name)
+            command = [*prefix, "scan", *config_args, "--json"]
+            if output_path is not None:
+                command.extend(["--output", str(output_path)])
+            command.extend(["--disable-version-check", str(target_root)])
+            try:
+                return_code, stdout, stderr = run_command(command, timeout_seconds=timeout_seconds)
+            except FileNotFoundError:
+                last_error = "Semgrep executable was not found."
+                continue
+            except Exception as exc:
+                last_error = f"Semgrep execution failed: {exc}"
+                continue
 
-        payload = safe_json_loads(stdout)
-        if not isinstance(payload, dict):
-            last_error = "Semgrep produced non-JSON output."
+            payload = _read_semgrep_payload(stdout, output_path)
+            if output_path is not None:
+                try:
+                    output_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+
+            if isinstance(payload, dict) and return_code in {0, 1}:
+                return parse_semgrep_output(payload, target_root), []
+
+            short_stderr = " | ".join(stderr.strip().splitlines()[:3])
+            if return_code not in {0, 1}:
+                last_error = f"Semgrep returned code {return_code}: {short_stderr}".strip()
+            else:
+                last_error = f"Semgrep did not produce JSON output. {short_stderr}".strip()
             continue
-
-        return parse_semgrep_output(payload, target_root), []
 
     if last_error:
         return [], [last_error]
