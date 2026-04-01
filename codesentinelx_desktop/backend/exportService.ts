@@ -3121,10 +3121,17 @@ function renderExistingHtml(scan: ScanView): string {
   const hasSummaryRows = summaryRows.length > 0;
 
   const controlRows = report.controls
-    .map(
-      (control) =>
-        `<tr><td>${escapeHtml(control.name)}</td><td>${escapeHtml(control.category)}</td><td>${escapeHtml(control.coverage_level)}</td><td>${escapeHtml(control.standard_mappings.join(", "))}</td></tr>`,
-    )
+    .map((control) => {
+      const controlAnchorId = stableAnchorId("existing-control", control.name);
+      const evidenceAnchorId = stableAnchorId("existing-control-evidence", control.name);
+      return `<tr>
+        <td><a href="#${escapeHtml(controlAnchorId)}" class="drill-link" data-drill-scope="existing-control" data-drill-key="${escapeHtml(control.name)}" data-drill-severity="All">${escapeHtml(control.name)}</a></td>
+        <td>${escapeHtml(control.category)}</td>
+        <td>${escapeHtml(control.coverage_level)}</td>
+        <td>${escapeHtml(control.standard_mappings.join(", "))}</td>
+        <td><a href="#${escapeHtml(evidenceAnchorId)}" class="drill-link" data-drill-scope="existing-control-evidence" data-drill-key="${escapeHtml(control.name)}" data-drill-severity="All">Open</a></td>
+      </tr>`;
+    })
     .filter(Boolean);
   const hasControlRows = controlRows.length > 0;
 
@@ -3133,7 +3140,8 @@ function renderExistingHtml(scan: ScanView): string {
       const evidence = Array.isArray((control as { evidence?: Array<Record<string, unknown>> }).evidence)
         ? ((control as { evidence?: Array<Record<string, unknown>> }).evidence || [])
         : [];
-      return evidence.slice(0, 8).map((row) => {
+      const evidenceAnchorId = stableAnchorId("existing-control-evidence", control.name);
+      return evidence.slice(0, 8).map((row, index) => {
         const rec = row as Record<string, unknown>;
         const file = normalizePath(String(rec.file_path || ""));
         const line = Number(rec.line_number || 1);
@@ -3141,7 +3149,8 @@ function renderExistingHtml(scan: ScanView): string {
         if (!isRenderableDisplayValue(file) || !isRenderableDisplayValue(snippet)) {
           return "";
         }
-        return `<tr>
+        const rowAnchorId = index === 0 ? evidenceAnchorId : stableAnchorId("existing-control-evidence-row", `${control.name}:${file}:${line}:${index}`);
+        return `<tr id="${escapeHtml(rowAnchorId)}" data-control-evidence-id="${escapeHtml(evidenceAnchorId)}">
       <td>${escapeHtml(control.name)}</td>
       <td>${escapeHtml(file)}</td>
       <td align="center">${line}</td>
@@ -3259,9 +3268,9 @@ function renderExistingHtml(scan: ScanView): string {
     ? `<div class="table-frame">
             <h2 style="padding:12px 14px 0">Implemented Controls</h2>
             <div class="toolbar" style="padding:0 14px 8px"><input id="controlSearch" type="search" placeholder="Search control, category, coverage, or standards" /></div>
-            <div class="table-scroll">
-              <table id="implementedControlsTable">
-                <thead><tr><th>Control</th><th>Category</th><th>Coverage</th><th>Standards</th></tr></thead>
+          <div class="table-scroll">
+            <table id="implementedControlsTable">
+                <thead><tr><th>Control</th><th>Category</th><th>Coverage</th><th>Standards</th><th>Details</th></tr></thead>
                 <tbody>${controlRows.join("")}</tbody>
               </table>
             </div>
@@ -3271,9 +3280,9 @@ function renderExistingHtml(scan: ScanView): string {
     ? `<div class="table-frame">
             <h2 style="padding:12px 14px 0">Control Evidence (File/Line)</h2>
             <div class="toolbar" style="padding:0 14px 8px"><input id="controlEvidenceSearch" type="search" placeholder="Search control evidence by file, line, or snippet" /></div>
-            <div class="table-scroll">
-              <table id="controlEvidenceTable">
-                <thead><tr><th>Control</th><th>File</th><th>Line</th><th>Evidence Snippet</th></tr></thead>
+          <div class="table-scroll">
+            <table id="controlEvidenceTable">
+              <thead><tr><th>Control</th><th>File</th><th>Line</th><th>Evidence Snippet</th></tr></thead>
                 <tbody>${controlEvidenceRows}</tbody>
               </table>
             </div>
@@ -5650,6 +5659,10 @@ function renderCombinedHtml(scan: ScanView): string {
       const location = escapeHtml(fullFindingLocation(scan.report.executive_summary.target_path, finding.file_path, Number(finding.line_number || 1)));
       const cwe = escapeHtml(String(finding.cwe_id || "N/A"));
       const owasp = escapeHtml(String(finding.owasp_mapping || "N/A"));
+      const findingKey = String(finding.finding_uid || `${finding.file_path || ""}:${finding.line_number || 1}`);
+      const instanceTarget = stableAnchorId("combined-alert-instance", findingKey);
+      const groupTarget =
+        combinedGroupedAll.find((group) => group.findings.some((item) => String(item.finding_uid || `${item.file_path || ""}:${item.line_number || 1}`) === findingKey))?.id || "";
       return `<tr>
         <td>${uid}</td>
         <td><span class="sev sev-${severity}">${severity}</span></td>
@@ -5658,6 +5671,7 @@ function renderCombinedHtml(scan: ScanView): string {
         <td>${location}</td>
         <td>${cwe}</td>
         <td>${owasp}</td>
+        <td><a href="#${escapeHtml(instanceTarget)}" class="alert-link" data-target-id="${escapeHtml(groupTarget ? stableAnchorId("combined-alert", groupTarget) : instanceTarget)}" data-instance-target-id="${escapeHtml(instanceTarget)}">Open</a></td>
       </tr>`;
     })
     .join("");
@@ -5698,10 +5712,11 @@ function renderCombinedHtml(scan: ScanView): string {
       const instanceRows = group.findings
         .map((finding, index) => {
           const findingAny = finding as unknown as Record<string, unknown>;
+          const findingKey = String(finding.finding_uid || `${finding.file_path || ""}:${finding.line_number || 1}`);
           const instanceId = String(
             findingAny.alert_group_anchor ||
               findingAny.alert_title_group_anchor ||
-              stableAnchorId("combined-alert-instance", `${group.id}::${String(finding.finding_uid || `${finding.file_path || ""}:${finding.line_number || 1}`)}`),
+              stableAnchorId("combined-alert-instance", findingKey),
           );
           return `<tr id="${escapeHtml(instanceId)}" data-instance-id="${escapeHtml(instanceId)}">
             <td align="center">${index + 1}</td>
@@ -5912,7 +5927,7 @@ function renderCombinedHtml(scan: ScanView): string {
           <table>
             <thead>
               <tr>
-                <th>ID</th><th>Severity</th><th>Issue</th><th>CVSS</th><th>Location</th><th>CWE</th><th>OWASP</th>
+                <th>ID</th><th>Severity</th><th>Issue</th><th>CVSS</th><th>Location</th><th>CWE</th><th>OWASP</th><th>Details</th>
               </tr>
             </thead>
             <tbody>${topRiskRows}</tbody>
