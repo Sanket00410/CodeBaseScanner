@@ -67,6 +67,453 @@ interface ToolTimingRow {
   avgMsPerFinding: number | null;
 }
 
+interface HelpGuideSection {
+  id: string;
+  title: string;
+  lines: string[];
+}
+
+function slugifyHelpAnchor(input: string): string {
+  return String(input || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "section";
+}
+
+function parseHelpGuideSections(markdown: string): HelpGuideSection[] {
+  const lines = String(markdown || "").replace(/\r\n/g, "\n").split("\n");
+  const sections: HelpGuideSection[] = [];
+  let current: HelpGuideSection | null = null;
+
+  for (const raw of lines) {
+    const line = String(raw || "");
+    const h2 = /^##\s+(.+)$/.exec(line);
+    if (h2) {
+      if (current) {
+        sections.push(current);
+      }
+      current = {
+        id: `help-${slugifyHelpAnchor(h2[1].trim())}`,
+        title: h2[1].trim(),
+        lines: [],
+      };
+      continue;
+    }
+    if (!current) {
+      continue;
+    }
+    current.lines.push(line);
+  }
+  if (current) {
+    sections.push(current);
+  }
+  return sections;
+}
+
+function renderHelpGuideInlineMarkdown(text: string): string {
+  const escaped = escapeHtml(String(text || ""));
+  return escaped
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(?!\s)([^*]+)\*(?!\w)/g, "<em>$1</em>");
+}
+
+function renderHelpGuideSectionBody(lines: string[]): string {
+  const parts: string[] = [];
+  let bulletBuffer: string[] = [];
+  let numberBuffer: string[] = [];
+
+  const flushBullets = (): void => {
+    if (!bulletBuffer.length) {
+      return;
+    }
+    parts.push(`<ul>${bulletBuffer.map((item) => `<li>${renderHelpGuideInlineMarkdown(item)}</li>`).join("")}</ul>`);
+    bulletBuffer = [];
+  };
+
+  const flushNumbers = (): void => {
+    if (!numberBuffer.length) {
+      return;
+    }
+    parts.push(`<ol>${numberBuffer.map((item) => `<li>${renderHelpGuideInlineMarkdown(item)}</li>`).join("")}</ol>`);
+    numberBuffer = [];
+  };
+
+  for (const raw of lines) {
+    const line = String(raw || "");
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushBullets();
+      flushNumbers();
+      continue;
+    }
+    const h3 = /^###\s+(.+)$/.exec(line);
+    const h4 = /^####\s+(.+)$/.exec(line);
+    const bullet = /^-\s+(.+)$/.exec(line);
+    const numbered = /^(\d+)\.\s+(.+)$/.exec(line);
+    if (h3) {
+      flushBullets();
+      flushNumbers();
+      parts.push(`<h3>${renderHelpGuideInlineMarkdown(h3[1].trim())}</h3>`);
+      continue;
+    }
+    if (h4) {
+      flushBullets();
+      flushNumbers();
+      parts.push(`<h4>${renderHelpGuideInlineMarkdown(h4[1].trim())}</h4>`);
+      continue;
+    }
+    if (bullet) {
+      flushNumbers();
+      bulletBuffer.push(bullet[1].trim());
+      continue;
+    }
+    if (numbered) {
+      flushBullets();
+      numberBuffer.push(numbered[2].trim());
+      continue;
+    }
+    flushBullets();
+    flushNumbers();
+    parts.push(`<p>${renderHelpGuideInlineMarkdown(line)}</p>`);
+  }
+
+  flushBullets();
+  flushNumbers();
+  return parts.join("");
+}
+
+function renderHelpGuideHtml(markdown: string, markdownPath: string, generatedAt: string): string {
+  const sections = parseHelpGuideSections(markdown);
+  const navItems = sections
+    .map(
+      (section) => `<a href="#${escapeHtml(section.id)}" class="help-nav-link">
+        <span class="help-nav-title">${escapeHtml(section.title)}</span>
+        <span class="help-nav-sub">Jump to section</span>
+      </a>`,
+    )
+    .join("");
+  const sectionCards = sections
+    .map(
+      (section) => `<article id="${escapeHtml(section.id)}" class="help-card">
+        <div class="help-card-head">
+          <h2>${escapeHtml(section.title)}</h2>
+          <a href="#top" class="help-card-back">Back to top</a>
+        </div>
+        ${renderHelpGuideSectionBody(section.lines)}
+      </article>`,
+    )
+    .join("");
+  const quickStats = [
+    { label: "Sections", value: String(sections.length) },
+    { label: "Mode", value: "Role-aware" },
+    { label: "Formats", value: "HTML + PDF" },
+    { label: "Focus", value: "UI-guided workflow" },
+  ]
+    .map((item) => `<div class="help-stat"><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(item.value)}</strong></div>`)
+    .join("");
+  const fastLinks = [
+    "Getting Started",
+    "Core Concepts",
+    "Step-by-Step Workflows",
+    "Tooling & Coverage",
+    "Report Guide",
+    "Troubleshooting",
+  ]
+    .map((title) => {
+      const section = sections.find((item) => item.title.toLowerCase().includes(title.toLowerCase()));
+      return section ? `<li><a href="#${escapeHtml(section.id)}">${escapeHtml(section.title)}</a></li>` : "";
+    })
+    .filter(Boolean)
+    .join("");
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CodeSentinelX Help Guide</title>
+  <style>
+    :root {
+      --bg: #06111d;
+      --bg-2: #0a1828;
+      --panel: rgba(12, 27, 44, 0.72);
+      --line: rgba(118, 173, 214, 0.22);
+      --text: #e7f2fb;
+      --muted: #9bb7cc;
+      --accent: #62dcff;
+      --accent-2: #8fe0ff;
+      --shadow: 0 24px 56px rgba(0,0,0,.28);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI Variable Text", "Segoe UI", "Trebuchet MS", Arial, Helvetica, sans-serif;
+      background:
+        radial-gradient(circle at 20% -10%, rgba(68,132,186,.25), transparent 28%),
+        radial-gradient(circle at 100% 0%, rgba(36,88,126,.12), transparent 36%),
+        linear-gradient(180deg, var(--bg-2), var(--bg));
+      color: var(--text);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background-image: url("${loadReportGlobeTextureDataUri() || ""}");
+      background-size: cover;
+      background-position: center center;
+      opacity: .06;
+      filter: saturate(1.1) contrast(1.08);
+      pointer-events: none;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .shell {
+      position: relative;
+      z-index: 1;
+      width: min(1480px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 22px 0 42px;
+    }
+    .hero {
+      position: relative;
+      padding: 26px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: linear-gradient(180deg, rgba(11,26,43,.88), rgba(8,20,33,.76));
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: -30% -18% auto auto;
+      width: 460px;
+      height: 460px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(110,213,255,.16), transparent 66%);
+      opacity: .55;
+      pointer-events: none;
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(110,213,255,.22);
+      color: var(--accent);
+      background: rgba(15, 40, 63, .6);
+      font-size: 12px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 14px 0 10px;
+      font-size: clamp(2rem, 4vw, 3.5rem);
+      line-height: 1.02;
+      letter-spacing: -0.04em;
+    }
+    .hero p {
+      max-width: 980px;
+      color: var(--muted);
+      font-size: 1.02rem;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 20px;
+    }
+    .help-stat {
+      padding: 14px 16px;
+      border-radius: 18px;
+      border: 1px solid rgba(118, 173, 214, 0.18);
+      background: rgba(8, 20, 33, 0.52);
+      backdrop-filter: blur(12px);
+    }
+    .help-stat span {
+      display: block;
+      color: var(--muted);
+      font-size: .82rem;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+    .help-stat strong {
+      display: block;
+      margin-top: 6px;
+      font-size: 1.1rem;
+      color: var(--text);
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 320px minmax(0, 1fr);
+      gap: 16px;
+      margin-top: 18px;
+      align-items: start;
+    }
+    .nav, .card {
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
+    }
+    .nav {
+      position: sticky;
+      top: 16px;
+      padding: 18px;
+      max-height: calc(100vh - 32px);
+      overflow: auto;
+    }
+    .nav h2, .card h2 {
+      margin: 0 0 10px;
+      font-size: 1.1rem;
+      letter-spacing: -.02em;
+    }
+    .nav p, .meta, .section-note {
+      color: var(--muted);
+      margin: 0 0 12px;
+      font-size: .92rem;
+    }
+    .help-nav-link {
+      display: block;
+      padding: 12px 12px;
+      margin-bottom: 10px;
+      border-radius: 14px;
+      border: 1px solid rgba(118, 173, 214, 0.14);
+      background: rgba(8, 20, 33, 0.5);
+    }
+    .help-nav-title {
+      display: block;
+      color: var(--text);
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .help-nav-sub {
+      display: block;
+      color: var(--muted);
+      font-size: .8rem;
+    }
+    .content {
+      display: grid;
+      gap: 14px;
+    }
+    .card {
+      padding: 22px;
+    }
+    .card h2 {
+      font-size: 1.45rem;
+    }
+    .card h3 {
+      margin: 16px 0 8px;
+      font-size: 1.05rem;
+      color: var(--accent-2);
+    }
+    .card h4 {
+      margin: 12px 0 6px;
+      font-size: .98rem;
+      color: #d8ecfb;
+    }
+    .card p {
+      margin: 0 0 10px;
+      color: #d7e6f4;
+    }
+    .card ul, .card ol {
+      margin: 10px 0 10px 22px;
+      padding: 0;
+    }
+    .card li {
+      margin: 6px 0;
+      color: #d7e6f4;
+    }
+    code {
+      background: rgba(5, 15, 25, .55);
+      border: 1px solid rgba(118, 173, 214, 0.18);
+      border-radius: 8px;
+      padding: 2px 6px;
+      color: #d8f2ff;
+      font-size: .94em;
+    }
+    .help-card-back {
+      font-size: .85rem;
+      color: var(--accent);
+    }
+    .help-card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(118, 173, 214, 0.14);
+    }
+    .help-callout {
+      margin-top: 16px;
+      padding: 16px 18px;
+      border-radius: 16px;
+      border: 1px solid rgba(95, 227, 212, 0.2);
+      background: linear-gradient(180deg, rgba(16, 46, 56, 0.72), rgba(10, 22, 34, 0.7));
+    }
+    @media (max-width: 1100px) {
+      .layout { grid-template-columns: 1fr; }
+      .nav { position: relative; top: 0; max-height: none; }
+      .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 720px) {
+      .shell { width: min(100% - 18px, 100%); }
+      .hero, .card, .nav { border-radius: 16px; padding: 16px; }
+      .stats { grid-template-columns: 1fr; }
+      .help-card-head { flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <div id="top" class="shell">
+    <header class="hero">
+      <span class="eyebrow">CodeSentinelX Help Center</span>
+      <h1>Documentation that matches the actual app flow</h1>
+      <p>
+        This HTML guide is built to feel like a product page, not a plain document. It mirrors the app’s role-based
+        scan flow, report structure, troubleshooting path, and technical term definitions so users can move from
+        reading to action quickly.
+      </p>
+      <div class="stats">
+        ${quickStats}
+      </div>
+      <div class="help-callout">
+        <strong>Open this guide from the app</strong>
+        <div class="meta">Path: ${escapeHtml(markdownPath.replace(/README_USER_GUIDE\.md$/i, "help/README_USER_GUIDE.html"))}</div>
+        <div class="meta">Generated: ${escapeHtml(generatedAt)}</div>
+      </div>
+    </header>
+
+    <main class="layout">
+      <aside class="nav">
+        <h2>Sections</h2>
+        <p>Jump to any topic. This list stays fixed while you read.</p>
+        ${navItems}
+        <div class="help-callout">
+          <strong>Fast links</strong>
+          <ul style="margin:10px 0 0 18px;">
+            ${fastLinks}
+          </ul>
+        </div>
+      </aside>
+
+      <section class="content">
+        ${sectionCards}
+      </section>
+    </main>
+  </div>
+</body>
+</html>`;
+}
+
 function sanitizeExportToken(value: string, fallback: string): string {
   const normalized = String(value || "")
     .trim()
@@ -748,6 +1195,24 @@ export class ExportService {
     const markdownPath = path.join(repoRoot, "README_USER_GUIDE.md");
     const markdown = await fs.readFile(markdownPath, "utf-8");
     return { markdown, markdownPath };
+  }
+
+  async ensureUserGuideHtml(repoRoot: string): Promise<string> {
+    const { markdown, markdownPath } = await this.getUserGuideMarkdown(repoRoot);
+    const helpDir = path.join(this.outputDir, "help");
+    await fs.mkdir(helpDir, { recursive: true });
+    const htmlPath = path.join(helpDir, "README_USER_GUIDE.html");
+    const [mdStat, htmlStat] = await Promise.all([
+      fs.stat(markdownPath).catch(() => null),
+      fs.stat(htmlPath).catch(() => null),
+    ]);
+    if (mdStat && htmlStat && htmlStat.mtimeMs >= mdStat.mtimeMs && htmlStat.size > 0) {
+      return htmlPath;
+    }
+    const generatedAt = new Date().toISOString();
+    const htmlContent = renderHelpGuideHtml(markdown, markdownPath, generatedAt);
+    await fs.writeFile(htmlPath, htmlContent, "utf-8");
+    return htmlPath;
   }
 
   async ensureUserGuidePdf(repoRoot: string): Promise<string> {

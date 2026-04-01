@@ -699,6 +699,7 @@ export default function App(): React.JSX.Element {
   const [selectedReportPaths, setSelectedReportPaths] = useState<Set<string>>(new Set());
   const [helpGuideMarkdown, setHelpGuideMarkdown] = useState<string>("");
   const [helpGuideMarkdownPath, setHelpGuideMarkdownPath] = useState<string>("");
+  const [helpGuideHtmlPath, setHelpGuideHtmlPath] = useState<string>("");
   const [helpGuidePdfPath, setHelpGuidePdfPath] = useState<string>("");
   const [helpSearchText, setHelpSearchText] = useState<string>("");
   const [lastExport, setLastExport] = useState("");
@@ -1298,6 +1299,7 @@ export default function App(): React.JSX.Element {
     const payload = await window.codeSentinelX.getHelpGuide();
     setHelpGuideMarkdown(payload.markdown || "");
     setHelpGuideMarkdownPath(payload.markdownPath || "");
+    setHelpGuideHtmlPath(payload.htmlPath || "");
     setHelpGuidePdfPath(payload.pdfPath || "");
   };
 
@@ -1792,6 +1794,20 @@ export default function App(): React.JSX.Element {
     setStatusText("Opened Help.");
   };
 
+  const openHelpHtml = async (): Promise<void> => {
+    let htmlPath = helpGuideHtmlPath;
+    if (!htmlPath) {
+      htmlPath = await window.codeSentinelX.ensureHelpHtml();
+      setHelpGuideHtmlPath(htmlPath);
+    }
+    const result = await window.codeSentinelX.openPath(htmlPath);
+    if (result && result.trim()) {
+      setStatusText(`Could not open Help HTML: ${result}`);
+      return;
+    }
+    setStatusText("Opened Help HTML guide.");
+  };
+
   const openHelpPdf = async (): Promise<void> => {
     let pdfPath = helpGuidePdfPath;
     if (!pdfPath) {
@@ -1857,6 +1873,7 @@ export default function App(): React.JSX.Element {
       ],
       help: [
         { label: "Help Center", onSelect: openHelpTab },
+        { label: "Open Help HTML", onSelect: openHelpHtml },
         { label: "Open Help PDF", onSelect: openHelpPdf },
         { label: "Open Help Markdown", disabled: !helpGuideMarkdownPath, onSelect: openHelpMarkdownFile },
         { label: "Show Keyboard Shortcuts", onSelect: showShortcutHelp },
@@ -1867,7 +1884,9 @@ export default function App(): React.JSX.Element {
     }),
     [
       lastExport,
+      helpGuideHtmlPath,
       helpGuideMarkdownPath,
+      openHelpHtml,
       openHelpTab,
       openLastExport,
       openLastExportFolder,
@@ -3286,6 +3305,9 @@ export default function App(): React.JSX.Element {
             <button type="button" onClick={() => void loadHelpGuide()}>
               Refresh Help Content
             </button>
+            <button type="button" onClick={() => void openHelpHtml()}>
+              Open Help HTML
+            </button>
             <button type="button" onClick={() => void openHelpPdf()}>
               Open Help PDF
             </button>
@@ -3294,6 +3316,7 @@ export default function App(): React.JSX.Element {
             </button>
           </div>
           <p className="muted-text">Markdown Path: {helpGuideMarkdownPath || "-"}</p>
+          <p className="muted-text">HTML Path: {helpGuideHtmlPath || "-"}</p>
           <p className="muted-text">PDF Path: {helpGuidePdfPath || "-"}</p>
         </div>
 
@@ -3315,6 +3338,24 @@ export default function App(): React.JSX.Element {
                 <span className="muted-text">
                   Sections: {filteredHelpSections.length}/{helpSections.length}
                 </span>
+              </div>
+              <div className="help-hero-cards" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 14 }}>
+                <div className="table-frame" style={{ padding: 12 }}>
+                  <strong>Role-first guide</strong>
+                  <p className="muted-text">Content is organized around real app roles, report types, and workflows.</p>
+                </div>
+                <div className="table-frame" style={{ padding: 12 }}>
+                  <strong>Interactive nav</strong>
+                  <p className="muted-text">Jump to sections with the sticky navigation on the left.</p>
+                </div>
+                <div className="table-frame" style={{ padding: 12 }}>
+                  <strong>Website layout</strong>
+                  <p className="muted-text">The HTML guide renders as a styled help page, not a flat document.</p>
+                </div>
+                <div className="table-frame" style={{ padding: 12 }}>
+                  <strong>Searchable</strong>
+                  <p className="muted-text">Search the guide by section title or any line of text.</p>
+                </div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 14 }}>
                 <div

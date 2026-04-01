@@ -34,7 +34,8 @@ declare global {
       resumeScan: (scanId: string) => Promise<ScanControlActionResult>;
       stopScan: (scanId: string) => Promise<ScanControlActionResult>;
       getScanHistory: () => Promise<ScanHistoryItem[]>;
-      getHelpGuide: () => Promise<{ markdown: string; markdownPath: string; pdfPath: string }>;
+      getHelpGuide: () => Promise<{ markdown: string; markdownPath: string; htmlPath: string; pdfPath: string }>;
+      ensureHelpHtml: () => Promise<string>;
       ensureHelpPdf: () => Promise<string>;
       getReportHistory: () => Promise<ReportHistoryItem[]>;
       deleteReportHistory: (payload?: { paths?: string[]; all?: boolean }) => Promise<{ deleted: number; failed: number }>;
