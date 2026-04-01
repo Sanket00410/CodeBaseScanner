@@ -2788,6 +2788,20 @@ function renderVulnerabilityHtml(scan: ScanView): string {
   const groupedAll = groupByAlert(findings);
   const grouped = groupedAll.slice(0, EXEC_LIMIT);
   const alertAnchorByGroup = new Map(groupedAll.map((group) => [group.id, stableAnchorId("alert", group.id)]));
+  const alertInstanceAnchorByGroup = new Map(
+    groupedAll.map((group) => {
+      const lead = group.findings[0];
+      const leadAny = lead as unknown as Record<string, unknown> | undefined;
+      return [
+        group.id,
+        String(
+          leadAny?.alert_group_anchor ||
+            leadAny?.alert_title_group_anchor ||
+            stableAnchorId("alert-instance", `${group.id}::${String(lead?.finding_uid || `${lead?.file_path || ""}:${lead?.line_number || 1}`)}`),
+        ),
+      ];
+    }),
+  );
   const fileAggAll = aggregateFiles(findings);
   const fileAgg = fileAggAll.slice(0, EXEC_LIMIT);
   const moduleAggAll = aggregateModules(findings);
@@ -2925,7 +2939,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
     .map(
       (group) => `<tr>
     <td class="risk-${group.severity.toLowerCase()}">${escapeHtml(group.severity)}</td>
-    <td><a href="#${escapeHtml(alertAnchorByGroup.get(group.id) || stableAnchorId("alert", group.id))}" class="alert-link" data-alert-id="${escapeHtml(group.id)}" data-target-id="${escapeHtml(alertAnchorByGroup.get(group.id) || stableAnchorId("alert", group.id))}">${escapeHtml(group.title)}</a></td>
+    <td><a href="#${escapeHtml(alertInstanceAnchorByGroup.get(group.id) || alertAnchorByGroup.get(group.id) || stableAnchorId("alert", group.id))}" class="alert-link" data-alert-id="${escapeHtml(group.id)}" data-target-id="${escapeHtml(alertAnchorByGroup.get(group.id) || stableAnchorId("alert", group.id))}" data-instance-target-id="${escapeHtml(alertInstanceAnchorByGroup.get(group.id) || stableAnchorId("alert-instance", group.id))}">${escapeHtml(group.title)}</a></td>
     <td align="center">${group.count}</td>
     <td>${renderCweLink(group.cwe)}</td>
     <td>${escapeHtml(group.owasp)}</td>
@@ -2998,7 +3012,14 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       const instanceRows = group.findings
         .slice(0, DETAIL_LIMIT)
         .map(
-          (finding) => `<tr>
+          (finding) => {
+            const findingAny = finding as unknown as Record<string, unknown>;
+            const findingInstanceId = String(
+              findingAny.alert_group_anchor ||
+                findingAny.alert_title_group_anchor ||
+                stableAnchorId("alert-instance", `${group.id}::${String(finding.finding_uid || `${finding.file_path || ""}:${finding.line_number || 1}`)}`),
+            );
+            return `<tr id="${escapeHtml(findingInstanceId)}" data-instance-id="${escapeHtml(findingInstanceId)}">
       <td>${escapeHtml(normalizePath(finding.file_path))}</td>
       <td>${escapeHtml(folderFromPath(finding.file_path))}</td>
       <td align="center">${finding.line_number || 1}</td>
@@ -3006,7 +3027,8 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       <td>${escapeHtml(displayReportToolName((finding as VulnerabilityFinding & { tool?: string }).tool || "CodeSentinelX"))}</td>
       <td>${renderCweLink(finding.cwe_id || "N/A")}</td>
       <td>${escapeHtml(finding.owasp_mapping || "N/A")}</td>
-    </tr>`,
+    </tr>`;
+          },
         )
         .join("");
 
@@ -3887,27 +3909,39 @@ function renderVulnerabilityHtml(scan: ScanView): string {
 
       function focusReportTarget(id) {
         if (!id) return;
-        var section = document.getElementById(id);
-        if (!section) return;
-        section.classList.remove("hidden-section");
-        section.style.display = "";
-        document.querySelectorAll(".alert-section.is-active").forEach(function (item) {
-          item.classList.remove("is-active");
-        });
-        section.classList.add("is-active");
-        if (section.scrollIntoView) {
+        var target = document.getElementById(id);
+        if (!target) return;
+        var section = target.closest ? target.closest(".alert-section, .fix-detail, .alert-block") : null;
+        if (section) {
+          section.classList.remove("hidden-section");
+          section.style.display = "";
+          document.querySelectorAll(".alert-section.is-active, .fix-detail.is-active, .alert-block.is-active").forEach(function (item) {
+            item.classList.remove("is-active");
+          });
+          section.classList.add("is-active");
+        }
+        if (target.scrollIntoView) {
+          target.scrollIntoView({ behavior: "smooth", block: "start" });
+        } else if (section && section.scrollIntoView) {
           section.scrollIntoView({ behavior: "smooth", block: "start" });
         }
         window.setTimeout(function () {
-          section.classList.remove("is-active");
+          if (section) {
+            section.classList.remove("is-active");
+          }
         }, 2400);
       }
 
-      function openAlertSection(id, updateHash) {
+      function openAlertSection(id, updateHash, instanceId) {
         if (!id) return;
         focusReportTarget(id);
+        if (instanceId && instanceId !== id) {
+          window.setTimeout(function () {
+            focusReportTarget(instanceId);
+          }, 50);
+        }
         if (updateHash && window.history && window.history.replaceState) {
-          window.history.replaceState(null, "", "#" + id);
+          window.history.replaceState(null, "", "#" + (instanceId || id));
         }
       }
 
@@ -4054,7 +4088,11 @@ function renderVulnerabilityHtml(scan: ScanView): string {
           if (event && event.preventDefault) {
             event.preventDefault();
           }
-          openAlertSection(btn.getAttribute("data-target-id"), true);
+          openAlertSection(
+            btn.getAttribute("data-target-id"),
+            true,
+            btn.getAttribute("data-instance-target-id") || undefined
+          );
         });
       });
 
@@ -4931,11 +4969,25 @@ function renderCombinedHtml(scan: ScanView): string {
   const combinedAlertAnchorByGroup = new Map(
     combinedGroupedAll.map((group) => [group.id, stableAnchorId("combined-alert", group.id)]),
   );
+  const combinedAlertInstanceAnchorByGroup = new Map(
+    combinedGroupedAll.map((group) => {
+      const lead = group.findings[0];
+      const leadAny = lead as unknown as Record<string, unknown> | undefined;
+      return [
+        group.id,
+        String(
+          leadAny?.alert_group_anchor ||
+            leadAny?.alert_title_group_anchor ||
+            stableAnchorId("combined-alert-instance", `${group.id}::${String(lead?.finding_uid || `${lead?.file_path || ""}:${lead?.line_number || 1}`)}`),
+        ),
+      ];
+    }),
+  );
   const combinedAlertRows = combinedGrouped
     .map(
       (group) => `<tr>
         <td class="risk-${group.severity.toLowerCase()}">${escapeHtml(group.severity)}</td>
-        <td><a href="#${escapeHtml(combinedAlertAnchorByGroup.get(group.id) || stableAnchorId("combined-alert", group.id))}" class="alert-link">${escapeHtml(group.title)}</a></td>
+        <td><a href="#${escapeHtml(combinedAlertInstanceAnchorByGroup.get(group.id) || combinedAlertAnchorByGroup.get(group.id) || stableAnchorId("combined-alert", group.id))}" class="alert-link" data-target-id="${escapeHtml(combinedAlertAnchorByGroup.get(group.id) || stableAnchorId("combined-alert", group.id))}" data-instance-target-id="${escapeHtml(combinedAlertInstanceAnchorByGroup.get(group.id) || stableAnchorId("combined-alert-instance", group.id))}">${escapeHtml(group.title)}</a></td>
         <td align="center">${group.count}</td>
       </tr>`,
     )
@@ -4949,7 +5001,12 @@ function renderCombinedHtml(scan: ScanView): string {
       const instanceRows = group.findings
         .map((finding, index) => {
           const findingAny = finding as unknown as Record<string, unknown>;
-          return `<tr>
+          const instanceId = String(
+            findingAny.alert_group_anchor ||
+              findingAny.alert_title_group_anchor ||
+              stableAnchorId("combined-alert-instance", `${group.id}::${String(finding.finding_uid || `${finding.file_path || ""}:${finding.line_number || 1}`)}`),
+          );
+          return `<tr id="${escapeHtml(instanceId)}" data-instance-id="${escapeHtml(instanceId)}">
             <td align="center">${index + 1}</td>
             <td>${escapeHtml(fullFindingLocation(scan.report.executive_summary.target_path, finding.file_path, Number(finding.line_number || 1)))}</td>
             <td>${escapeHtml(displayFindingOwner(finding as Partial<VulnerabilityFinding> & Record<string, unknown>))}</td>

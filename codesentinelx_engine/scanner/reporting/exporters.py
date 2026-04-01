@@ -750,7 +750,7 @@ class ReportExporter:
             for finding in alert.get("findings", [])[:8]:
                 location = f"{_normalize_path(str(finding.get('file_path', 'unknown')))}:{finding.get('line_number', 1)}"
                 write_line(
-                    f" - {location} | {finding.get('status', 'Open')} | {_display_report_tool_name(finding.get('tool', 'CodeSentinelX'))}",
+                    f" - {_display_report_tool_name(finding.get('tool', 'CodeSentinelX'))} | {location} | {finding.get('status', 'Open')}",
                     size=8,
                 )
             write_line("", gap=4)
@@ -973,6 +973,7 @@ class ReportExporter:
                 "<tr>"
                 f"<td class='risk-{html.escape(str(alert.get('severity', 'Info')).lower())}'>{html.escape(str(alert.get('severity', 'Info')))}</td>"
                 f"<td><button type='button' class='alert-link' data-alert-id='{html.escape(str(alert.get('id')))}' "
+                f"data-instance-target-id='{html.escape(str((alert.get('findings', [{}]) or [{}])[0].get('alert_group_anchor') or (alert.get('findings', [{}]) or [{}])[0].get('alert_title_group_anchor') or alert.get('id')))}' "
                 f"aria-controls='{html.escape(str(alert.get('id')))}' aria-expanded='false'>{html.escape(str(alert.get('title')))}</button></td>"
                 f"<td align='center'>{alert.get('count', 0)}</td>"
                 f"<td>{html.escape(str(alert.get('cwe', 'N/A')))}</td>"
@@ -1269,11 +1270,12 @@ class ReportExporter:
         }}).join("");
       }}
 
-      function openAlertSection(id) {{
+      function openAlertSection(id, instanceId) {{
         var target = document.getElementById(id);
         if (!target) return;
+        var container = target.closest ? target.closest(".alert-block") : null;
         document.querySelectorAll(".alert-block").forEach(function (section) {{
-          if (section.id === id) {{
+          if (section.id === id || (instanceId && section.contains(document.getElementById(instanceId)))) {{
             section.classList.remove("hidden-section");
           }} else {{
             section.classList.add("hidden-section");
@@ -1282,7 +1284,18 @@ class ReportExporter:
         document.querySelectorAll(".alert-link").forEach(function (item) {{
           item.setAttribute("aria-expanded", item.getAttribute("data-alert-id") === id ? "true" : "false");
         }});
+        if (container) {{
+          container.classList.remove("hidden-section");
+        }}
         target.scrollIntoView({{ behavior: "smooth", block: "start" }});
+        if (instanceId) {{
+          var instance = document.getElementById(instanceId);
+          if (instance && instance.scrollIntoView) {{
+            window.setTimeout(function () {{
+              instance.scrollIntoView({{ behavior: "smooth", block: "center" }});
+            }}, 40);
+          }}
+        }}
         if (!target.hasAttribute("tabindex")) {{
           target.setAttribute("tabindex", "-1");
         }}
@@ -1292,7 +1305,7 @@ class ReportExporter:
         button.addEventListener("click", function () {{
           var id = button.getAttribute("data-alert-id");
           if (!id) return;
-          openAlertSection(id);
+          openAlertSection(id, button.getAttribute("data-instance-target-id") || "");
         }});
       }});
 
@@ -1312,10 +1325,11 @@ class ReportExporter:
     def _render_alert_detail(self, alert: dict) -> str:
         findings = alert.get("findings", [])
         lead = findings[0] if findings else {}
+        section_anchor = str(alert.get("id", "alert"))
 
         instance_rows = "".join(
             (
-                "<tr>"
+                f"<tr id='{html.escape(str(item.get('alert_group_anchor') or item.get('alert_title_group_anchor') or (section_anchor + '-instance-' + str(idx))))}'>"
                 f"<td align='center'>{idx}</td>"
                 f"<td>{html.escape(_normalize_path(str(item.get('file_path', 'unknown'))))}</td>"
                 f"<td>{html.escape(_folder_name(str(item.get('file_path', 'unknown'))))}</td>"
@@ -1330,7 +1344,7 @@ class ReportExporter:
             for idx, item in enumerate(findings, start=1)
         )
         instance_count = len(findings)
-        alert_anchor = html.escape(str(alert.get("id", "alert")))
+        alert_anchor = html.escape(section_anchor)
 
         return (
             f"<section id='{alert_anchor}' class='alert-block hidden-section'>"
