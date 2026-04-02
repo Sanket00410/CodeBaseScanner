@@ -977,7 +977,7 @@ function resolveEnterpriseAssurance(
   const blockers: string[] = [];
   const advisories: string[] = [];
   if (criticalFindings > 0) {
-    blockers.push(`${criticalFindings} critical finding(s) still require remediation before release.`);
+    blockers.push(`${criticalFindings} critical issue(s) still require remediation before release.`);
   }
   for (const failure of failures.slice(0, 6)) {
     const message = `${failure.tool}: ${failure.message}`;
@@ -2103,7 +2103,7 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     `Risk Score: ${report.summary.risk_score} (${report.summary.risk_rating})`,
   ]);
   writePdfMetricStrip(doc, [
-    { label: "Total Findings", value: String(findings.length), tone: "accent" },
+    { label: "Total Issues", value: String(findings.length), tone: "accent" },
     { label: "Critical", value: String(severityDistribution.Critical || 0), tone: "critical" },
     { label: "High", value: String(severityDistribution.High || 0), tone: "high" },
   ]);
@@ -2193,10 +2193,10 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
 
   writePdfSectionHeader(doc, "Data Quality");
   writePdfKeyValueTable(doc, [
-    { key: "Raw Findings", value: String(dataQuality.raw_findings ?? 0) },
-    { key: "Deduplicated Findings", value: String(dataQuality.deduplicated_findings ?? 0) },
+    { key: "Raw Issues", value: String(dataQuality.raw_findings ?? 0) },
+    { key: "Deduplicated Issues", value: String(dataQuality.deduplicated_findings ?? 0) },
     { key: "Duplicates Removed", value: `${dataQuality.duplicate_findings_removed ?? 0} (${(dataQuality.dedup_ratio_percent ?? 0).toFixed(2)}%)` },
-    { key: "Suppressed Findings", value: `${dataQuality.suppressed_findings ?? 0} (${(dataQuality.suppression_rate_percent ?? 0).toFixed(2)}%)` },
+    { key: "Suppressed Issues", value: `${dataQuality.suppressed_findings ?? 0} (${(dataQuality.suppression_rate_percent ?? 0).toFixed(2)}%)` },
     { key: "Tool Success Rate", value: `${(dataQuality.tool_success_rate_percent ?? 0).toFixed(2)}%` },
     { key: "Coverage Confidence", value: `${String(dataQuality.coverage_confidence || "N/A")} (${(dataQuality.coverage_confidence_score ?? 0).toFixed(1)})` },
     { key: "Unknown Rule IDs", value: String(dataQuality.unknown_rule_count ?? 0) },
@@ -2586,10 +2586,10 @@ function writeFixesPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
   }
   writePdfSectionHeader(doc, "Data Quality");
   writePdfKeyValueTable(doc, [
-    { key: "Raw Findings", value: String(dataQuality.raw_findings ?? 0) },
-    { key: "Deduplicated Findings", value: String(dataQuality.deduplicated_findings ?? 0) },
+    { key: "Raw Issues", value: String(dataQuality.raw_findings ?? 0) },
+    { key: "Deduplicated Issues", value: String(dataQuality.deduplicated_findings ?? 0) },
     { key: "Duplicates Removed", value: `${dataQuality.duplicate_findings_removed ?? 0} (${(dataQuality.dedup_ratio_percent ?? 0).toFixed(2)}%)` },
-    { key: "Suppressed Findings", value: `${dataQuality.suppressed_findings ?? 0} (${(dataQuality.suppression_rate_percent ?? 0).toFixed(2)}%)` },
+    { key: "Suppressed Issues", value: `${dataQuality.suppressed_findings ?? 0} (${(dataQuality.suppression_rate_percent ?? 0).toFixed(2)}%)` },
     { key: "Tool Success Rate", value: `${(dataQuality.tool_success_rate_percent ?? 0).toFixed(2)}%` },
     { key: "Coverage Confidence", value: `${String(dataQuality.coverage_confidence || "N/A")} (${(dataQuality.coverage_confidence_score ?? 0).toFixed(1)})` },
     { key: "Unknown Rule IDs", value: String(dataQuality.unknown_rule_count ?? 0) },
@@ -2815,7 +2815,7 @@ function writeCombinedPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     `Role: ${resolveReportRole(scan)}`,
   ]);
   writePdfMetricStrip(doc, [
-    { label: "Total Findings", value: String(Number(summary.total_findings || findings.length)), tone: "accent" },
+    { label: "Total Issues", value: String(Number(summary.total_findings || findings.length)), tone: "accent" },
     { label: "Critical", value: String(Number(summary.severity_distribution?.Critical || 0)), tone: "critical" },
     { label: "High", value: String(Number(summary.severity_distribution?.High || 0)), tone: "high" },
     { label: "Known Exploited", value: String(knownExploitedMetricText(riskIntel) || "0"), tone: "info" },
@@ -3930,7 +3930,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
   const financialText = formatBestLikelyWorst((ctoBoard.financial_exposure_usd as Record<string, unknown>) || {});
   const downtimeText = formatBestLikelyWorst((ctoBoard.downtime_estimate as Record<string, unknown>) || {});
   const heroCards = renderStatGrid([
-    { label: "Total Findings", value: findings.length, tone: "accent", sub: "Deduplicated alert inventory" },
+    { label: "Total Issues", value: findings.length, tone: "accent", sub: "Deduplicated alert inventory" },
     { label: "Files Impacted", value: fileAggAll.length, tone: "low", sub: "Code paths affected in this scan" },
     {
       label: "Critical",
@@ -5219,10 +5219,10 @@ function renderFixesHtml(scan: ScanView): string {
 
   const fixesCards = renderStatGrid([
     {
-      label: "Total Findings",
+      label: "Total Issues",
       value: findings.length,
       tone: "accent",
-      sub: "Findings included in remediation review for this export",
+      sub: "Issues included in remediation review for this export",
     },
     {
       label: "Verified Fixed",
@@ -5259,7 +5259,7 @@ function renderFixesHtml(scan: ScanView): string {
             <tbody>
             <tr><td>Mode</td><td>${escapeHtml(String(deterministicReplay?.mode || "deterministic-evidence-replay"))}</td></tr>
             <tr><td>Replay Coverage</td><td>${deterministicReplay ? `${Number(deterministicReplay.replay_coverage_percent || 0).toFixed(2)}%` : "N/A"}</td></tr>
-            <tr><td>Findings with Replay</td><td>${deterministicReplay ? `${Number(deterministicReplay.findings_with_replay || 0)}/${Number(deterministicReplay.findings_total || 0)}` : "N/A"}</td></tr>
+            <tr><td>Issues with Replay</td><td>${deterministicReplay ? `${Number(deterministicReplay.findings_with_replay || 0)}/${Number(deterministicReplay.findings_total || 0)}` : "N/A"}</td></tr>
             <tr><td>Evidence Records</td><td>${deterministicReplay ? Number(deterministicReplay.tool_evidence_records || 0) : "N/A"}</td></tr>
             <tr><td>Tools with Evidence</td><td>${deterministicReplay?.tools_with_evidence?.length ? escapeHtml(deterministicReplay.tools_with_evidence.join(", ")) : "N/A"}</td></tr>
             </tbody>
@@ -5267,7 +5267,7 @@ function renderFixesHtml(scan: ScanView): string {
         </div>
         <div class="table-scroll">
           <table>
-            <thead><tr><th>Finding UID</th><th>Issue</th><th>Tool</th><th>Recorded</th><th>Command</th><th>Record SHA256</th></tr></thead>
+            <thead><tr><th>Issue UID</th><th>Issue</th><th>Tool</th><th>Recorded</th><th>Command</th><th>Record SHA256</th></tr></thead>
             <tbody>${replayRows}</tbody>
           </table>
         </div>
@@ -5391,10 +5391,10 @@ function renderFixesHtml(scan: ScanView): string {
     ${integritySection}
 
     ${hasDetailSections ? `<section class="section">
-      <h2>Original and Suggested Fix Details</h2>
+      <h2>Issue Details</h2>
       <div class="toolbar"><input id="fixDetailSearch" type="search" placeholder="Search detailed fixes by issue, file, CWE, recommendation, or PoC" /></div>
       ${detailSections}
-      ${findings.length > detailFindings.length ? `<p class="table-note">${findings.length - detailFindings.length} additional finding details were omitted for report readability.</p>` : ""}
+      ${findings.length > detailFindings.length ? `<p class="table-note">${findings.length - detailFindings.length} additional issue details were omitted for report readability.</p>` : ""}
     </section>` : ""}
   </main>
   <script>
@@ -5830,7 +5830,7 @@ function renderCombinedHtml(scan: ScanView): string {
       : "";
   const cards = renderStatGrid([
     {
-      label: "Total Findings",
+      label: "Total Issues",
       value: Number(summary.total_findings || findings.length),
       tone: "accent",
       sub: "Deduplicated findings in this scan scope",
