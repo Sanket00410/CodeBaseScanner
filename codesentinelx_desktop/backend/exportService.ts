@@ -2848,7 +2848,7 @@ function writeCombinedPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
   }
   const topFindings = rankedFindings(findings, 16);
   if (topFindings.length > 0) {
-    writePdfSectionHeader(doc, "Top Prioritized Findings");
+    writePdfSectionHeader(doc, "Top Prioritized Issues");
     for (const finding of topFindings) {
       writeWrapped(
         doc,
@@ -2899,7 +2899,7 @@ function writeFindingDetailsPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     `Generated: ${formatDisplayTimestamp(resolveReportGeneratedAt(scan, "finding_details"))}`,
     `Total Findings: ${findings.length}`,
   ]);
-  writePdfSectionHeader(doc, "Finding Details");
+  writePdfSectionHeader(doc, "Issue Details");
 
   for (const finding of findings.slice(0, 320)) {
     writeWrapped(doc, `[${finding.severity}] ${normalizedFindingTitle(finding)}`, 9);
@@ -5616,12 +5616,12 @@ function renderFindingDetailsHtml(scan: ScanView): string {
       <p class="meta"><strong>Total Findings:</strong> ${findings.length}</p>
     </section>
     ${hasRows ? `<section class="section">
-      <h2>Finding Details</h2>
+      <h2>Issue Details</h2>
       <div class="table-frame table-scroll">
         <table id="findingDetailsTable">
           <thead>
             <tr>
-              <th width="24%">Finding Details</th>
+              <th width="24%">Issue</th>
               <th width="8%">Severity</th>
               <th width="16%">Location</th>
               <th width="29%">Issue Description</th>
@@ -5634,7 +5634,7 @@ function renderFindingDetailsHtml(scan: ScanView): string {
       </div>
     </section>` : ""}
     ${details ? `<section class="section">
-      <h2>Finding Drill-Down</h2>
+      <h2>Issue Drill-Down</h2>
       ${details}
     </section>` : ""}
   </div>
@@ -5924,7 +5924,7 @@ function renderCombinedHtml(scan: ScanView): string {
     ${combinedDetailedSections
       ? `<section class="section">
       <div class="table-frame" style="padding:12px 14px">
-        <h2>Detailed Findings</h2>
+        <h2>Issue Details</h2>
         ${combinedDetailedSections}
       </div>
     </section>`
@@ -5933,7 +5933,7 @@ function renderCombinedHtml(scan: ScanView): string {
     ${topRiskRows
       ? `<section class="section">
       <div class="table-frame">
-        <h2 style="padding:12px 14px 0">Top Prioritized Findings</h2>
+        <h2 style="padding:12px 14px 0">Top Prioritized Issues</h2>
         <div class="table-scroll">
           <table>
             <thead>
