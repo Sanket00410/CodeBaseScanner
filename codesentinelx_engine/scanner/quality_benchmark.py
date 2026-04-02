@@ -244,7 +244,7 @@ def evaluate_quality_benchmark(
         "enabled": bool(enabled),
         "configured": False,
         "benchmark_status": "disabled" if not enabled else "not_configured",
-        "benchmark_name": "Scanner Quality Benchmark",
+        "benchmark_name": "CodeSentinelX quality benchmark",
         "benchmark_file": str(benchmark_path),
         "benchmark_description": "",
         "cases_total": 0,
@@ -269,18 +269,18 @@ def evaluate_quality_benchmark(
         "strict_scope": bool(strict_scope),
     }
     if not enabled:
-        base_payload["gate_advisories"] = ["Scanner quality benchmark evaluation is disabled."]
+        base_payload["gate_advisories"] = ["CodeSentinelX quality benchmark evaluation is disabled."]
         return base_payload
     if not benchmark_path.exists():
-        base_payload["gate_advisories"] = [f"Scanner quality benchmark file not found: {benchmark_path}"]
+        base_payload["gate_advisories"] = [f"CodeSentinelX quality benchmark file not found: {benchmark_path}"]
         return base_payload
 
     payload = _read_json(benchmark_path)
     if not payload:
-        base_payload["gate_advisories"] = [f"Scanner quality benchmark file could not be parsed: {benchmark_path}"]
+        base_payload["gate_advisories"] = [f"CodeSentinelX quality benchmark file could not be parsed: {benchmark_path}"]
         return base_payload
 
-    benchmark_name = str(payload.get("benchmark_name") or payload.get("name") or "Scanner Quality Benchmark").strip() or "Scanner Quality Benchmark"
+    benchmark_name = str(payload.get("benchmark_name") or payload.get("name") or "CodeSentinelX quality benchmark").strip() or "CodeSentinelX quality benchmark"
     benchmark_description = str(
         payload.get("benchmark_description")
         or payload.get("description")

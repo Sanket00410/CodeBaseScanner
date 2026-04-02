@@ -152,7 +152,7 @@ def _render_quality_benchmark_html_section(report: dict) -> str:
         return ""
     rows = [
         ("Benchmark Status", str(benchmark.get("benchmark_status", "warning")).upper()),
-        ("Benchmark Name", str(benchmark.get("benchmark_name", "Scanner Quality Benchmark"))),
+        ("Benchmark Name", str(benchmark.get("benchmark_name", "CodeSentinelX quality benchmark"))),
         ("Benchmark File", str(benchmark.get("benchmark_file", "N/A"))),
         ("Description", str(benchmark.get("benchmark_description", "N/A")) or "N/A"),
         (
@@ -183,7 +183,7 @@ def _render_quality_benchmark_html_section(report: dict) -> str:
     )
     return f"""
     <section class="table-frame">
-      <h2 style="padding:12px 14px 0">Scanner Quality Benchmark</h2>
+      <h2 style="padding:12px 14px 0">CodeSentinelX quality benchmark</h2>
       <div class="table-scroll">
         <table>
           <thead><tr><th>Metric</th><th>Value</th></tr></thead>
@@ -606,12 +606,12 @@ class ReportExporter:
             benchmark = _quality_benchmark_from_report(report)
             if not benchmark or not benchmark.get("configured"):
                 return
-            write_line("Scanner Quality Benchmark", font="Helvetica-Bold", size=11)
+            write_line("CodeSentinelX quality benchmark", font="Helvetica-Bold", size=11)
             write_line(
                 f"- Status: {str(benchmark.get('benchmark_status', 'warning')).upper()}",
                 size=8,
             )
-            write_line(f"- Benchmark: {benchmark.get('benchmark_name', 'Scanner Quality Benchmark')}", size=8)
+            write_line(f"- Benchmark: {benchmark.get('benchmark_name', 'CodeSentinelX quality benchmark')}", size=8)
             write_line(
                 f"- Cases: {int(benchmark.get('cases_total', 0))} total ({int(benchmark.get('expected_present', 0))} expected-present, {int(benchmark.get('expected_absent', 0))} expected-absent)",
                 size=8,

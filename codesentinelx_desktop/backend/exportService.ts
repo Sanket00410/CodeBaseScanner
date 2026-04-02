@@ -1042,7 +1042,7 @@ function renderQualityBenchmarkRows(benchmark?: QualityBenchmarkSummary | null):
   }
   const rows = [
     ["Benchmark Status", String(benchmark.benchmark_status || "warning").toUpperCase()],
-    ["Benchmark Name", String(benchmark.benchmark_name || "Scanner Quality Benchmark")],
+    ["Benchmark Name", String(benchmark.benchmark_name || "CodeSentinelX quality benchmark")],
     ["Benchmark File", String(benchmark.benchmark_file || "N/A")],
     ["Description", String(benchmark.benchmark_description || "N/A")],
     ["Cases", `${Number(benchmark.cases_total || 0)} total (${Number(benchmark.expected_present || 0)} expected-present, ${Number(benchmark.expected_absent || 0)} expected-absent)`],
@@ -1078,7 +1078,7 @@ function renderQualityBenchmarkSection(benchmark?: QualityBenchmarkSummary | nul
     .join("");
   return `
     <section class="panel">
-      <h2>Scanner Quality Benchmark</h2>
+      <h2>CodeSentinelX quality benchmark</h2>
       <table>
         <thead><tr><th>Metric</th><th>Value</th></tr></thead>
         <tbody>
@@ -1958,10 +1958,10 @@ function writeExistingPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     }
   }
   if (qualityBenchmark && qualityBenchmark.configured) {
-    writePdfSectionHeader(doc, "Scanner Quality Benchmark");
+    writePdfSectionHeader(doc, "CodeSentinelX quality benchmark");
     writePdfKeyValueTable(doc, [
       { key: "Status", value: String(qualityBenchmark.benchmark_status || "warning").toUpperCase() },
-      { key: "Benchmark", value: String(qualityBenchmark.benchmark_name || "Scanner Quality Benchmark") },
+      { key: "Benchmark", value: String(qualityBenchmark.benchmark_name || "CodeSentinelX quality benchmark") },
       { key: "Cases", value: `${Number(qualityBenchmark.cases_total || 0)} total (${Number(qualityBenchmark.expected_present || 0)} expected-present, ${Number(qualityBenchmark.expected_absent || 0)} expected-absent)` },
       { key: "Precision", value: `${Number(qualityBenchmark.precision_percent || 0).toFixed(2)}%` },
       { key: "Recall", value: `${Number(qualityBenchmark.recall_percent || 0).toFixed(2)}%` },
@@ -2205,10 +2205,10 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     { key: "Taxonomy Gaps", value: String(dataQuality.unknown_taxonomy_count ?? 0) },
   ]);
   if (qualityBenchmark && qualityBenchmark.configured) {
-    writePdfSectionHeader(doc, "Scanner Quality Benchmark");
+    writePdfSectionHeader(doc, "CodeSentinelX quality benchmark");
     writePdfKeyValueTable(doc, [
       { key: "Status", value: String(qualityBenchmark.benchmark_status || "warning").toUpperCase() },
-      { key: "Benchmark", value: String(qualityBenchmark.benchmark_name || "Scanner Quality Benchmark") },
+      { key: "Benchmark", value: String(qualityBenchmark.benchmark_name || "CodeSentinelX quality benchmark") },
       {
         key: "Cases",
         value: `${Number(qualityBenchmark.cases_total || 0)} total (${Number(qualityBenchmark.expected_present || 0)} expected-present, ${Number(qualityBenchmark.expected_absent || 0)} expected-absent)`,
@@ -2598,10 +2598,10 @@ function writeFixesPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     { key: "Taxonomy Gaps", value: String(dataQuality.unknown_taxonomy_count ?? 0) },
   ]);
   if (qualityBenchmark && qualityBenchmark.configured) {
-    writePdfSectionHeader(doc, "Scanner Quality Benchmark");
+    writePdfSectionHeader(doc, "CodeSentinelX quality benchmark");
     writePdfKeyValueTable(doc, [
       { key: "Status", value: String(qualityBenchmark.benchmark_status || "warning").toUpperCase() },
-      { key: "Benchmark", value: String(qualityBenchmark.benchmark_name || "Scanner Quality Benchmark") },
+      { key: "Benchmark", value: String(qualityBenchmark.benchmark_name || "CodeSentinelX quality benchmark") },
       {
         key: "Cases",
         value: `${Number(qualityBenchmark.cases_total || 0)} total (${Number(qualityBenchmark.expected_present || 0)} expected-present, ${Number(qualityBenchmark.expected_absent || 0)} expected-absent)`,
@@ -2869,10 +2869,10 @@ function writeCombinedPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     }
   }
   if (qualityBenchmark && qualityBenchmark.configured) {
-    writePdfSectionHeader(doc, "Scanner Quality Benchmark");
+    writePdfSectionHeader(doc, "CodeSentinelX quality benchmark");
     writePdfKeyValueTable(doc, [
       { key: "Status", value: String(qualityBenchmark.benchmark_status || "warning").toUpperCase() },
-      { key: "Benchmark", value: String(qualityBenchmark.benchmark_name || "Scanner Quality Benchmark") },
+      { key: "Benchmark", value: String(qualityBenchmark.benchmark_name || "CodeSentinelX quality benchmark") },
       {
         key: "Cases",
         value: `${Number(qualityBenchmark.cases_total || 0)} total (${Number(qualityBenchmark.expected_present || 0)} expected-present, ${Number(qualityBenchmark.expected_absent || 0)} expected-absent)`,
@@ -3125,11 +3125,11 @@ function renderExistingHtml(scan: ScanView): string {
       const controlAnchorId = stableAnchorId("existing-control", control.name);
       const evidenceAnchorId = stableAnchorId("existing-control-evidence", control.name);
       return `<tr>
-        <td><a href="#${escapeHtml(controlAnchorId)}" class="drill-link" data-drill-scope="existing-control" data-drill-key="${escapeHtml(control.name)}" data-drill-severity="All">${escapeHtml(control.name)}</a></td>
+        <td><a href="#${escapeHtml(controlAnchorId)}" class="existing-control-link" data-target-id="${escapeHtml(controlAnchorId)}" data-instance-target-id="${escapeHtml(evidenceAnchorId)}">${escapeHtml(control.name)}</a></td>
         <td>${escapeHtml(control.category)}</td>
         <td>${escapeHtml(control.coverage_level)}</td>
         <td>${escapeHtml(control.standard_mappings.join(", "))}</td>
-        <td><a href="#${escapeHtml(evidenceAnchorId)}" class="drill-link" data-drill-scope="existing-control-evidence" data-drill-key="${escapeHtml(control.name)}" data-drill-severity="All">Open</a></td>
+        <td><a href="#${escapeHtml(evidenceAnchorId)}" class="existing-control-evidence-link" data-target-id="${escapeHtml(evidenceAnchorId)}" data-instance-target-id="${escapeHtml(evidenceAnchorId)}">View</a></td>
       </tr>`;
     })
     .filter(Boolean);
@@ -3150,11 +3150,12 @@ function renderExistingHtml(scan: ScanView): string {
           return "";
         }
         const rowAnchorId = index === 0 ? evidenceAnchorId : stableAnchorId("existing-control-evidence-row", `${control.name}:${file}:${line}:${index}`);
-        return `<tr id="${escapeHtml(rowAnchorId)}" data-control-evidence-id="${escapeHtml(evidenceAnchorId)}">
+        return `<tr id="${escapeHtml(rowAnchorId)}" class="existing-control-evidence-row" tabindex="0" data-control-evidence-id="${escapeHtml(evidenceAnchorId)}">
       <td>${escapeHtml(control.name)}</td>
       <td>${escapeHtml(file)}</td>
       <td align="center">${line}</td>
       <td><code>${escapeHtml(snippet)}</code></td>
+      <td><a href="#${escapeHtml(rowAnchorId)}" class="existing-control-evidence-link" data-target-id="${escapeHtml(rowAnchorId)}" data-instance-target-id="${escapeHtml(rowAnchorId)}">View</a></td>
     </tr>`;
       });
     })
@@ -3282,7 +3283,7 @@ function renderExistingHtml(scan: ScanView): string {
             <div class="toolbar" style="padding:0 14px 8px"><input id="controlEvidenceSearch" type="search" placeholder="Search control evidence by file, line, or snippet" /></div>
           <div class="table-scroll">
             <table id="controlEvidenceTable">
-              <thead><tr><th>Control</th><th>File</th><th>Line</th><th>Evidence Snippet</th></tr></thead>
+              <thead><tr><th>Control</th><th>File</th><th>Line</th><th>Evidence Snippet</th><th>Details</th></tr></thead>
                 <tbody>${controlEvidenceRows}</tbody>
               </table>
             </div>
@@ -3367,6 +3368,67 @@ function renderExistingHtml(scan: ScanView): string {
       bindSearch("controlEvidenceSearch", "#controlEvidenceTable tbody tr");
       bindSearch("complianceSearch", "#complianceMatrixTable tbody tr");
       bindSearch("profileSearch", ".profile-coverage-table tbody tr");
+
+      function focusExistingControlTarget(id, instanceId) {
+        var targetId = String(id || "").replace(/^#/, "");
+        var instanceTargetId = String(instanceId || "").replace(/^#/, "");
+        var target = targetId ? document.getElementById(targetId) : null;
+        if (target && target.scrollIntoView) {
+          target.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+        if (instanceTargetId && instanceTargetId !== targetId) {
+          window.setTimeout(function () {
+            var instance = document.getElementById(instanceTargetId);
+            if (instance && instance.scrollIntoView) {
+              instance.scrollIntoView({ behavior: "smooth", block: "center" });
+            }
+          }, 80);
+        }
+        if (window.history && window.history.replaceState && (targetId || instanceTargetId)) {
+          window.history.replaceState(null, "", "#" + (instanceTargetId || targetId));
+        }
+      }
+
+      document.querySelectorAll(".existing-control-link,.existing-control-evidence-link").forEach(function (link) {
+        link.addEventListener("click", function (event) {
+          if (event && event.preventDefault) {
+            event.preventDefault();
+          }
+          focusExistingControlTarget(
+            link.getAttribute("data-target-id") || String(link.getAttribute("href") || "").replace(/^#/, ""),
+            link.getAttribute("data-instance-target-id") || undefined
+          );
+        });
+      });
+
+      document.querySelectorAll("tr.existing-control-evidence-row").forEach(function (row) {
+        row.addEventListener("click", function () {
+          var anchorId = row.getAttribute("data-control-evidence-id") || row.id || "";
+          if (anchorId) {
+            focusExistingControlTarget(anchorId, anchorId);
+          }
+        });
+        row.addEventListener("keydown", function (event) {
+          var key = String((event && (event.key || event.code)) || "");
+          if (key === "Enter" || key === " " || key === "Spacebar") {
+            if (event && event.preventDefault) {
+              event.preventDefault();
+            }
+            var anchorId = row.getAttribute("data-control-evidence-id") || row.id || "";
+            if (anchorId) {
+              focusExistingControlTarget(anchorId, anchorId);
+            }
+          }
+        });
+      });
+
+      document.querySelectorAll(".existing-control-evidence-row .existing-control-evidence-link").forEach(function (link) {
+        link.addEventListener("click", function (event) {
+          if (event && event.stopPropagation) {
+            event.stopPropagation();
+          }
+        });
+      });
     })();
   </script>
   ${renderReportTableEnhancerTag()}
@@ -4888,7 +4950,7 @@ function renderFixesHtml(scan: ScanView): string {
     <td>${renderCvssLink(finding.cvss_score)}</td>
     <td>${renderCweLink(finding.cwe_id || "")}</td>
     <td>${escapeHtml(String(finding.owasp_mapping || ""))}</td>
-    <td><a class="fix-link" href="#${escapeHtml(instanceAnchorId)}" data-target-id="${escapeHtml(sectionAnchorId)}" data-instance-target-id="${escapeHtml(instanceAnchorId)}">Open</a></td>
+    <td><a class="fix-link" href="#${escapeHtml(instanceAnchorId)}" data-target-id="${escapeHtml(sectionAnchorId)}" data-instance-target-id="${escapeHtml(instanceAnchorId)}">View</a></td>
   </tr>`;
       },
   )
@@ -5496,7 +5558,7 @@ function renderFindingDetailsHtml(scan: ScanView): string {
         <td>${escapeHtml(fullFindingLocation(scan.report.executive_summary.target_path, item.file_path, Number(item.line_number || 1)))}</td>
         <td>${escapeHtml(item.description || item.business_impact || "N/A")}</td>
         <td>${escapeHtml(preferredFindingFix(item))}</td>
-        <td><a href="#${escapeHtml(instanceId)}" class="finding-detail-link" data-target-id="${escapeHtml(sectionId)}" data-instance-target-id="${escapeHtml(instanceId)}">Open</a></td>
+        <td><a href="#${escapeHtml(instanceId)}" class="finding-detail-link" data-target-id="${escapeHtml(sectionId)}" data-instance-target-id="${escapeHtml(instanceId)}">View</a></td>
       </tr>`,
     )
     .join("");
@@ -5555,10 +5617,6 @@ function renderFindingDetailsHtml(scan: ScanView): string {
     </section>
     ${hasRows ? `<section class="section">
       <h2>Finding Details</h2>
-      <div class="toolbar">
-        <input id="findingDetailsSearch" type="search" placeholder="Search finding, severity, location, description, or remediation" />
-        <input id="findingDetailsSeverity" type="search" placeholder="Optional severity filter (Critical/High/...)" style="min-width:220px" />
-      </div>
       <div class="table-frame table-scroll">
         <table id="findingDetailsTable">
           <thead>
@@ -5580,53 +5638,6 @@ function renderFindingDetailsHtml(scan: ScanView): string {
       ${details}
     </section>` : ""}
   </div>
-  <script>
-    (function () {
-      var input = document.getElementById("findingDetailsSearch");
-      var severityInput = document.getElementById("findingDetailsSeverity");
-      var table = document.getElementById("findingDetailsTable");
-      if (!input || !table) return;
-      var tbody = table.querySelector("tbody");
-      if (!tbody) return;
-      function applyFilters() {
-        var query = (input.value || "").toLowerCase();
-        var severityQuery = severityInput && severityInput.value ? severityInput.value.toLowerCase() : "";
-        Array.from(tbody.querySelectorAll("tr")).forEach(function (row) {
-          var text = (row.textContent || "").toLowerCase();
-          var severityText = row.children[1] && row.children[1].textContent ? row.children[1].textContent.toLowerCase() : "";
-          var matchesQuery = !query || text.indexOf(query) >= 0;
-          var matchesSeverity = !severityQuery || severityText.indexOf(severityQuery) >= 0;
-          row.style.display = matchesQuery && matchesSeverity ? "" : "none";
-        });
-      }
-      input.addEventListener("input", applyFilters);
-      if (severityInput) {
-        severityInput.addEventListener("change", applyFilters);
-      }
-      document.querySelectorAll(".finding-detail-link").forEach(function (link) {
-        link.addEventListener("click", function (event) {
-          if (event && event.preventDefault) {
-            event.preventDefault();
-          }
-          var targetId = link.getAttribute("data-target-id") || String(link.getAttribute("href") || "").replace(/^#/, "");
-          var instanceId = link.getAttribute("data-instance-target-id") || "";
-          var target = document.getElementById(targetId) || document.getElementById(instanceId);
-          if (target && target.scrollIntoView) {
-            target.scrollIntoView({ behavior: "smooth", block: "start" });
-          }
-          if (instanceId) {
-            var instance = document.getElementById(instanceId);
-            if (instance && instance.scrollIntoView) {
-              window.setTimeout(function () {
-                instance.scrollIntoView({ behavior: "smooth", block: "center" });
-              }, 120);
-            }
-          }
-        });
-      });
-      applyFilters();
-    })();
-  </script>
   ${renderReportTableEnhancerTag()}
 </body>
 </html>`;
@@ -5671,7 +5682,7 @@ function renderCombinedHtml(scan: ScanView): string {
         <td>${location}</td>
         <td>${cwe}</td>
         <td>${owasp}</td>
-        <td><a href="#${escapeHtml(instanceTarget)}" class="alert-link" data-target-id="${escapeHtml(groupTarget ? stableAnchorId("combined-alert", groupTarget) : instanceTarget)}" data-instance-target-id="${escapeHtml(instanceTarget)}">Open</a></td>
+        <td><a href="#${escapeHtml(instanceTarget)}" class="alert-link" data-target-id="${escapeHtml(groupTarget ? stableAnchorId("combined-alert", groupTarget) : instanceTarget)}" data-instance-target-id="${escapeHtml(instanceTarget)}">View</a></td>
       </tr>`;
     })
     .join("");
@@ -5794,7 +5805,7 @@ function renderCombinedHtml(scan: ScanView): string {
   const benchmarkSection =
     qualityBenchmark && qualityBenchmark.configured
       ? `<section class="card section">
-    <h2>Scanner Quality Benchmark</h2>
+    <h2>CodeSentinelX quality benchmark</h2>
     <table>
       <thead><tr><th>Metric</th><th>Value</th></tr></thead>
       <tbody>${renderQualityBenchmarkRows(qualityBenchmark)}</tbody>
