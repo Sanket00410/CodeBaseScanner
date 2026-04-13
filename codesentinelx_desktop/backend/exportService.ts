@@ -5035,6 +5035,10 @@ function renderFixesHtml(scan: ScanView): string {
       const recommendation = String(finding.recommendation || "").trim();
       const groundingNotes = aiGroundingNotes(finding);
       const instanceBaseId = stableAnchorId("fix-instance", findingKey);
+      const wrapFixDisclosure = (title: string, body: string, open = false) =>
+        body.trim()
+          ? `<details class="fix-disclosure"${open ? " open" : ""}><summary>${escapeHtml(title)}</summary><div class="fix-disclosure-body">${body}</div></details>`
+          : "";
 
       sectionIssue.push(`<h3>[${escapeHtml(finding.severity)}] ${escapeHtml(normalizedFindingTitle(finding))}</h3>`);
       sectionIssue.push(`<table class="results"><tbody>
@@ -5044,21 +5048,18 @@ function renderFixesHtml(scan: ScanView): string {
         <tr><th>Finding ID</th><td>${findingUid ? `<code>${escapeHtml(findingUid)}</code>` : "N/A"}</td></tr>
       </tbody></table>`);
 
-      sectionPrimaryLocation.push(`<h4>Primary Location</h4>`);
       sectionPrimaryLocation.push(`<table class="results"><tbody>
         <tr><th>Full Path + Line</th><td>${escapeHtml(fullLocation)}</td></tr>
         <tr><th>Module</th><td>${escapeHtml(module || "N/A")}</td></tr>
         <tr><th>Owner</th><td>${escapeHtml(owner)}</td></tr>
       </tbody></table>`);
 
-      sectionDecision.push(`<h4>Developer Decision Block</h4>`);
       sectionDecision.push(`<table class="results"><tbody>
         <tr><th>Fix Verification Status</th><td>${escapeHtml(decisionStatus || "inconclusive")}</td></tr>
         <tr><th>Fix Confidence</th><td>${escapeHtml(confidenceLabel)} (${confidenceScore.toFixed(2)})</td></tr>
         <tr><th>Release Gate</th><td>${escapeHtml(releaseGate)}</td></tr>
       </tbody></table>`);
 
-      sectionWhatToChange.push(`<h4>What To Change</h4>`);
       if (originalCode || fixValue) {
         sectionWhatToChange.push(`<div class="code-grid">`);
         if (originalCode) {
@@ -5075,7 +5076,6 @@ function renderFixesHtml(scan: ScanView): string {
         sectionWhatToChange.push(`<p><strong>Reason this fix is correct:</strong> ${escapeHtml(groundingNotes)}</p>`);
       }
 
-      sectionValidationCommands.push(`<h4>Validation Commands (Copy-ready)</h4>`);
       const pocCommandMatch = proofText.match(/Replay Command:\s*([^\n\r]+)/i);
       if (pocCommandMatch?.[1]) {
         sectionValidationCommands.push(`<h4>PoC Validation Command</h4><pre class="evidence-scroll">${escapeHtml(String(pocCommandMatch[1]).trim())}</pre>`);
@@ -5123,7 +5123,6 @@ function renderFixesHtml(scan: ScanView): string {
           sectionValidationCommands.push(`<h4>Build/Test Command (Test)</h4><pre class="evidence-scroll">${escapeHtml(String(fixVerification.test_verification.command || ""))}</pre>`);
         }
 
-        sectionExecutionResults.push(`<h4>Execution Results</h4>`);
         if (proofText) {
           sectionExecutionResults.push(`<h4>PoC Validation Output</h4><pre class="evidence-scroll">${escapeHtml(proofText)}</pre>`);
         }
@@ -5144,7 +5143,6 @@ function renderFixesHtml(scan: ScanView): string {
         }
       }
 
-      sectionSecurityContext.push(`<h4>Security Context</h4>`);
       const cweValue = renderCweLink(finding.cwe_id || "");
       const owaspValue = String(finding.owasp_mapping || "").trim();
       const securityRows = [
@@ -5161,7 +5159,6 @@ function renderFixesHtml(scan: ScanView): string {
         sectionSecurityContext.push(`<table class="results">${securityRows}</table>`);
       }
 
-      sectionAi.push(`<h4>AI Guidance</h4>`);
       if (aiSummary) {
         sectionAi.push(`<h4>AI Remediation Summary</h4><pre class="evidence-scroll">${escapeHtml(aiSummary)}</pre>`);
       }
@@ -5173,7 +5170,6 @@ function renderFixesHtml(scan: ScanView): string {
         sectionAi.push(`<h4>AI Validation Steps</h4><pre class="evidence-scroll">${escapeHtml(aiSteps)}</pre>`);
       }
 
-      sectionMetadata.push(`<h4>Metadata & Evidence</h4>`);
       const metadataRows = [
         isRenderableDisplayValue(findingAny.report_generated_at) ? `<tr><th>Timestamp</th><td>${escapeHtml(String(findingAny.report_generated_at || ""))}</td></tr>` : "",
         hasAdvisories ? `<tr><th>CVE / Advisory IDs</th><td>${advisoryLinks}</td></tr>` : "",
@@ -5191,7 +5187,6 @@ function renderFixesHtml(scan: ScanView): string {
         sectionMetadata.push(`<table class="results">${metadataRows}</table>`);
       }
 
-      sectionInstances.push(`<h4>Instances</h4>`);
       const siblingKey = `${normalizedFindingTitle(finding)}::${String(finding.cwe_id || "").toUpperCase()}::${String(finding.owasp_mapping || "").toUpperCase()}`;
       const siblingRows = findings
         .filter((item) => `${normalizedFindingTitle(item)}::${String(item.cwe_id || "").toUpperCase()}::${String(item.owasp_mapping || "").toUpperCase()}` === siblingKey)
@@ -5214,15 +5209,15 @@ function renderFixesHtml(scan: ScanView): string {
       }
 
       blockParts.push(sectionIssue.join(""));
-      blockParts.push(sectionPrimaryLocation.join(""));
-      blockParts.push(sectionDecision.join(""));
-      blockParts.push(sectionWhatToChange.join(""));
-      blockParts.push(sectionValidationCommands.join(""));
-      blockParts.push(sectionExecutionResults.join(""));
-      blockParts.push(sectionSecurityContext.join(""));
-      blockParts.push(sectionAi.join(""));
-      blockParts.push(sectionMetadata.join(""));
-      blockParts.push(sectionInstances.join(""));
+      blockParts.push(wrapFixDisclosure("Primary Location", sectionPrimaryLocation.join(""), true));
+      blockParts.push(wrapFixDisclosure("Developer Decision Block", sectionDecision.join(""), true));
+      blockParts.push(wrapFixDisclosure("What To Change", sectionWhatToChange.join(""), true));
+      blockParts.push(wrapFixDisclosure("Validation Commands (Copy-ready)", sectionValidationCommands.join(""), false));
+      blockParts.push(wrapFixDisclosure("Execution Results", sectionExecutionResults.join(""), false));
+      blockParts.push(wrapFixDisclosure("Security Context", sectionSecurityContext.join(""), true));
+      blockParts.push(wrapFixDisclosure("AI Guidance", sectionAi.join(""), false));
+      blockParts.push(wrapFixDisclosure("Metadata & Evidence", sectionMetadata.join(""), false));
+      blockParts.push(wrapFixDisclosure("Instances", sectionInstances.join(""), false));
 
       return `<section id="${escapeHtml(anchorId)}" class="fix-detail avoid-break">
     ${blockParts.join("")}
@@ -5230,12 +5225,21 @@ function renderFixesHtml(scan: ScanView): string {
     })
     .join("");
   const hasDetailSections = Boolean(detailSections.trim());
-  const enterpriseBlockers = (enterprise?.blockers || [])
-    .slice(0, 12)
-    .map((item) => `<li>${escapeHtml(item)}</li>`)
-    .join("");
+  const uniqueReportNotes = (items: readonly unknown[]) =>
+    Array.from(
+      new Set(
+        items
+          .map((item) => String(item ?? "").trim())
+          .filter((item) => item && item !== "N/A"),
+      ),
+    );
+  const enterpriseBlockerItems = uniqueReportNotes(enterprise?.blockers || []).slice(0, 12);
+  const enterpriseCoverageItems = uniqueReportNotes(enterprise?.advisories || []).slice(0, 10);
+  const enterpriseBlockers = enterpriseBlockerItems.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+  const enterpriseCoverageNotes = enterpriseCoverageItems.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
   const hasEnterpriseData = Boolean(
-    (enterpriseBlockers.trim().length > 0) ||
+      (enterpriseBlockers.trim().length > 0) ||
+      enterpriseCoverageItems.length > 0 ||
       Number(enterprise?.readiness_score || 0) > 0 ||
       Number(enterprise?.required_tools_ready || 0) > 0 ||
       Number(enterprise?.required_tools_total || 0) > 0 ||
@@ -5328,7 +5332,7 @@ function renderFixesHtml(scan: ScanView): string {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CodeSentinelX Original and Suggested Fix Report</title>
-  <style>${exportThemeCss(".fix-link{color:var(--accent);text-decoration:underline}.toolbar{display:flex;gap:8px;align-items:center;margin:6px 0 10px;flex-wrap:wrap}input{background:rgba(7,20,36,.14);border:1px solid rgba(120,168,205,.28);border-radius:8px;color:var(--text);padding:7px 10px;min-width:300px}.fix-detail{border:1px solid rgba(120,168,205,.24);border-radius:14px;background:rgba(8,21,36,.14);padding:12px;margin-bottom:10px}.fix-detail h3{margin-bottom:8px}.fix-detail h4{margin:10px 0 6px;font-size:12px;line-height:1.2;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}.fix-detail .results th,.fix-detail .results td{padding:8px 10px}.fix-detail .code-grid{gap:10px}.fix-detail .code-grid > div{min-width:0}.fix-detail .code-grid pre,.fix-detail pre.evidence-scroll{margin:0}.fix-detail.is-active{outline:2px solid rgba(94,234,212,.38);box-shadow:0 0 0 1px rgba(94,234,212,.18),0 18px 32px rgba(15,23,42,.22)}.evidence-scroll{max-height:280px;overflow:auto;white-space:pre;word-break:normal;scrollbar-width:thin;scrollbar-color:rgba(128,169,196,.22) transparent}.evidence-scroll::-webkit-scrollbar{height:8px;width:8px}.evidence-scroll::-webkit-scrollbar-track{background:transparent}.evidence-scroll::-webkit-scrollbar-thumb{background:rgba(128,169,196,.2);border-radius:999px}.evidence-scroll::-webkit-scrollbar-thumb:hover{background:rgba(128,169,196,.32)}")}</style>
+  <style>${exportThemeCss(".fix-link{color:var(--accent);text-decoration:underline}.toolbar{display:flex;gap:8px;align-items:center;margin:6px 0 10px;flex-wrap:wrap}input{background:rgba(7,20,36,.14);border:1px solid rgba(120,168,205,.28);border-radius:8px;color:var(--text);padding:7px 10px;min-width:300px}.fix-detail{border:1px solid rgba(120,168,205,.24);border-radius:14px;background:rgba(8,21,36,.14);padding:12px;margin-bottom:10px}.fix-detail h3{margin-bottom:8px}.fix-detail h4{margin:10px 0 6px;font-size:12px;line-height:1.2;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}.fix-detail .results th,.fix-detail .results td{padding:8px 10px}.fix-detail .code-grid{gap:10px}.fix-detail .code-grid > div{min-width:0}.fix-detail .code-grid pre,.fix-detail pre.evidence-scroll{margin:0}.fix-detail.is-active{outline:2px solid rgba(94,234,212,.38);box-shadow:0 0 0 1px rgba(94,234,212,.18),0 18px 32px rgba(15,23,42,.22)}.fix-disclosure{border:1px solid rgba(120,168,205,.22);border-radius:12px;background:rgba(9,22,37,.1);margin:10px 0 0;overflow:hidden}.fix-disclosure>summary{cursor:pointer;list-style:none;padding:10px 12px;font-weight:700;color:var(--text);display:flex;align-items:center;justify-content:space-between;gap:12px}.fix-disclosure>summary::-webkit-details-marker{display:none}.fix-disclosure>summary::after{content:'+';color:var(--muted);font-size:16px;line-height:1}.fix-disclosure[open]>summary{border-bottom:1px solid rgba(120,168,205,.14)}.fix-disclosure[open]>summary::after{content:'–'}.fix-disclosure-body{padding:12px}.evidence-scroll{max-height:280px;overflow:auto;white-space:pre;word-break:normal;scrollbar-width:thin;scrollbar-color:rgba(128,169,196,.22) transparent}.evidence-scroll::-webkit-scrollbar{height:8px;width:8px}.evidence-scroll::-webkit-scrollbar-track{background:transparent}.evidence-scroll::-webkit-scrollbar-thumb{background:rgba(128,169,196,.2);border-radius:999px}.evidence-scroll::-webkit-scrollbar-thumb:hover{background:rgba(128,169,196,.32)}")}</style>
 </head>
 <body>
   <main class="report-shell">
@@ -5378,11 +5382,8 @@ function renderFixesHtml(scan: ScanView): string {
                 </tbody>
               </table>
             </div>
-            ${enterpriseBlockers ? `<div style="padding:0 14px 14px"><h3>Enterprise Blockers</h3><ul>${enterpriseBlockers}</ul></div>` : ""}
-            ${enterprise?.advisories?.length ? `<div style="padding:0 14px 14px"><h3>Coverage Notes</h3><ul>${(enterprise?.advisories || [])
-              .slice(0, 10)
-              .map((item) => `<li>${escapeHtml(String(item))}</li>`)
-              .join("")}</ul></div>` : ""}
+            ${enterpriseBlockers ? `<details class="fix-disclosure" open style="margin:0 14px 14px"><summary>Enterprise Blockers (${enterpriseBlockerItems.length})</summary><div class="fix-disclosure-body"><ul>${enterpriseBlockers}</ul></div></details>` : ""}
+            ${enterpriseCoverageNotes ? `<details class="fix-disclosure" style="margin:0 14px 14px"><summary>Coverage Notes (${enterpriseCoverageItems.length})</summary><div class="fix-disclosure-body"><ul>${enterpriseCoverageNotes}</ul></div></details>` : ""}
           </div>` : ""}
           <div class="table-frame">
             <h2 style="padding:12px 14px 0">Data Quality</h2>
