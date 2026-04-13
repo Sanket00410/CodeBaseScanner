@@ -368,6 +368,14 @@ const ROLE_EXPORT_PRESETS: Record<UserRole, RoleExportPreset> = {
   },
 };
 
+const ROLE_SEVERITY_POLICY: Record<UserRole, string> = {
+  Admin: "All severities remain visible with full evidence.",
+  "Security Analyst": "All severities remain visible for the selected security scope.",
+  Developer: "All severities remain visible for the remediation scope, ordered by fix priority.",
+  Auditor: "All severities remain visible with audit redaction applied to sensitive detail.",
+  Management: "No raw findings; only aggregated risk and executive summaries are shown.",
+};
+
 const LANDING_HIGHLIGHTS = [
   "Codebase-only secure analysis designed to stay office-safe and audit-friendly.",
   "Parser, dataflow, dependency, and evidence-backed findings instead of loose pattern spam.",
@@ -3995,6 +4003,7 @@ export default function App(): React.JSX.Element {
           <p className="role-hint">
             This role will scan: {ROLE_SCAN_SCOPE[role].join(", ")}. Export scope stays locked to the same role.
           </p>
+          <p className="role-hint">Severity policy: {ROLE_SEVERITY_POLICY[role]}</p>
           <p className="role-hint">
             Access: scan={roleCaps.canRunScan ? "yes" : "no"} | review={roleCaps.canReviewFindings ? "yes" : "no"} |
             catalog={roleCaps.canManageTools ? "manage" : "read-only"} | reset={roleCaps.canProvisionTools ? "yes" : "no"}

@@ -310,6 +310,59 @@ def test_report_builder_annotates_stable_alert_grouping_and_preserves_it_for_aud
     assert audit_scope[0]["alert_title_group_uid"] == scoped[0]["alert_title_group_uid"]
 
 
+def test_role_scoped_findings_preserve_canonical_severity_for_non_management_roles(tmp_path: Path) -> None:
+    findings = [
+        Finding(
+            vulnerability_type="Cross-Site Scripting",
+            severity=Severity.LOW,
+            file_path="ui.js",
+            line_number=8,
+            business_impact="UI trust boundary exposure",
+            recommendation="Escape output",
+            reference="https://owasp.org/",
+            owasp_category="A03:2021 - Injection",
+            description="Untrusted data reaches render sink",
+            rule_id="TEST-XSS-LOW",
+            cwe="CWE-79",
+            evidence="element.innerHTML = input",
+        ),
+        Finding(
+            vulnerability_type="SQL Injection",
+            severity=Severity.CRITICAL,
+            file_path="api.py",
+            line_number=19,
+            business_impact="Database compromise",
+            recommendation="Use parameterized queries",
+            reference="https://owasp.org/",
+            owasp_category="A03:2021 - Injection",
+            description="Unsafe SQL concatenation",
+            rule_id="TEST-SQL-CRIT",
+            cwe="CWE-89",
+            evidence='cursor.execute("SELECT * FROM users WHERE id = " + user_id)',
+        ),
+    ]
+    report = build_report(
+        ScanResult(
+            target_path=str(tmp_path),
+            started_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(timezone.utc),
+            files_scanned=2,
+            findings=findings,
+            errors=[],
+            existing_security_measures=[],
+            toolchain_status={},
+        )
+    )
+
+    scoped = report["vulnerability_fixed_code_report"]["findings"]
+    for role in ["Admin", "Security Analyst", "Developer", "Auditor"]:
+        scoped_role = scope_findings_for_role(scoped, role)
+        assert [item["severity"] for item in scoped_role] == [item["severity"] for item in scoped]
+
+    management_scope = scope_findings_for_role(scoped, "Management")
+    assert management_scope == []
+
+
 def test_fix_report_queue_rows_link_to_detail_cards(tmp_path: Path) -> None:
     (tmp_path / "app.py").write_text(
         "user_id = request.args.get('id')\n"
