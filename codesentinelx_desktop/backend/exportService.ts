@@ -3274,8 +3274,14 @@ function renderExistingHtml(scan: ScanView): string {
       sub: "Framework families referenced by the detected controls",
     },
   ]);
+  const wrapDisclosure = (title: string, body: string, open = false) =>
+    body.trim()
+      ? `<details class="report-disclosure"${open ? " open" : ""}><summary>${escapeHtml(title)}</summary><div class="section-body">${body}</div></details>`
+      : "";
   const summarySection = hasSummaryRows
-    ? `<div class="table-frame">
+    ? wrapDisclosure(
+        `Coverage Summary (${summaryRows.length})`,
+        `<div class="table-frame section-frame">
             <h2 style="padding:12px 14px 0">Coverage Summary</h2>
             <div class="table-scroll">
               <table>
@@ -3288,10 +3294,14 @@ function renderExistingHtml(scan: ScanView): string {
               <hr class="section-divider" />
               ${coverageLevelBars}
             </div>
-          </div>`
+          </div>`,
+        true,
+      )
     : "";
   const controlsSection = hasControlRows
-    ? `<div class="table-frame">
+    ? wrapDisclosure(
+        `Implemented Controls (${controlRows.length})`,
+        `<div class="table-frame section-frame">
             <h2 style="padding:12px 14px 0">Implemented Controls</h2>
             <div class="toolbar" style="padding:0 14px 8px"><input id="controlSearch" type="search" placeholder="Search control, category, coverage, or standards" /></div>
           <div class="table-scroll">
@@ -3300,10 +3310,14 @@ function renderExistingHtml(scan: ScanView): string {
                 <tbody>${controlRows.join("")}</tbody>
               </table>
             </div>
-          </div>`
+          </div>`,
+        true,
+      )
     : "";
   const controlEvidenceSection = hasControlEvidenceRows
-    ? `<div class="table-frame">
+    ? wrapDisclosure(
+        `Control Evidence (File/Line)`,
+        `<div class="table-frame section-frame">
             <h2 style="padding:12px 14px 0">Control Evidence (File/Line)</h2>
             <div class="toolbar" style="padding:0 14px 8px"><input id="controlEvidenceSearch" type="search" placeholder="Search control evidence by file, line, or snippet" /></div>
           <div class="table-scroll">
@@ -3312,18 +3326,26 @@ function renderExistingHtml(scan: ScanView): string {
                 <tbody>${controlEvidenceRows}</tbody>
               </table>
             </div>
-          </div>`
+          </div>`,
+        false,
+      )
     : "";
   const profileCoverageSection = hasProfileFrameworks
-    ? `<div class="table-frame">
+    ? wrapDisclosure(
+        `Profile-Based Coverage`,
+        `<div class="table-frame section-frame">
             <h2 style="padding:12px 14px 0">Profile-Based Coverage</h2>
             <div class="toolbar" style="padding:0 14px 8px"><input id="profileSearch" type="search" placeholder="Search profile IDs, categories, statuses, findings, or controls" /></div>
             <div style="padding:0 14px 14px">${profileFrameworks}</div>
-          </div>`
+          </div>`,
+        false,
+      )
     : "";
   const complianceRows = renderComplianceMatrixRows(report.compliance_matrix || []);
   const complianceSection = complianceRows
-    ? `<div class="table-frame">
+    ? wrapDisclosure(
+        `Compliance Matrix`,
+        `<div class="table-frame section-frame">
             <h2 style="padding:12px 14px 0">Compliance Matrix</h2>
             <div class="toolbar" style="padding:0 14px 8px"><input id="complianceSearch" type="search" placeholder="Search standard, control count, or status" /></div>
             <div class="table-scroll">
@@ -3332,7 +3354,9 @@ function renderExistingHtml(scan: ScanView): string {
                 <tbody>${complianceRows}</tbody>
               </table>
             </div>
-          </div>`
+          </div>`,
+        false,
+      )
     : "";
 
   return `<!doctype html>
@@ -5764,25 +5788,28 @@ function renderCombinedHtml(scan: ScanView): string {
           </tr>`;
         })
         .join("");
-      return `<section id="${escapeHtml(combinedAlertAnchorByGroup.get(group.id) || stableAnchorId("combined-alert", group.id))}" class="fix-detail" style="margin:0 0 12px">
-        <h3>[${escapeHtml(group.severity)}] ${escapeHtml(group.title)} (${group.count})</h3>
-        <table class="results">
-          <tr><th width="20%">CWE</th><td>${renderCweLink(leadCwe)}</td></tr>
-          <tr><th>OWASP</th><td>${escapeHtml(leadOwasp)}</td></tr>
-          <tr><th>CVSS</th><td>${renderCvssLink(lead.cvss_score)}</td></tr>
-          ${isRenderableDisplayValue(lead.description) ? `<tr><th>Description</th><td>${escapeHtml(String(lead.description || ""))}</td></tr>` : ""}
-          ${isRenderableDisplayValue(lead.business_impact) ? `<tr><th>Business Impact</th><td>${escapeHtml(String(lead.business_impact || ""))}</td></tr>` : ""}
-          ${isRenderableDisplayValue(lead.recommendation) ? `<tr><th>Recommendation</th><td>${escapeHtml(String(lead.recommendation || ""))}</td></tr>` : ""}
-          <tr><th>Top Location</th><td>${escapeHtml(fullFindingLocation(scan.report.executive_summary.target_path, lead.file_path, Number(lead.line_number || 1)))}</td></tr>
-        </table>
-        <h4>Instances</h4>
-        <div class="table-scroll">
-          <table>
-            <thead><tr><th>#</th><th>File / Line</th><th>Owner</th><th>Workflow Status</th><th>Tool</th></tr></thead>
-            <tbody>${instanceRows || "<tr><td colspan='5'>No instances.</td></tr>"}</tbody>
-          </table>
+      return `<details class="report-disclosure combined-issue" id="${escapeHtml(combinedAlertAnchorByGroup.get(group.id) || stableAnchorId("combined-alert", group.id))}">
+        <summary>[${escapeHtml(group.severity)}] ${escapeHtml(group.title)} (${group.count})</summary>
+        <div class="section-body">
+          <div class="fix-detail" style="margin:0">
+            <table class="results">
+              <tr><th width="20%">CWE</th><td>${renderCweLink(leadCwe)}</td></tr>
+              <tr><th>OWASP</th><td>${escapeHtml(leadOwasp)}</td></tr>
+              <tr><th>CVSS</th><td>${renderCvssLink(lead.cvss_score)}</td></tr>
+              ${isRenderableDisplayValue(lead.description) ? `<tr><th>Description</th><td>${escapeHtml(String(lead.description || ""))}</td></tr>` : ""}
+              ${isRenderableDisplayValue(lead.business_impact) ? `<tr><th>Business Impact</th><td>${escapeHtml(String(lead.business_impact || ""))}</td></tr>` : ""}
+              ${isRenderableDisplayValue(lead.recommendation) ? `<tr><th>Recommendation</th><td>${escapeHtml(String(lead.recommendation || ""))}</td></tr>` : ""}
+              <tr><th>Top Location</th><td>${escapeHtml(fullFindingLocation(scan.report.executive_summary.target_path, lead.file_path, Number(lead.line_number || 1)))}</td></tr>
+            </table>
+            <div class="table-scroll">
+              <table>
+                <thead><tr><th>#</th><th>File / Line</th><th>Owner</th><th>Workflow Status</th><th>Tool</th></tr></thead>
+                <tbody>${instanceRows || "<tr><td colspan='5'>No instances.</td></tr>"}</tbody>
+              </table>
+            </div>
+          </div>
         </div>
-      </section>`;
+      </details>`;
     })
     .join("");
   const timingRows = (toolchainExecution?.timing_breakdown || [])
@@ -5830,29 +5857,34 @@ function renderCombinedHtml(scan: ScanView): string {
     null;
   const benchmarkSection =
     qualityBenchmark && qualityBenchmark.configured
-      ? `<section class="card section">
-    <h2>CodeSentinelX quality benchmark</h2>
-    <table>
-      <thead><tr><th>Metric</th><th>Value</th></tr></thead>
-      <tbody>${renderQualityBenchmarkRows(qualityBenchmark)}</tbody>
-    </table>
-    ${
-      (qualityBenchmark.gate_blockers || []).length
-        ? `<h3>Benchmark Blockers</h3><ul>${(qualityBenchmark.gate_blockers || [])
-            .slice(0, 4)
-            .map((item) => `<li>${escapeHtml(String(item))}</li>`)
-            .join("")}</ul>`
-        : ""
-    }
-    ${
-      (qualityBenchmark.gate_advisories || []).length
-        ? `<h3>Benchmark Advisories</h3><ul>${(qualityBenchmark.gate_advisories || [])
-            .slice(0, 4)
-            .map((item) => `<li>${escapeHtml(String(item))}</li>`)
-            .join("")}</ul>`
-        : ""
-    }
-  </section>`
+      ? `<details class="report-disclosure">
+    <summary>CodeSentinelX quality benchmark</summary>
+    <div class="section-body">
+      <div class="card section section-frame">
+        <h2>CodeSentinelX quality benchmark</h2>
+        <table>
+          <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+          <tbody>${renderQualityBenchmarkRows(qualityBenchmark)}</tbody>
+        </table>
+        ${
+          (qualityBenchmark.gate_blockers || []).length
+            ? `<h3>Benchmark Blockers</h3><ul>${(qualityBenchmark.gate_blockers || [])
+                .slice(0, 4)
+                .map((item) => `<li>${escapeHtml(String(item))}</li>`)
+                .join("")}</ul>`
+            : ""
+        }
+        ${
+          (qualityBenchmark.gate_advisories || []).length
+            ? `<h3>Benchmark Advisories</h3><ul>${(qualityBenchmark.gate_advisories || [])
+                .slice(0, 4)
+                .map((item) => `<li>${escapeHtml(String(item))}</li>`)
+                .join("")}</ul>`
+            : ""
+        }
+      </div>
+    </div>
+  </details>`
       : "";
   const cards = renderStatGrid([
     {
@@ -5886,6 +5918,72 @@ function renderCombinedHtml(scan: ScanView): string {
       sub: String(summary.risk_rating || scan.report.executive_summary.risk_rating || ""),
     },
   ]);
+  const wrapDisclosure = (title: string, body: string, open = false) =>
+    body.trim()
+      ? `<details class="report-disclosure"${open ? " open" : ""}><summary>${escapeHtml(title)}</summary><div class="section-body">${body}</div></details>`
+      : "";
+  const severitySection = wrapDisclosure(
+    `Severity Distribution (${findings.length})`,
+    `<div class="table-frame section-frame">
+          <h2 style="padding:12px 14px 0">Severity Distribution</h2>
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th>Severity</th><th>Count</th></tr></thead>
+              <tbody>${severityRows || `<tr><td colspan="2">No findings in this scope.</td></tr>`}</tbody>
+            </table>
+          </div>
+        </div>`,
+    true,
+  );
+  const enterpriseSection = enterpriseRows
+    ? wrapDisclosure(
+        "Enterprise Assurance",
+        `<div class="table-frame section-frame">
+          <h2 style="padding:12px 14px 0">Enterprise Assurance</h2>
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+              <tbody>${enterpriseRows}</tbody>
+            </table>
+          </div>
+        </div>`,
+        false,
+      )
+    : "";
+  const timingSection = timingRows
+    ? wrapDisclosure(
+        `Analyzer Runtime Breakdown (${toolchainExecution?.timing_breakdown?.length || 0})`,
+        `<section class="section">
+      <div class="table-frame section-frame">
+        <h2 style="padding:12px 14px 0">Analyzer Runtime Breakdown</h2>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Analyzer</th><th>Status</th><th>Attempted</th><th>Duration (ms)</th><th>Findings</th><th>Errors</th><th>Avg ms/Finding</th></tr></thead>
+            <tbody>${timingRows}</tbody>
+          </table>
+        </div>
+      </div>
+    </section>`,
+        false,
+      )
+    : "";
+  const dataQualitySection = dataQualityRows
+    ? wrapDisclosure(
+        `Data Quality (${dataQualityRows.length})`,
+        `<section class="section">
+      <div class="table-frame section-frame">
+        <h2 style="padding:12px 14px 0">Data Quality</h2>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+            <tbody>${dataQualityRows}</tbody>
+          </table>
+        </div>
+      </div>
+    </section>`,
+        false,
+      )
+    : "";
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -5910,26 +6008,8 @@ function renderCombinedHtml(scan: ScanView): string {
 
     <section class="section">
       <div class="section-grid">
-        <div class="table-frame">
-          <h2 style="padding:12px 14px 0">Severity Distribution</h2>
-          <div class="table-scroll">
-            <table>
-              <thead><tr><th>Severity</th><th>Count</th></tr></thead>
-              <tbody>${severityRows || `<tr><td colspan="2">No findings in this scope.</td></tr>`}</tbody>
-            </table>
-          </div>
-        </div>
-        ${enterpriseRows
-          ? `<div class="table-frame">
-          <h2 style="padding:12px 14px 0">Enterprise Assurance</h2>
-          <div class="table-scroll">
-            <table>
-              <thead><tr><th>Metric</th><th>Value</th></tr></thead>
-              <tbody>${enterpriseRows}</tbody>
-            </table>
-          </div>
-        </div>`
-          : ""}
+        ${severitySection}
+        ${enterpriseSection}
       </div>
     </section>
 
@@ -5974,33 +6054,9 @@ function renderCombinedHtml(scan: ScanView): string {
     </section>`
       : ""}
 
-    ${timingRows
-      ? `<section class="section">
-      <div class="table-frame">
-        <h2 style="padding:12px 14px 0">Analyzer Runtime Breakdown</h2>
-        <div class="table-scroll">
-          <table>
-            <thead><tr><th>Analyzer</th><th>Status</th><th>Attempted</th><th>Duration (ms)</th><th>Findings</th><th>Errors</th><th>Avg ms/Finding</th></tr></thead>
-            <tbody>${timingRows}</tbody>
-          </table>
-        </div>
-      </div>
-    </section>`
-      : ""}
+    ${timingSection}
 
-    ${dataQualityRows
-      ? `<section class="section">
-      <div class="table-frame">
-        <h2 style="padding:12px 14px 0">Data Quality</h2>
-        <div class="table-scroll">
-          <table>
-            <thead><tr><th>Metric</th><th>Value</th></tr></thead>
-            <tbody>${dataQualityRows}</tbody>
-          </table>
-        </div>
-      </div>
-    </section>`
-      : ""}
+    ${dataQualitySection}
 
     ${benchmarkSection}
   </main>
@@ -8096,6 +8152,14 @@ function exportThemeCss(extra = ""): string {
     .sev-Low,.sev-low{background:rgba(103,184,255,0.14);color:#ddecff}
     .sev-Info,.sev-info{background:rgba(112,213,171,0.14);color:#dffaf0}
     .table-note{margin-top:10px;color:var(--muted);font-size:12px;line-height:1.55}
+    .report-disclosure{border:1px solid rgba(120,168,205,.2);border-radius:14px;background:rgba(7,19,31,.12);margin:0 0 14px;overflow:hidden}
+    .report-disclosure>summary{cursor:pointer;list-style:none;padding:10px 12px;font-weight:700;color:var(--text);display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .report-disclosure>summary::-webkit-details-marker{display:none}
+    .report-disclosure>summary::after{content:'+';color:var(--muted);font-size:16px;line-height:1}
+    .report-disclosure[open]>summary{border-bottom:1px solid rgba(120,168,205,.12)}
+    .report-disclosure[open]>summary::after{content:'–'}
+    .report-disclosure .section-frame,.report-disclosure .table-frame{border:0;border-radius:0;background:transparent}
+    .report-disclosure .section-body,.report-disclosure .table-body{padding:12px}
     .kpi-bars{display:grid;gap:8px}
     .kpi-row{display:grid;grid-template-columns:minmax(180px,32%) 1fr auto;gap:12px;align-items:center}
     .kpi-label{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
