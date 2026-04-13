@@ -1308,6 +1308,8 @@ function escapeInlineJson(value: unknown): string {
 }
 
 export class ExportService {
+  private readonly htmlCache = new Map<string, string>();
+
   constructor(private readonly outputDir: string) {
     mkdirSync(this.outputDir, { recursive: true });
   }
@@ -1498,7 +1500,7 @@ export class ExportService {
     role?: ExportRequest["role"],
   ): string {
     assertPreviewAllowed(scan, reportType, role);
-    return this.toHtml(scan, reportType, reportStyle);
+    return this.getCachedHtml(scan, reportType, reportStyle, role);
   }
 
   async exportReport(scan: ScanView, request: ExportRequest): Promise<string> {
@@ -1522,7 +1524,7 @@ export class ExportService {
       return destination;
     }
     if (request.format === "html") {
-      await fs.writeFile(destination, this.toHtml(scan, request.reportType, request.reportStyle), "utf-8");
+      await fs.writeFile(destination, this.getCachedHtml(scan, request.reportType, request.reportStyle, request.role), "utf-8");
       return destination;
     }
     if (request.format === "sarif") {
@@ -1537,6 +1539,29 @@ export class ExportService {
       return destination;
     }
     throw new Error(`Unsupported export format: ${request.format}`);
+  }
+
+  private getCachedHtml(
+    scan: ScanView,
+    reportType: ExportRequest["reportType"],
+    reportStyle?: ExportRequest["reportStyle"],
+    role?: ExportRequest["role"],
+  ): string {
+    const cacheKey = [
+      scan.scanId,
+      reportType,
+      reportStyle || "",
+      normalizeReportRole(role ?? resolveReportRole(scan)),
+      scan.startedAt || "",
+      scan.completedAt || "",
+    ].join("::");
+    const cached = this.htmlCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    const html = this.toHtml(scan, reportType, reportStyle);
+    this.htmlCache.set(cacheKey, html);
+    return html;
   }
 
   private selectPayload(scan: ScanView, reportType: ExportRequest["reportType"]): unknown {

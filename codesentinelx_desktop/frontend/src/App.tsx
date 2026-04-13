@@ -713,7 +713,7 @@ export default function App(): React.JSX.Element {
   const [lastExport, setLastExport] = useState("");
   const [isExporting, setIsExporting] = useState(false);
   const [vulnerabilityReportStyle, setVulnerabilityReportStyle] = useState<ReportStyle>("classic");
-  const [reportPreviewHtml, setReportPreviewHtml] = useState("");
+  const [reportPreviewSrc, setReportPreviewSrc] = useState("");
   const [previewReportType, setPreviewReportType] = useState<ExportType | "">("");
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [dashboardSection, setDashboardSection] = useState<DashboardSection>("overview");
@@ -1699,13 +1699,13 @@ export default function App(): React.JSX.Element {
     const reportType = selectedRoleExport.reportType;
     setPreviewReportType(reportType);
     try {
-      const html = await window.codeSentinelX.renderReportHtml({
+      const previewSrc = await window.codeSentinelX.renderReportHtml({
         scanId: scan.scanId,
         role,
         reportType,
         reportStyle: reportType === "vulnerability" ? vulnerabilityReportStyle : undefined,
       });
-      setReportPreviewHtml(html);
+      setReportPreviewSrc(previewSrc);
       const styleLabel = reportType === "vulnerability" ? ` (${vulnerabilityReportStyle})` : "";
       setStatusText(`Loaded ${selectedRoleExport.title} preview${styleLabel}.`);
       setTab("dashboard");
@@ -1718,9 +1718,9 @@ export default function App(): React.JSX.Element {
   };
 
   const closePreview = (): void => {
-    setReportPreviewHtml("");
-    setPreviewReportType("");
-    setIsPreviewLoading(false);
+      setReportPreviewSrc("");
+      setPreviewReportType("");
+      setIsPreviewLoading(false);
   };
 
   const closeWindowMenu = (): void => {
@@ -2119,7 +2119,7 @@ export default function App(): React.JSX.Element {
       setSelectedFindingId("");
       setProgress(0);
       setLastExport("");
-      setReportPreviewHtml("");
+      setReportPreviewSrc("");
       setPreviewReportType("");
       setScanLogs([]);
 
@@ -4058,7 +4058,7 @@ export default function App(): React.JSX.Element {
           {lastExport && <p className="export-path">Last export: {lastExport}</p>}
         </header>
 
-        {(isPreviewLoading || reportPreviewHtml) && (
+        {(isPreviewLoading || reportPreviewSrc) && (
           <section className="panel preview-dock">
             <div className="preview-dock-head">
               <h3>
@@ -4075,12 +4075,7 @@ export default function App(): React.JSX.Element {
             {isPreviewLoading ? (
               <p className="muted-text">Rendering preview...</p>
             ) : (
-              <iframe
-                className="report-preview-frame"
-                srcDoc={reportPreviewHtml}
-                title="CodeSentinelX Report Preview"
-                sandbox="allow-same-origin allow-scripts"
-              />
+              <iframe className="report-preview-frame" src={reportPreviewSrc} title="CodeSentinelX Report Preview" sandbox="allow-same-origin allow-scripts" />
             )}
           </section>
         )}
