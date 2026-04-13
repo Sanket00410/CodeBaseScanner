@@ -5102,11 +5102,11 @@ function renderFixesHtml(scan: ScanView): string {
 
       const pocCommandMatch = proofText.match(/Replay Command:\s*([^\n\r]+)/i);
       if (pocCommandMatch?.[1]) {
-        sectionValidationCommands.push(`<h4>PoC Validation Command</h4><pre class="evidence-scroll">${escapeHtml(String(pocCommandMatch[1]).trim())}</pre>`);
+      sectionValidationCommands.push(`<div class="fix-subtitle">PoC Validation Command</div><pre class="evidence-scroll">${escapeHtml(String(pocCommandMatch[1]).trim())}</pre>`);
       }
       const activePocStatus = activePocStatusText(activePoc);
       if (activePoc && String(activePoc.status || activePoc.command || activePoc.output || "").trim() && activePocStatus !== "not_executed") {
-        sectionValidationCommands.push(`<h4>Active PoC Command</h4><pre class="evidence-scroll">${escapeHtml(activePocCommandText(activePoc))}</pre>`);
+        sectionValidationCommands.push(`<div class="fix-subtitle">Active PoC Command</div><pre class="evidence-scroll">${escapeHtml(activePocCommandText(activePoc))}</pre>`);
         const activePocAny = activePoc as unknown as Record<string, unknown>;
         const pocReason = String(activePocAny.reason || "").trim();
         const pocResolvedFile = String(activePocAny.resolved_file || "").trim();
@@ -5138,32 +5138,32 @@ function renderFixesHtml(scan: ScanView): string {
         fixVerification.test_verification
       )) {
         if (String(fixVerification.post_fix_execution?.command || "").trim()) {
-          sectionValidationCommands.push(`<h4>Post-Fix Verification Command</h4><pre class="evidence-scroll">${escapeHtml(String(fixVerification.post_fix_execution?.command || ""))}</pre>`);
+          sectionValidationCommands.push(`<div class="fix-subtitle">Post-Fix Verification Command</div><pre class="evidence-scroll">${escapeHtml(String(fixVerification.post_fix_execution?.command || ""))}</pre>`);
         }
         if (fixVerification.build_verification && (String(fixVerification.build_verification.command || "").trim() || String(fixVerification.build_verification.output || "").trim())) {
-          sectionValidationCommands.push(`<h4>Build/Test Command (Build)</h4><pre class="evidence-scroll">${escapeHtml(String(fixVerification.build_verification.command || ""))}</pre>`);
+          sectionValidationCommands.push(`<div class="fix-subtitle">Build/Test Command (Build)</div><pre class="evidence-scroll">${escapeHtml(String(fixVerification.build_verification.command || ""))}</pre>`);
         }
         if (fixVerification.test_verification && (String(fixVerification.test_verification.command || "").trim() || String(fixVerification.test_verification.output || "").trim())) {
-          sectionValidationCommands.push(`<h4>Build/Test Command (Test)</h4><pre class="evidence-scroll">${escapeHtml(String(fixVerification.test_verification.command || ""))}</pre>`);
+          sectionValidationCommands.push(`<div class="fix-subtitle">Build/Test Command (Test)</div><pre class="evidence-scroll">${escapeHtml(String(fixVerification.test_verification.command || ""))}</pre>`);
         }
 
         if (proofText) {
-          sectionExecutionResults.push(`<h4>PoC Validation Output</h4><pre class="evidence-scroll">${escapeHtml(proofText)}</pre>`);
+          sectionExecutionResults.push(`<div class="fix-subtitle">PoC Validation Output</div><pre class="evidence-scroll">${escapeHtml(proofText)}</pre>`);
         }
         if (activePoc && String(activePoc.output || "").trim() && activeStatus !== "skipped") {
-          sectionExecutionResults.push(`<h4>Active PoC Output</h4><pre class="evidence-scroll">${escapeHtml(activePocOutputText(activePoc))}</pre>`);
+          sectionExecutionResults.push(`<div class="fix-subtitle">Active PoC Output</div><pre class="evidence-scroll">${escapeHtml(activePocOutputText(activePoc))}</pre>`);
         }
         if (String(fixVerification.post_fix_execution?.output || "").trim()) {
-          sectionExecutionResults.push(`<h4>Post-Fix Output</h4><pre class="evidence-scroll">${escapeHtml(String(fixVerification.post_fix_execution?.output || ""))}</pre>`);
+          sectionExecutionResults.push(`<div class="fix-subtitle">Post-Fix Output</div><pre class="evidence-scroll">${escapeHtml(String(fixVerification.post_fix_execution?.output || ""))}</pre>`);
         }
         if (fixVerification.build_verification && String(fixVerification.build_verification.output || "").trim()) {
-          sectionExecutionResults.push(`<h4>Build/Test Output (Build)</h4><pre class="evidence-scroll">${escapeHtml(String(fixVerification.build_verification.output || ""))}</pre>`);
+          sectionExecutionResults.push(`<div class="fix-subtitle">Build/Test Output (Build)</div><pre class="evidence-scroll">${escapeHtml(String(fixVerification.build_verification.output || ""))}</pre>`);
         }
         if (fixVerification.test_verification && String(fixVerification.test_verification.output || "").trim()) {
-          sectionExecutionResults.push(`<h4>Build/Test Output (Test)</h4><pre class="evidence-scroll">${escapeHtml(String(fixVerification.test_verification.output || ""))}</pre>`);
+          sectionExecutionResults.push(`<div class="fix-subtitle">Build/Test Output (Test)</div><pre class="evidence-scroll">${escapeHtml(String(fixVerification.test_verification.output || ""))}</pre>`);
         }
         if (String(fixVerification.reason || "").trim()) {
-          sectionExecutionResults.push(`<p><strong>Verification Reason:</strong> ${escapeHtml(fixVerificationReasonText(fixVerification))}</p>`);
+        sectionExecutionResults.push(`<p><strong>Verification Reason:</strong> ${escapeHtml(fixVerificationReasonText(fixVerification))}</p>`);
         }
       }
 
@@ -5184,14 +5184,14 @@ function renderFixesHtml(scan: ScanView): string {
       }
 
       if (aiSummary) {
-        sectionAi.push(`<h4>AI Remediation Summary</h4><pre class="evidence-scroll">${escapeHtml(aiSummary)}</pre>`);
+        sectionAi.push(`<div class="fix-subtitle">AI Remediation Summary</div><pre class="evidence-scroll">${escapeHtml(aiSummary)}</pre>`);
       }
       if (String(aiFixConfidenceLabel(finding) || "").trim()) {
         sectionAi.push(`<p><strong>AI Fix Confidence:</strong> ${escapeHtml(aiFixConfidenceLabel(finding))} (${aiFixConfidenceScore(finding).toFixed(2)}) | <strong>Grounded:</strong> ${escapeHtml(aiGroundingStatus(finding))} | <strong>Source:</strong> ${escapeHtml(String(finding.ai_fix_source || "local-evidence-driven:evidence-rules-v1"))}</p>`);
         sectionAi.push(`<p><strong>Grounding Notes:</strong> ${escapeHtml(aiGroundingNotes(finding))}</p>`);
       }
       if (aiSteps) {
-        sectionAi.push(`<h4>AI Validation Steps</h4><pre class="evidence-scroll">${escapeHtml(aiSteps)}</pre>`);
+        sectionAi.push(`<div class="fix-subtitle">AI Validation Steps</div><pre class="evidence-scroll">${escapeHtml(aiSteps)}</pre>`);
       }
 
       const metadataRows = [
@@ -5229,7 +5229,7 @@ function renderFixesHtml(scan: ScanView): string {
       sectionInstances.push(`<div class="table-scroll"><table><thead><tr><th>File / Line</th><th>Workflow Status</th><th>Tool</th></tr></thead><tbody>${siblingRows || "<tr><td colspan='3'>No instances.</td></tr>"}</tbody></table></div>`);
 
       if (fixArtifactKind(finding) === "exact_patch" && patchPreview) {
-        sectionMetadata.push(`<h4>Patch Preview</h4><pre>${escapeHtml(truncateForReport(patchPreview, 1400))}</pre>`);
+        sectionMetadata.push(`<div class="fix-subtitle">Patch Preview</div><pre>${escapeHtml(truncateForReport(patchPreview, 1400))}</pre>`);
       }
 
       blockParts.push(sectionIssue.join(""));
@@ -5356,7 +5356,7 @@ function renderFixesHtml(scan: ScanView): string {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CodeSentinelX Original and Suggested Fix Report</title>
-  <style>${exportThemeCss(".fix-link{color:var(--accent);text-decoration:underline}.toolbar{display:flex;gap:8px;align-items:center;margin:6px 0 10px;flex-wrap:wrap}input{background:rgba(7,20,36,.14);border:1px solid rgba(120,168,205,.28);border-radius:8px;color:var(--text);padding:7px 10px;min-width:300px}.fix-detail{border:1px solid rgba(120,168,205,.24);border-radius:14px;background:rgba(8,21,36,.14);padding:12px;margin-bottom:10px}.fix-detail h3{margin-bottom:8px}.fix-detail h4{margin:10px 0 6px;font-size:12px;line-height:1.2;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}.fix-detail .results th,.fix-detail .results td{padding:8px 10px}.fix-detail .code-grid{gap:10px}.fix-detail .code-grid > div{min-width:0}.fix-detail .code-grid pre,.fix-detail pre.evidence-scroll{margin:0}.fix-detail.is-active{outline:2px solid rgba(94,234,212,.38);box-shadow:0 0 0 1px rgba(94,234,212,.18),0 18px 32px rgba(15,23,42,.22)}.fix-disclosure{border:1px solid rgba(120,168,205,.22);border-radius:12px;background:rgba(9,22,37,.1);margin:10px 0 0;overflow:hidden}.fix-disclosure>summary{cursor:pointer;list-style:none;padding:10px 12px;font-weight:700;color:var(--text);display:flex;align-items:center;justify-content:space-between;gap:12px}.fix-disclosure>summary::-webkit-details-marker{display:none}.fix-disclosure>summary::after{content:'+';color:var(--muted);font-size:16px;line-height:1}.fix-disclosure[open]>summary{border-bottom:1px solid rgba(120,168,205,.14)}.fix-disclosure[open]>summary::after{content:'–'}.fix-disclosure-body{padding:12px}.evidence-scroll{max-height:280px;overflow:auto;white-space:pre;word-break:normal;scrollbar-width:thin;scrollbar-color:rgba(128,169,196,.22) transparent}.evidence-scroll::-webkit-scrollbar{height:8px;width:8px}.evidence-scroll::-webkit-scrollbar-track{background:transparent}.evidence-scroll::-webkit-scrollbar-thumb{background:rgba(128,169,196,.2);border-radius:999px}.evidence-scroll::-webkit-scrollbar-thumb:hover{background:rgba(128,169,196,.32)}")}</style>
+  <style>${exportThemeCss(".fix-link{color:var(--accent);text-decoration:underline}.toolbar{display:flex;gap:8px;align-items:center;margin:6px 0 10px;flex-wrap:wrap}input{background:rgba(7,20,36,.14);border:1px solid rgba(120,168,205,.28);border-radius:8px;color:var(--text);padding:7px 10px;min-width:300px}.fix-detail{border:1px solid rgba(120,168,205,.24);border-radius:14px;background:rgba(8,21,36,.14);padding:12px;margin-bottom:10px}.fix-detail h3{margin-bottom:8px}.fix-detail h4{margin:10px 0 6px;font-size:12px;line-height:1.2;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}.fix-detail .results th,.fix-detail .results td{padding:8px 10px}.fix-detail .code-grid{gap:10px}.fix-detail .code-grid > div{min-width:0}.fix-detail .code-grid pre,.fix-detail pre.evidence-scroll{margin:0}.fix-detail.is-active{outline:2px solid rgba(94,234,212,.38);box-shadow:0 0 0 1px rgba(94,234,212,.18),0 18px 32px rgba(15,23,42,.22)}.fix-subtitle{margin:8px 0 4px;font-size:11px;line-height:1.2;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700}.fix-disclosure{border:1px solid rgba(120,168,205,.22);border-radius:12px;background:rgba(9,22,37,.1);margin:10px 0 0;overflow:hidden}.fix-disclosure>summary{cursor:pointer;list-style:none;padding:10px 12px;font-weight:700;color:var(--text);display:flex;align-items:center;justify-content:space-between;gap:12px}.fix-disclosure>summary::-webkit-details-marker{display:none}.fix-disclosure>summary::after{content:'+';color:var(--muted);font-size:16px;line-height:1}.fix-disclosure[open]>summary{border-bottom:1px solid rgba(120,168,205,.14)}.fix-disclosure[open]>summary::after{content:'–'}.fix-disclosure-body{padding:12px}.evidence-scroll{max-height:280px;overflow:auto;white-space:pre;word-break:normal;scrollbar-width:thin;scrollbar-color:rgba(128,169,196,.22) transparent}.evidence-scroll::-webkit-scrollbar{height:8px;width:8px}.evidence-scroll::-webkit-scrollbar-track{background:transparent}.evidence-scroll::-webkit-scrollbar-thumb{background:rgba(128,169,196,.2);border-radius:999px}.evidence-scroll::-webkit-scrollbar-thumb:hover{background:rgba(128,169,196,.32)}")}</style>
 </head>
 <body>
   <main class="report-shell">
