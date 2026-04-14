@@ -207,7 +207,6 @@ def run_eslint_security_scan(
     if not js_files:
         return [], []
 
-    selected = [str(path) for path in js_files[:180]]
     base_rules = [
         "--plugin",
         "security",
@@ -240,24 +239,29 @@ def run_eslint_security_scan(
     if not binary_candidates:
         binary_candidates.append([binary])
 
+    ext_suffixes = sorted({path.suffix.lower() for path in js_files if path.suffix.lower() in {".js", ".cjs", ".mjs", ".jsx", ".ts", ".tsx"}})
+    ext_args = [item for suffix in ext_suffixes for item in ("--ext", suffix)]
+
     attempts: list[list[str]] = []
-    chunk_size = 45
-    selected_chunks = [selected[index : index + chunk_size] for index in range(0, len(selected), chunk_size)] or [[]]
     for prefix in binary_candidates:
-        for chunk in selected_chunks:
-            attempts.extend(
-                [
-                    [*prefix, "--no-error-on-unmatched-pattern", "--format", "json", "--no-config-lookup", *base_rules, *chunk],
-                    [*prefix, "--no-error-on-unmatched-pattern", "--format", "json", "--no-eslintrc", *base_rules, *chunk],
-                ]
-            )
+        attempts.append(
+            [
+                *prefix,
+                "--no-error-on-unmatched-pattern",
+                "--format",
+                "json",
+                *base_rules,
+                *ext_args,
+                ".",
+            ]
+        )
 
     last_error = ""
     payloads: list[dict] = []
     saw_success = False
     for command in attempts:
         try:
-            return_code, stdout, stderr = run_command(command, timeout_seconds=timeout_seconds)
+            return_code, stdout, stderr = run_command(command, timeout_seconds=timeout_seconds, cwd=target_root)
         except FileNotFoundError:
             last_error = "ESLint executable was not found."
             continue
