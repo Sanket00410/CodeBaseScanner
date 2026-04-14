@@ -49,6 +49,13 @@ def test_report_builder_populates_active_poc_and_fix_verification(tmp_path: Path
     assert report["vulnerability_fixed_code_report"]["summary"]["active_poc"]["verified"] == 1
     assert report["role_aware_report"]["advanced_features"]["ai_solution_engine"]["status"] == "ready"
 
+    exporter = ReportExporter(tmp_path)
+    html_path = exporter.export_html(report, tmp_path / "fixes.html", "fixes")
+    html = html_path.read_text(encoding="utf-8")
+    assert "Execution Overview" in html
+    assert "execution-results-full" in html
+    assert "Example Fix Pattern" in html
+
 
 def test_report_builder_uses_provider_backed_ai_when_configured(tmp_path: Path, monkeypatch) -> None:
     (tmp_path / "app.py").write_text(
@@ -162,6 +169,45 @@ def test_report_builder_adds_plain_language_brief_for_weak_crypto(tmp_path: Path
     assert brief["title"] == "Weak Cryptography Usage"
     assert "3DES" in brief["what_is_happening"] or "legacy" in brief["what_is_happening"].lower()
     assert "AES-GCM" in brief["what_to_use_instead"]
+
+
+def test_report_builder_adds_tailored_brief_for_broken_access_control(tmp_path: Path) -> None:
+    (tmp_path / "admin_service.py").write_text(
+        "if current_user.id == request.args.get('user_id'):\n    return load_profile()\n",
+        encoding="utf-8",
+    )
+    finding = Finding(
+        vulnerability_type="Broken Object Property Level Authorization (BOPLA)",
+        severity=Severity.HIGH,
+        file_path="admin_service.py",
+        line_number=1,
+        business_impact="User data exposure",
+        recommendation="Perform server-side object-level authorization checks for every access path.",
+        reference="https://owasp.org/Top10/A01_2021-Broken-Access-Control/",
+        owasp_category="A01:2021 - Broken Access Control",
+        description="Object-level access control relies on attacker-controlled request input.",
+        rule_id="CODEQL-PY-BROKEN-ACCESS-CTRL",
+        cwe="CWE-862",
+        evidence="current_user.id == request.args.get('user_id')",
+    )
+    report = build_report(
+        ScanResult(
+            target_path=str(tmp_path),
+            started_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(timezone.utc),
+            files_scanned=1,
+            findings=[finding],
+            errors=[],
+            existing_security_measures=[],
+            toolchain_status={},
+        )
+    )
+
+    enriched = report["vulnerability_fixed_code_report"]["findings"][0]
+    brief = enriched["plain_language_security_brief"]
+    assert brief["title"] == "Broken Access Control"
+    assert "object-level authorization" in brief["what_to_use_instead"].lower()
+    assert "ownership" in brief["why_it_is_weak"].lower()
 
 
 def test_fix_verification_can_run_optional_workspace_commands(tmp_path: Path, monkeypatch) -> None:

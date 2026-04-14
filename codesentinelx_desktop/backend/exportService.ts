@@ -2755,6 +2755,11 @@ function writeFixesPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
       `Fix Verification Result: ${fixVerificationResultText(finding.fix_verification)} | Reason: ${fixVerificationReasonText(finding.fix_verification)}`,
       8,
     );
+    writeWrapped(
+      doc,
+      `Execution Overview: Active PoC=${activePocStatusText(finding.active_poc)} | Basis=${String(finding.active_poc?.verification_basis || "n/a")} | Confidence=${isRenderableDisplayValue(finding.active_poc?.confidence) ? `${(Number(finding.active_poc?.confidence || 0) * 100).toFixed(0)}%` : "n/a"}`,
+      8,
+    );
     writeWrapped(doc, "Post-Fix Verification Command:", 8);
     for (const line of codeSnippetLines(String(finding.fix_verification?.post_fix_execution?.command || "No post-fix verification command was executed for this finding in this scan."), 10, 180)) {
       writeWrapped(doc, `  ${line}`, 8);
@@ -5058,11 +5063,46 @@ function renderFixesHtml(scan: ScanView): string {
       const patchPreview = String(finding.patch_preview || "").trim();
       const recommendation = String(finding.recommendation || "").trim();
       const groundingNotes = aiGroundingNotes(finding);
+      const activePocAny = activePoc as unknown as Record<string, unknown>;
       const instanceBaseId = stableAnchorId("fix-instance", findingKey);
       const wrapFixDisclosure = (title: string, body: string, open = false) =>
         body.trim()
           ? `<details class="fix-disclosure"${open ? " open" : ""}><summary>${escapeHtml(title)}</summary><div class="fix-disclosure-body">${body}</div></details>`
           : "";
+      const executionOverviewRows: string[] = [];
+      const activePocBasis = String(activePocAny?.verification_basis || activePoc?.verification_basis || "").trim();
+      const activePocReason = String(activePocAny?.reason || "").trim();
+      const activePocConfidence = isRenderableDisplayValue(activePoc?.confidence) ? `${(Number(activePoc?.confidence || 0) * 100).toFixed(0)}%` : "";
+      const buildCommand = String(fixVerification?.build_verification?.command || "").trim();
+      const buildOutput = String(fixVerification?.build_verification?.output || "").trim();
+      const testCommand = String(fixVerification?.test_verification?.command || "").trim();
+      const testOutput = String(fixVerification?.test_verification?.output || "").trim();
+
+      executionOverviewRows.push(`<tr><th>Fix Verification Result</th><td>${escapeHtml(decisionStatus || "inconclusive")}</td></tr>`);
+      if (String(fixVerification?.reason || "").trim()) {
+        executionOverviewRows.push(`<tr><th>Verification Reason</th><td>${escapeHtml(fixVerificationReasonText(fixVerification))}</td></tr>`);
+      }
+      if (String(activePoc?.status || "").trim()) {
+        executionOverviewRows.push(`<tr><th>Active PoC Status</th><td>${escapeHtml(activePocStatusText(activePoc))}</td></tr>`);
+      }
+      if (activePocBasis) {
+        executionOverviewRows.push(`<tr><th>Active PoC Basis</th><td>${escapeHtml(activePocBasis)}</td></tr>`);
+      }
+      if (activePocReason) {
+        executionOverviewRows.push(`<tr><th>Active PoC Reason</th><td>${escapeHtml(activePocReason)}</td></tr>`);
+      }
+      if (activePocConfidence) {
+        executionOverviewRows.push(`<tr><th>Active PoC Confidence</th><td>${escapeHtml(activePocConfidence)}</td></tr>`);
+      }
+      if (String(fixVerification?.post_fix_execution?.command || "").trim()) {
+        executionOverviewRows.push(`<tr><th>Post-Fix Command</th><td>${escapeHtml(String(fixVerification?.post_fix_execution?.command || ""))}</td></tr>`);
+      }
+      if (buildCommand || buildOutput) {
+        executionOverviewRows.push(`<tr><th>Build Verification</th><td>${escapeHtml(buildCommand ? "Command captured" : "Output captured")}</td></tr>`);
+      }
+      if (testCommand || testOutput) {
+        executionOverviewRows.push(`<tr><th>Test Verification</th><td>${escapeHtml(testCommand ? "Command captured" : "Output captured")}</td></tr>`);
+      }
 
       sectionIssue.push(`<h3>[${escapeHtml(finding.severity)}] ${escapeHtml(normalizedFindingTitle(finding))}</h3>`);
       sectionIssue.push(`<table class="results"><tbody>
@@ -5106,6 +5146,12 @@ function renderFixesHtml(scan: ScanView): string {
         <tr><th>What you should use instead</th><td>${escapeHtml(plainLanguageBrief.what_to_use_instead)}</td></tr>
         <tr><th>Summary</th><td>${escapeHtml(plainLanguageBrief.summary)}</td></tr>
       </tbody></table></div>`);
+      if (String(plainLanguageBrief.code_example || "").trim()) {
+        sectionWhatToChange.push(`<div class="plain-language-brief"><div class="fix-subtitle">Example Fix Pattern</div><pre class="plain-language-code">${escapeHtml(String(plainLanguageBrief.code_example || ""))}</pre></div>`);
+      }
+      if (String(plainLanguageBrief.recommendation || "").trim()) {
+        sectionWhatToChange.push(`<p><strong>Recommended action:</strong> ${escapeHtml(String(plainLanguageBrief.recommendation || ""))}</p>`);
+      }
 
       const pocCommandMatch = proofText.match(/Replay Command:\s*([^\n\r]+)/i);
       if (pocCommandMatch?.[1]) {
@@ -5154,23 +5200,17 @@ function renderFixesHtml(scan: ScanView): string {
           sectionValidationCommands.push(`<div class="fix-subtitle">Build/Test Command (Test)</div><pre class="evidence-scroll">${escapeHtml(String(fixVerification.test_verification.command || ""))}</pre>`);
         }
 
-        if (proofText) {
-          sectionExecutionResults.push(`<div class="fix-subtitle">PoC Validation Output</div><pre class="evidence-scroll">${escapeHtml(proofText)}</pre>`);
+        if (executionOverviewRows.length) {
+          sectionExecutionResults.push(`<table class="results"><tbody>${executionOverviewRows.join("")}</tbody></table>`);
         }
-        if (activePoc && String(activePoc.output || "").trim() && activeStatus !== "skipped") {
-          sectionExecutionResults.push(`<div class="fix-subtitle">Active PoC Output</div><pre class="evidence-scroll">${escapeHtml(activePocOutputText(activePoc))}</pre>`);
+        sectionExecutionResults.push(`<div class="fix-subtitle">PoC Validation Output</div><pre class="evidence-full">${escapeHtml(proofText || "No PoC validation output was captured for this finding in this scan.")}</pre>`);
+        sectionExecutionResults.push(`<div class="fix-subtitle">Active PoC Output</div><pre class="evidence-full">${escapeHtml(activePocOutputText(activePoc))}</pre>`);
+        sectionExecutionResults.push(`<div class="fix-subtitle">Post-Fix Output</div><pre class="evidence-full">${escapeHtml(String(fixVerification.post_fix_execution?.output || "No post-fix verification output was captured for this finding in this scan."))}</pre>`);
+        if (fixVerification.build_verification) {
+          sectionExecutionResults.push(`<div class="fix-subtitle">Build/Test Output (Build)</div><pre class="evidence-full">${escapeHtml(String(fixVerification.build_verification.output || "No build output captured for this finding in this scan."))}</pre>`);
         }
-        if (String(fixVerification.post_fix_execution?.output || "").trim()) {
-          sectionExecutionResults.push(`<div class="fix-subtitle">Post-Fix Output</div><pre class="evidence-scroll">${escapeHtml(String(fixVerification.post_fix_execution?.output || ""))}</pre>`);
-        }
-        if (fixVerification.build_verification && String(fixVerification.build_verification.output || "").trim()) {
-          sectionExecutionResults.push(`<div class="fix-subtitle">Build/Test Output (Build)</div><pre class="evidence-scroll">${escapeHtml(String(fixVerification.build_verification.output || ""))}</pre>`);
-        }
-        if (fixVerification.test_verification && String(fixVerification.test_verification.output || "").trim()) {
-          sectionExecutionResults.push(`<div class="fix-subtitle">Build/Test Output (Test)</div><pre class="evidence-scroll">${escapeHtml(String(fixVerification.test_verification.output || ""))}</pre>`);
-        }
-        if (String(fixVerification.reason || "").trim()) {
-        sectionExecutionResults.push(`<p><strong>Verification Reason:</strong> ${escapeHtml(fixVerificationReasonText(fixVerification))}</p>`);
+        if (fixVerification.test_verification) {
+          sectionExecutionResults.push(`<div class="fix-subtitle">Build/Test Output (Test)</div><pre class="evidence-full">${escapeHtml(String(fixVerification.test_verification.output || "No test output captured for this finding in this scan."))}</pre>`);
         }
       }
 
@@ -5363,7 +5403,7 @@ function renderFixesHtml(scan: ScanView): string {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CodeSentinelX Original and Suggested Fix Report</title>
-  <style>${exportThemeCss(".fix-link{color:var(--accent);text-decoration:underline}.toolbar{display:flex;gap:8px;align-items:center;margin:6px 0 10px;flex-wrap:wrap}input{background:rgba(7,20,36,.14);border:1px solid rgba(120,168,205,.28);border-radius:8px;color:var(--text);padding:7px 10px;min-width:300px}.fix-detail{border:1px solid rgba(120,168,205,.24);border-radius:14px;background:rgba(8,21,36,.14);padding:12px;margin-bottom:10px}.fix-detail h3{margin-bottom:8px}.fix-detail h4{margin:10px 0 6px;font-size:12px;line-height:1.2;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}.fix-detail .results th,.fix-detail .results td{padding:8px 10px}.fix-detail .code-grid{gap:10px}.fix-detail .code-grid > div{min-width:0}.fix-detail .code-grid pre,.fix-detail pre.evidence-scroll{margin:0}.fix-detail.is-active{outline:2px solid rgba(94,234,212,.38);box-shadow:0 0 0 1px rgba(94,234,212,.18),0 18px 32px rgba(15,23,42,.22)}.fix-subtitle{margin:8px 0 4px;font-size:11px;line-height:1.2;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700}.plain-language-brief{margin-top:10px}.plain-language-brief .results{margin-bottom:0}.fix-disclosure{border:1px solid rgba(120,168,205,.22);border-radius:12px;background:rgba(9,22,37,.1);margin:10px 0 0;overflow:hidden}.fix-disclosure>summary{cursor:pointer;list-style:none;padding:10px 12px;font-weight:700;color:var(--text);display:flex;align-items:center;justify-content:space-between;gap:12px}.fix-disclosure>summary::-webkit-details-marker{display:none}.fix-disclosure>summary::after{content:'+';color:var(--muted);font-size:16px;line-height:1}.fix-disclosure[open]>summary{border-bottom:1px solid rgba(120,168,205,.14)}.fix-disclosure[open]>summary::after{content:'–'}.fix-disclosure-body{padding:12px}.evidence-scroll{max-height:280px;overflow:auto;white-space:pre;word-break:normal;scrollbar-width:thin;scrollbar-color:rgba(128,169,196,.22) transparent}.evidence-scroll::-webkit-scrollbar{height:8px;width:8px}.evidence-scroll::-webkit-scrollbar-track{background:transparent}.evidence-scroll::-webkit-scrollbar-thumb{background:rgba(128,169,196,.2);border-radius:999px}.evidence-scroll::-webkit-scrollbar-thumb:hover{background:rgba(128,169,196,.32)}")}</style>
+  <style>${exportThemeCss(".fix-link{color:var(--accent);text-decoration:underline}.toolbar{display:flex;gap:8px;align-items:center;margin:6px 0 10px;flex-wrap:wrap}input{background:rgba(7,20,36,.14);border:1px solid rgba(120,168,205,.28);border-radius:8px;color:var(--text);padding:7px 10px;min-width:300px}.fix-detail{border:1px solid rgba(120,168,205,.24);border-radius:14px;background:rgba(8,21,36,.14);padding:12px;margin-bottom:10px}.fix-detail h3{margin-bottom:8px}.fix-detail h4{margin:10px 0 6px;font-size:12px;line-height:1.2;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}.fix-detail .results th,.fix-detail .results td{padding:8px 10px}.fix-detail .code-grid{gap:10px}.fix-detail .code-grid > div{min-width:0}.fix-detail .code-grid pre,.fix-detail pre.evidence-scroll,.fix-detail pre.evidence-full{margin:0}.fix-detail.is-active{outline:2px solid rgba(94,234,212,.38);box-shadow:0 0 0 1px rgba(94,234,212,.18),0 18px 32px rgba(15,23,42,.22)}.fix-subtitle{margin:8px 0 4px;font-size:11px;line-height:1.2;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700}.plain-language-brief{margin-top:10px}.plain-language-brief .results{margin-bottom:0}.plain-language-code{margin:0;white-space:pre-wrap;word-break:break-word;overflow:visible;max-height:none;background:rgba(7,19,34,.34);border:1px solid rgba(120,168,205,.16);border-radius:12px;padding:12px 14px}.fix-disclosure{border:1px solid rgba(120,168,205,.22);border-radius:12px;background:rgba(9,22,37,.1);margin:10px 0 0;overflow:hidden}.fix-disclosure>summary{cursor:pointer;list-style:none;padding:10px 12px;font-weight:700;color:var(--text);display:flex;align-items:center;justify-content:space-between;gap:12px}.fix-disclosure>summary::-webkit-details-marker{display:none}.fix-disclosure>summary::after{content:'+';color:var(--muted);font-size:16px;line-height:1}.fix-disclosure[open]>summary{border-bottom:1px solid rgba(120,168,205,.14)}.fix-disclosure[open]>summary::after{content:'–'}.fix-disclosure-body{padding:12px}.evidence-scroll{max-height:280px;overflow:auto;white-space:pre;word-break:normal;scrollbar-width:thin;scrollbar-color:rgba(128,169,196,.22) transparent}.evidence-full{max-height:none;overflow:visible;white-space:pre-wrap;word-break:break-word;scrollbar-width:thin;scrollbar-color:rgba(128,169,196,.22) transparent}.evidence-scroll::-webkit-scrollbar,.evidence-full::-webkit-scrollbar{height:8px;width:8px}.evidence-scroll::-webkit-scrollbar-track,.evidence-full::-webkit-scrollbar-track{background:transparent}.evidence-scroll::-webkit-scrollbar-thumb,.evidence-full::-webkit-scrollbar-thumb{background:rgba(128,169,196,.2);border-radius:999px}.evidence-scroll::-webkit-scrollbar-thumb:hover,.evidence-full::-webkit-scrollbar-thumb:hover{background:rgba(128,169,196,.32)}")}</style>
 </head>
 <body>
   <main class="report-shell">
@@ -7843,6 +7883,17 @@ function plainLanguageSecurityBrief(finding: Partial<VulnerabilityFinding> & Rec
       summary: recommendation || "Strictly control where the server is allowed to connect.",
       code_example: originalCode || "Validate and allowlist outbound destinations before making the request.",
       recommendation: recommendation || "Allowlist outbound destinations and block internal ranges.",
+    };
+  }
+  if (/(broken access control|bopla|bola|idor|object level authorization|access control)/.test(lowerBlob)) {
+    return {
+      title: "Broken Access Control",
+      what_is_happening: "The code is making an authorization decision on a user, object, or property, but the check is incomplete or depends on attacker-influenced request data.",
+      why_it_is_weak: "That can let a user read, change, or delete records that belong to another user, tenant, or account if the ownership check is missing or only applied in one code path.",
+      what_to_use_instead: "Perform a server-side object-level authorization check on every access path, using trusted identity and ownership metadata rather than request parameters.",
+      summary: recommendation || "Add object-level authorization checks and verify ownership before returning or mutating data.",
+      code_example: originalCode || "if (!isAuthorized(user, resource)) { throw new ForbiddenError(); }",
+      recommendation: recommendation || "Enforce server-side object-level authorization for every access path.",
     };
   }
   if (/(auth|authorization|session|privilege)/.test(lowerBlob)) {

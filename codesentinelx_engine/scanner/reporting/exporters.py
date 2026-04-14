@@ -251,6 +251,15 @@ def _plain_language_security_brief(item: dict) -> dict[str, str]:
             summary="Strictly control where the server is allowed to connect.",
         )
 
+    if any(token in lower_blob for token in ("broken access control", "bopla", "bola", "idor", "object level authorization", "access control")):
+        return make(
+            title="Broken Access Control",
+            what="The code is making an authorization decision on a user, object, or property, but the check is incomplete or depends on attacker-influenced request data.",
+            why="That can let a user read, change, or delete records that belong to another user, tenant, or account if the ownership check is missing or only applied in one code path.",
+            instead="Perform a server-side object-level authorization check on every access path, using trusted identity and ownership metadata rather than request parameters.",
+            summary="Add object-level authorization checks and verify ownership before returning or mutating data.",
+        )
+
     if any(token in lower_blob for token in ("auth", "authorization", "session", "privilege")):
         return make(
             title=title,
@@ -280,8 +289,79 @@ def _render_plain_language_security_brief_html(item: dict) -> str:
         f"<tr><th>What you should use instead</th><td>{html.escape(brief['what_to_use_instead'])}</td></tr>"
         f"<tr><th>Summary</th><td>{html.escape(brief['summary'])}</td></tr>"
         "</table>"
+        "<div class='plain-language-brief'>"
+        "<h4>Example Fix Pattern</h4>"
+        f"<pre class='plain-language-code'>{html.escape(brief['code_example'])}</pre>"
+        f"<p><strong>Recommended action:</strong> {html.escape(brief['recommendation'])}</p>"
+        "</div>"
         "</div>"
     )
+
+
+def _render_execution_results_html(item: dict) -> str:
+    fix_verification = item.get("fix_verification") or {}
+    active_poc = item.get("active_poc") or {}
+    proof = str(item.get("proof_of_concept") or "").strip()
+
+    overview_rows = [
+        f"<tr><th>Fix Verification Result</th><td>{html.escape(str(fix_verification.get('result', 'inconclusive')))}</td></tr>",
+    ]
+    if str(fix_verification.get("reason", "")).strip():
+        overview_rows.append(
+            f"<tr><th>Verification Reason</th><td>{html.escape(str(fix_verification.get('reason', '')))}</td></tr>"
+        )
+    if str(active_poc.get("status", "")).strip():
+        overview_rows.append(
+            f"<tr><th>Active PoC Status</th><td>{html.escape(str(active_poc.get('status', 'not_applicable')))}</td></tr>"
+        )
+    if str(active_poc.get("verification_basis", "")).strip():
+        overview_rows.append(
+            f"<tr><th>Active PoC Basis</th><td>{html.escape(str(active_poc.get('verification_basis', '')))}</td></tr>"
+        )
+    if str(active_poc.get("reason", "")).strip():
+        overview_rows.append(
+            f"<tr><th>Active PoC Reason</th><td>{html.escape(str(active_poc.get('reason', '')))}</td></tr>"
+        )
+    if str(active_poc.get("confidence", "")).strip():
+        overview_rows.append(
+            f"<tr><th>Active PoC Confidence</th><td>{html.escape(str(active_poc.get('confidence')))}</td></tr>"
+        )
+    if str((fix_verification.get("post_fix_execution") or {}).get("command", "")).strip():
+        overview_rows.append(
+            f"<tr><th>Post-Fix Command</th><td>{html.escape(str((fix_verification.get('post_fix_execution') or {}).get('command', '')))}</td></tr>"
+        )
+    if str((fix_verification.get("build_verification") or {}).get("status", "")).strip():
+        overview_rows.append(
+            f"<tr><th>Build Verification</th><td>{html.escape(str((fix_verification.get('build_verification') or {}).get('status', 'unknown')))}</td></tr>"
+        )
+    if str((fix_verification.get("test_verification") or {}).get("status", "")).strip():
+        overview_rows.append(
+            f"<tr><th>Test Verification</th><td>{html.escape(str((fix_verification.get('test_verification') or {}).get('status', 'unknown')))}</td></tr>"
+        )
+
+    execution_blocks = [
+        "<div class='execution-results'>",
+        "<h4>Execution Overview</h4>",
+        f"<table class='results'><tbody>{''.join(overview_rows)}</tbody></table>",
+        "<div class='fix-subtitle'>PoC Validation Output</div>",
+        f"<pre class='execution-results-full'>{html.escape(proof or 'No PoC validation output was captured for this finding in this scan.')}</pre>",
+        "<div class='fix-subtitle'>Active PoC Output</div>",
+        f"<pre class='execution-results-full'>{html.escape(str(active_poc.get('output') or 'No active PoC output was captured for this finding in this scan.'))}</pre>",
+        "<div class='fix-subtitle'>Post-Fix Output</div>",
+        f"<pre class='execution-results-full'>{html.escape(str((fix_verification.get('post_fix_execution') or {}).get('output') or 'No post-fix verification output was captured for this finding in this scan.'))}</pre>",
+    ]
+    if fix_verification.get("build_verification"):
+        execution_blocks.extend([
+            "<div class='fix-subtitle'>Build/Test Output (Build)</div>",
+            f"<pre class='execution-results-full'>{html.escape(str((fix_verification.get('build_verification') or {}).get('output') or 'No build output captured for this finding in this scan.'))}</pre>",
+        ])
+    if fix_verification.get("test_verification"):
+        execution_blocks.extend([
+            "<div class='fix-subtitle'>Build/Test Output (Test)</div>",
+            f"<pre class='execution-results-full'>{html.escape(str((fix_verification.get('test_verification') or {}).get('output') or 'No test output captured for this finding in this scan.'))}</pre>",
+        ])
+    execution_blocks.append("</div>")
+    return "".join(execution_blocks)
 
 
 def _quality_benchmark_from_report(report: dict) -> dict[str, Any] | None:
@@ -1596,21 +1676,7 @@ class ReportExporter:
                     if _dependency_auth_summary(item)
                     else ""
                 )
-                + (
-                    f"<p><strong>Fix Verification:</strong> {html.escape(str((item.get('fix_verification') or {}).get('result', 'not_applicable')))} | {html.escape(str((item.get('fix_verification') or {}).get('reason', '')))}</p>"
-                    if item.get("fix_verification")
-                    else ""
-                )
-                + (
-                    f"<p><strong>Workspace Build:</strong> {html.escape(str(((item.get('fix_verification') or {}).get('build_verification') or {}).get('status', 'unknown')))} | <code>{html.escape(str(((item.get('fix_verification') or {}).get('build_verification') or {}).get('command', '')))}</code></p><pre>{html.escape(str(((item.get('fix_verification') or {}).get('build_verification') or {}).get('output', '')))}</pre>"
-                    if (item.get("fix_verification") or {}).get("build_verification")
-                    else ""
-                )
-                + (
-                    f"<p><strong>Workspace Test:</strong> {html.escape(str(((item.get('fix_verification') or {}).get('test_verification') or {}).get('status', 'unknown')))} | <code>{html.escape(str(((item.get('fix_verification') or {}).get('test_verification') or {}).get('command', '')))}</code></p><pre>{html.escape(str(((item.get('fix_verification') or {}).get('test_verification') or {}).get('output', '')))}</pre>"
-                    if (item.get("fix_verification") or {}).get("test_verification")
-                    else ""
-                )
+                + _render_execution_results_html(item)
                 + "<div class='code-grid'>"
                 "<div><h4>Original Code</h4>"
                 f"<pre>{html.escape(str(item.get('original_code', 'Snippet unavailable.')))}</pre></div>"
@@ -1653,8 +1719,9 @@ class ReportExporter:
     .fix-card {{ margin-top:14px; padding:14px; border:1px solid rgba(120,168,205,.28); border-radius:14px; background:rgba(11,26,45,.14); }}
     .plain-language-brief {{ margin:14px 0 8px; }}
     .plain-language-brief h4 {{ margin-top:0; }}
-    .plain-language-brief {{ margin-top:12px; }}
-    .plain-language-brief h4 {{ margin-top:0; }}
+    .plain-language-code {{ margin:0; white-space:pre-wrap; word-break:break-word; overflow:visible; max-height:none; }}
+    .execution-results {{ margin-top:14px; }}
+    .execution-results-full {{ margin:0; white-space:pre-wrap; word-break:break-word; overflow:visible; max-height:none; }}
     .code-grid {{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }}
     pre {{ margin:0; white-space:pre-wrap; word-break:break-word; font-family:Consolas, monospace; background:rgba(7,19,33,.16); border:1px solid rgba(120,168,205,.24); border-radius:14px; padding:12px; color:#dce9f7; line-height:1.55; }}
     @media (max-width: 980px) {{ .code-grid {{ grid-template-columns:1fr; }} }}

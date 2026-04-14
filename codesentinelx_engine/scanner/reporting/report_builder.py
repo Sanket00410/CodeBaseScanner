@@ -244,6 +244,17 @@ def _plain_language_security_brief(finding: dict) -> dict[str, str]:
             "recommendation": recommendation or "Allowlist outbound destinations and block internal ranges.",
         }
 
+    if any(token in lower for token in ("broken access control", "bopla", "bola", "idor", "object level authorization", "access control")):
+        return {
+            "title": "Broken Access Control",
+            "what_is_happening": "The code is making an authorization decision on a user, object, or property, but the check is incomplete or depends on attacker-influenced request data.",
+            "why_it_is_weak": "That can let a user read, change, or delete records that belong to another user, tenant, or account if the ownership check is missing or only applied in one code path.",
+            "what_to_use_instead": "Perform a server-side object-level authorization check on every access path, using trusted identity and ownership metadata rather than request parameters.",
+            "summary": recommendation or "Add object-level authorization checks and verify ownership before returning or mutating data.",
+            "code_example": original_code or "if not is_authorized(user, resource): raise ForbiddenError()",
+            "recommendation": recommendation or "Enforce server-side object-level authorization for every access path.",
+        }
+
     if any(token in lower for token in ("auth", "authorization", "session", "privilege")):
         return {
             "title": title,
