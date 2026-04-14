@@ -125,6 +125,45 @@ def test_report_builder_uses_provider_backed_ai_when_configured(tmp_path: Path, 
     assert plan["8_hours"][0]["why_first"] == "Touches a verified database sink in a hot code path."
 
 
+def test_report_builder_adds_plain_language_brief_for_weak_crypto(tmp_path: Path) -> None:
+    (tmp_path / "crypto.js").write_text(
+        "const cipher = crypto.createCipheriv('des-ede3-cbc', key, iv);\n",
+        encoding="utf-8",
+    )
+    finding = Finding(
+        vulnerability_type="Weak Cryptography Usage",
+        severity=Severity.HIGH,
+        file_path="crypto.js",
+        line_number=1,
+        business_impact="Legacy cipher exposure",
+        recommendation="Use AES-GCM and rotate the legacy secret material.",
+        reference="https://cwe.mitre.org/data/definitions/327.html",
+        owasp_category="A02:2021 - Cryptographic Failures",
+        description="The application uses a legacy 3DES cipher.",
+        rule_id="CODEQL-JS-WEAK-CRYPTO",
+        cwe="CWE-327",
+        evidence="const cipher = crypto.createCipheriv('des-ede3-cbc', key, iv);",
+    )
+    report = build_report(
+        ScanResult(
+            target_path=str(tmp_path),
+            started_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(timezone.utc),
+            files_scanned=1,
+            findings=[finding],
+            errors=[],
+            existing_security_measures=[],
+            toolchain_status={},
+        )
+    )
+
+    enriched = report["vulnerability_fixed_code_report"]["findings"][0]
+    brief = enriched["plain_language_security_brief"]
+    assert brief["title"] == "Weak Cryptography Usage"
+    assert "3DES" in brief["what_is_happening"] or "legacy" in brief["what_is_happening"].lower()
+    assert "AES-GCM" in brief["what_to_use_instead"]
+
+
 def test_fix_verification_can_run_optional_workspace_commands(tmp_path: Path, monkeypatch) -> None:
     (tmp_path / "app.py").write_text(
         "user_id = request.args.get('id')\n"

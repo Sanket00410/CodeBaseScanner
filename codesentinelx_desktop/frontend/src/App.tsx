@@ -1711,6 +1711,7 @@ export default function App(): React.JSX.Element {
       setTab("dashboard");
     } catch (error) {
       setPreviewReportType("");
+      setReportPreviewSrc("");
       setStatusText(`Failed to render preview: ${String(error)}`);
     } finally {
       setIsPreviewLoading(false);
@@ -4075,7 +4076,12 @@ export default function App(): React.JSX.Element {
             {isPreviewLoading ? (
               <p className="muted-text">Rendering preview...</p>
             ) : (
-              <iframe className="report-preview-frame" src={reportPreviewSrc} title="CodeSentinelX Report Preview" sandbox="allow-same-origin allow-scripts" />
+              <iframe
+                className="report-preview-frame"
+                srcDoc={reportPreviewSrc}
+                title="CodeSentinelX Report Preview"
+                sandbox="allow-same-origin allow-scripts"
+              />
             )}
           </section>
         )}

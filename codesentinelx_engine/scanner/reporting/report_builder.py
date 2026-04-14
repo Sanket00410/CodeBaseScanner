@@ -125,6 +125,148 @@ def _build_ai_validation_steps(active_poc: dict) -> str:
     return "\n".join(steps)
 
 
+def _plain_language_security_brief(finding: dict) -> dict[str, str]:
+    title = _resolved_vulnerability_title(finding)
+    lower = " ".join(
+        str(finding.get(key) or "").lower()
+        for key in (
+            "vulnerability_title",
+            "vulnerability_type",
+            "cwe_id",
+            "cwe",
+            "rule_id",
+            "description",
+            "recommendation",
+            "original_code",
+            "vulnerable_code_snippet",
+            "evidence",
+        )
+    )
+    original_code = str(finding.get("original_code") or finding.get("vulnerable_code_snippet") or "").strip()
+    recommendation = str(finding.get("recommendation") or "").strip()
+
+    if any(token in lower for token in ("weak cryptography", "cwe-327", "3des", "des-ede3-cbc", "tripledes")):
+        return {
+            "title": "Weak Cryptography Usage",
+            "what_is_happening": "The code is using a legacy cipher or weak cryptographic pattern to protect data. In practice, that means the application is relying on an older encryption mode or primitive that modern standards no longer treat as a strong default.",
+            "why_it_is_weak": "Legacy cryptography can be easier to attack, is often slower, and may not provide built-in authenticity. CBC-mode encryption also needs careful IV handling, and older ciphers can become risky when large amounts of data are processed.",
+            "what_to_use_instead": "Prefer an authenticated modern mode such as AES-GCM. If the application must interoperate with a legacy system, keep the weak path only as a short-lived compatibility exception and plan a migration to stronger primitives.",
+            "summary": "In short: retire the legacy cipher, move to modern authenticated encryption, and rotate any data or keys that were protected by the weaker algorithm.",
+            "code_example": original_code or "Use a modern authenticated cipher such as crypto.createCipheriv('aes-256-gcm', key, iv).",
+            "recommendation": recommendation or "Migrate to AES-GCM and rotate any keys or data tied to the legacy cipher.",
+        }
+
+    if any(token in lower for token in ("sql injection", "cwe-89")):
+        return {
+            "title": "SQL Injection",
+            "what_is_happening": "Untrusted input is reaching a database query in a way that lets the input change the structure of the SQL statement.",
+            "why_it_is_weak": "When user input is concatenated into SQL, an attacker can alter filters, bypass checks, or read and modify data they should not access.",
+            "what_to_use_instead": "Use parameterized queries or prepared statements, and keep input validation strict but separate from query construction.",
+            "summary": "In short: never build SQL by string concatenation; bind parameters instead.",
+            "code_example": original_code or "Use parameterized execution such as cursor.execute(query, params).",
+            "recommendation": recommendation or "Switch to prepared statements / parameterized queries.",
+        }
+
+    if any(token in lower for token in ("cross-site scripting", "xss", "cwe-79")):
+        return {
+            "title": "Cross-Site Scripting (XSS)",
+            "what_is_happening": "User-controlled data is reaching a browser rendering sink without enough escaping or context-aware encoding.",
+            "why_it_is_weak": "That can let attacker-supplied script or markup execute in another user’s browser and expose sessions, data, or actions.",
+            "what_to_use_instead": "Use framework templating, output encoding, and safe DOM APIs instead of directly injecting HTML or script content.",
+            "summary": "In short: encode on output and avoid unsafe HTML rendering paths.",
+            "code_example": original_code or "Render trusted markup only and escape untrusted values before display.",
+            "recommendation": recommendation or "Escape untrusted output and avoid direct HTML injection.",
+        }
+
+    if any(token in lower for token in ("hardcoded", "secret", "credential", "cwe-798")):
+        return {
+            "title": "Hardcoded Secrets / Credentials",
+            "what_is_happening": "Sensitive credentials or tokens are present in code or nearby artifacts where anyone with repo or build access could read them.",
+            "why_it_is_weak": "Hardcoded secrets are easy to leak, hard to rotate safely, and often remain valid far longer than they should.",
+            "what_to_use_instead": "Move secrets into a managed vault or secret manager, rotate the exposed value, and load credentials at runtime instead of embedding them in source.",
+            "summary": "In short: remove secrets from code, store them in a vault, and rotate anything already exposed.",
+            "code_example": original_code or "Use environment-backed secret retrieval instead of storing the secret inline.",
+            "recommendation": recommendation or "Move the secret to a vault and rotate it immediately.",
+        }
+
+    if any(token in lower for token in ("path traversal", "cwe-22", "directory traversal")):
+        return {
+            "title": "Path Traversal",
+            "what_is_happening": "A path or filename is influenced by user input without enough normalization or allowlisting.",
+            "why_it_is_weak": "An attacker can steer the application outside the intended folder and read or write files it should not touch.",
+            "what_to_use_instead": "Normalize the path, enforce an allowlist, and join paths with safe helpers that keep the final location inside the approved base directory.",
+            "summary": "In short: never trust raw file paths from input; keep them constrained to the intended directory tree.",
+            "code_example": original_code or "Use safe path-join helpers and validate the resolved path before access.",
+            "recommendation": recommendation or "Normalize and constrain file paths before reading or writing.",
+        }
+
+    if any(token in lower for token in ("command injection", "cwe-78", "shell")):
+        return {
+            "title": "Command Injection",
+            "what_is_happening": "User-controlled data is reaching a shell command or command string.",
+            "why_it_is_weak": "If the shell interprets special characters, the attacker can append new commands or change the meaning of the original one.",
+            "what_to_use_instead": "Avoid shell execution when possible, pass arguments as an array, and use strict allowlists for any input that must influence command behavior.",
+            "summary": "In short: do not build shell commands from raw input.",
+            "code_example": original_code or "Invoke commands without shell interpolation and with allowlisted arguments only.",
+            "recommendation": recommendation or "Avoid shell concatenation and use safe argument passing.",
+        }
+
+    if any(token in lower for token in ("dependency vulnerability", "cwe-1104", "vulnerable and outdated components", "cve", "ghsa", "osv")):
+        return {
+            "title": "Dependency Vulnerability",
+            "what_is_happening": "The application depends on a package or component version that has a known advisory or fixed version available.",
+            "why_it_is_weak": "Even if the code looks fine, a vulnerable library can expose the application through the dependency chain, especially when the package is reachable at runtime.",
+            "what_to_use_instead": "Upgrade to the fixed version, verify whether the vulnerable path is actually reachable in this application, and keep the dependency source of truth tied to an advisory record.",
+            "summary": "In short: update the package to a safe version and keep the advisory evidence attached to the finding.",
+            "code_example": original_code or "Upgrade to the vendor-fixed package version and re-run verification.",
+            "recommendation": recommendation or "Upgrade the affected dependency to the fixed version.",
+        }
+
+    if any(token in lower for token in ("deserialization", "cwe-502")):
+        return {
+            "title": "Insecure Deserialization",
+            "what_is_happening": "The code is turning untrusted serialized data back into objects without enough validation or structure checking.",
+            "why_it_is_weak": "Unsafe deserialization can let attacker-controlled payloads trigger unexpected behavior, object graph abuse, or even code execution in some stacks.",
+            "what_to_use_instead": "Use safe serializers, strict schemas, and reject data that is not explicitly expected by the application.",
+            "summary": "In short: never deserialize untrusted data with a permissive parser.",
+            "code_example": original_code or "Use schema-validated parsing instead of generic object deserialization.",
+            "recommendation": recommendation or "Switch to safe serialization and validate input schemas.",
+        }
+
+    if any(token in lower for token in ("ssrf", "cwe-918")):
+        return {
+            "title": "Server-Side Request Forgery (SSRF)",
+            "what_is_happening": "The application can be persuaded to make server-side requests to attacker-chosen destinations.",
+            "why_it_is_weak": "That can expose internal services, metadata endpoints, or trusted network-only resources that should not be reachable externally.",
+            "what_to_use_instead": "Apply destination allowlists, block internal ranges, and validate URLs before the application issues outbound requests.",
+            "summary": "In short: strictly control where the server is allowed to connect.",
+            "code_example": original_code or "Validate and allowlist outbound destinations before making the request.",
+            "recommendation": recommendation or "Allowlist outbound destinations and block internal ranges.",
+        }
+
+    if any(token in lower for token in ("auth", "authorization", "session", "privilege")):
+        return {
+            "title": title,
+            "what_is_happening": "The code path affects authentication, authorization, or session handling and needs stricter control than ordinary application logic.",
+            "why_it_is_weak": "Mistakes in auth or session boundaries often turn into privilege escalation, confused-deputy behavior, or account takeover.",
+            "what_to_use_instead": "Enforce the check on the server side, keep session and identity state centralized, and avoid relying on client-controlled values for access decisions.",
+            "summary": "In short: treat auth and session decisions as security-critical and enforce them in trusted server code.",
+            "code_example": original_code or "Use server-side access checks and trusted session state.",
+            "recommendation": recommendation or "Enforce authorization on the server side and do not trust client-controlled identity data.",
+        }
+
+    scenario, impact, _, safer = _scenario_for(title)
+    return {
+        "title": title,
+        "what_is_happening": scenario,
+        "why_it_is_weak": impact,
+        "what_to_use_instead": safer,
+        "summary": recommendation or f"{title} should be remediated using the safer code path shown elsewhere in this report.",
+        "code_example": original_code or "See the affected source line in the report for the exact code path.",
+        "recommendation": recommendation or "Follow the report guidance and remediate the unsafe pattern.",
+    }
+
+
 def _risk_priority_score(item: dict) -> float:
     base = float(item.get("cvss_score", 0.0)) * 8.0
     severity_bonus = {
@@ -2302,6 +2444,7 @@ def _apply_validation_and_ai(findings: list[dict], target_path: str, scan_role: 
                 "fix_verification",
             ):
                 item.pop(key, None)
+        item["plain_language_security_brief"] = _plain_language_security_brief(item)
 
     provider_applied = 0
     provider_errors: list[str] = []

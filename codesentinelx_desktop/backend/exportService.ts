@@ -5099,6 +5099,13 @@ function renderFixesHtml(scan: ScanView): string {
       } else if (groundingNotes) {
         sectionWhatToChange.push(`<p><strong>Reason this fix is correct:</strong> ${escapeHtml(groundingNotes)}</p>`);
       }
+      const plainLanguageBrief = plainLanguageSecurityBrief(finding as Partial<VulnerabilityFinding> & Record<string, unknown>);
+      sectionWhatToChange.push(`<div class="plain-language-brief"><div class="fix-subtitle">Plain-Language Security Brief: ${escapeHtml(plainLanguageBrief.title)}</div><table class="results"><tbody>
+        <tr><th>What’s happening here</th><td>${escapeHtml(plainLanguageBrief.what_is_happening)}</td></tr>
+        <tr><th>Why it’s considered weak</th><td>${escapeHtml(plainLanguageBrief.why_it_is_weak)}</td></tr>
+        <tr><th>What you should use instead</th><td>${escapeHtml(plainLanguageBrief.what_to_use_instead)}</td></tr>
+        <tr><th>Summary</th><td>${escapeHtml(plainLanguageBrief.summary)}</td></tr>
+      </tbody></table></div>`);
 
       const pocCommandMatch = proofText.match(/Replay Command:\s*([^\n\r]+)/i);
       if (pocCommandMatch?.[1]) {
@@ -5356,7 +5363,7 @@ function renderFixesHtml(scan: ScanView): string {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CodeSentinelX Original and Suggested Fix Report</title>
-  <style>${exportThemeCss(".fix-link{color:var(--accent);text-decoration:underline}.toolbar{display:flex;gap:8px;align-items:center;margin:6px 0 10px;flex-wrap:wrap}input{background:rgba(7,20,36,.14);border:1px solid rgba(120,168,205,.28);border-radius:8px;color:var(--text);padding:7px 10px;min-width:300px}.fix-detail{border:1px solid rgba(120,168,205,.24);border-radius:14px;background:rgba(8,21,36,.14);padding:12px;margin-bottom:10px}.fix-detail h3{margin-bottom:8px}.fix-detail h4{margin:10px 0 6px;font-size:12px;line-height:1.2;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}.fix-detail .results th,.fix-detail .results td{padding:8px 10px}.fix-detail .code-grid{gap:10px}.fix-detail .code-grid > div{min-width:0}.fix-detail .code-grid pre,.fix-detail pre.evidence-scroll{margin:0}.fix-detail.is-active{outline:2px solid rgba(94,234,212,.38);box-shadow:0 0 0 1px rgba(94,234,212,.18),0 18px 32px rgba(15,23,42,.22)}.fix-subtitle{margin:8px 0 4px;font-size:11px;line-height:1.2;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700}.fix-disclosure{border:1px solid rgba(120,168,205,.22);border-radius:12px;background:rgba(9,22,37,.1);margin:10px 0 0;overflow:hidden}.fix-disclosure>summary{cursor:pointer;list-style:none;padding:10px 12px;font-weight:700;color:var(--text);display:flex;align-items:center;justify-content:space-between;gap:12px}.fix-disclosure>summary::-webkit-details-marker{display:none}.fix-disclosure>summary::after{content:'+';color:var(--muted);font-size:16px;line-height:1}.fix-disclosure[open]>summary{border-bottom:1px solid rgba(120,168,205,.14)}.fix-disclosure[open]>summary::after{content:'–'}.fix-disclosure-body{padding:12px}.evidence-scroll{max-height:280px;overflow:auto;white-space:pre;word-break:normal;scrollbar-width:thin;scrollbar-color:rgba(128,169,196,.22) transparent}.evidence-scroll::-webkit-scrollbar{height:8px;width:8px}.evidence-scroll::-webkit-scrollbar-track{background:transparent}.evidence-scroll::-webkit-scrollbar-thumb{background:rgba(128,169,196,.2);border-radius:999px}.evidence-scroll::-webkit-scrollbar-thumb:hover{background:rgba(128,169,196,.32)}")}</style>
+  <style>${exportThemeCss(".fix-link{color:var(--accent);text-decoration:underline}.toolbar{display:flex;gap:8px;align-items:center;margin:6px 0 10px;flex-wrap:wrap}input{background:rgba(7,20,36,.14);border:1px solid rgba(120,168,205,.28);border-radius:8px;color:var(--text);padding:7px 10px;min-width:300px}.fix-detail{border:1px solid rgba(120,168,205,.24);border-radius:14px;background:rgba(8,21,36,.14);padding:12px;margin-bottom:10px}.fix-detail h3{margin-bottom:8px}.fix-detail h4{margin:10px 0 6px;font-size:12px;line-height:1.2;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}.fix-detail .results th,.fix-detail .results td{padding:8px 10px}.fix-detail .code-grid{gap:10px}.fix-detail .code-grid > div{min-width:0}.fix-detail .code-grid pre,.fix-detail pre.evidence-scroll{margin:0}.fix-detail.is-active{outline:2px solid rgba(94,234,212,.38);box-shadow:0 0 0 1px rgba(94,234,212,.18),0 18px 32px rgba(15,23,42,.22)}.fix-subtitle{margin:8px 0 4px;font-size:11px;line-height:1.2;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700}.plain-language-brief{margin-top:10px}.plain-language-brief .results{margin-bottom:0}.fix-disclosure{border:1px solid rgba(120,168,205,.22);border-radius:12px;background:rgba(9,22,37,.1);margin:10px 0 0;overflow:hidden}.fix-disclosure>summary{cursor:pointer;list-style:none;padding:10px 12px;font-weight:700;color:var(--text);display:flex;align-items:center;justify-content:space-between;gap:12px}.fix-disclosure>summary::-webkit-details-marker{display:none}.fix-disclosure>summary::after{content:'+';color:var(--muted);font-size:16px;line-height:1}.fix-disclosure[open]>summary{border-bottom:1px solid rgba(120,168,205,.14)}.fix-disclosure[open]>summary::after{content:'–'}.fix-disclosure-body{padding:12px}.evidence-scroll{max-height:280px;overflow:auto;white-space:pre;word-break:normal;scrollbar-width:thin;scrollbar-color:rgba(128,169,196,.22) transparent}.evidence-scroll::-webkit-scrollbar{height:8px;width:8px}.evidence-scroll::-webkit-scrollbar-track{background:transparent}.evidence-scroll::-webkit-scrollbar-thumb{background:rgba(128,169,196,.2);border-radius:999px}.evidence-scroll::-webkit-scrollbar-thumb:hover{background:rgba(128,169,196,.32)}")}</style>
 </head>
 <body>
   <main class="report-shell">
@@ -7704,6 +7711,160 @@ function fixArtifactLabel(finding: VulnerabilityFinding): string {
     return label;
   }
   return fixArtifactKind(finding) === "exact_patch" ? "Suggested Fix" : "Remediation Guidance";
+}
+
+function plainLanguageSecurityBrief(finding: Partial<VulnerabilityFinding> & Record<string, unknown>): {
+  title: string;
+  what_is_happening: string;
+  why_it_is_weak: string;
+  what_to_use_instead: string;
+  summary: string;
+  code_example: string;
+  recommendation: string;
+} {
+  const title = normalizedFindingTitle(finding as VulnerabilityFinding);
+  const lowerBlob = [
+    title,
+    String(finding.cwe_id || finding.cwe || "").trim(),
+    String(finding.rule_id || "").trim(),
+    String(finding.description || "").trim(),
+    String(finding.recommendation || "").trim(),
+    String(finding.original_code || "").trim(),
+    String(finding.vulnerable_code_snippet || "").trim(),
+    String(finding.evidence || "").trim(),
+  ]
+    .join(" ")
+    .toLowerCase();
+  const originalCode = String(finding.original_code || finding.vulnerable_code_snippet || "").trim();
+  const recommendation = String(finding.recommendation || "").trim();
+  const base = {
+    title,
+    what_is_happening: "The code path is handling untrusted input or a security-sensitive operation in a way that deserves tighter control.",
+    why_it_is_weak: "Unsafe patterns can let attackers change execution flow, read protected data, or weaken the trust boundary the application depends on.",
+    what_to_use_instead: "Use a safer pattern that validates input, constrains execution, and keeps the security-sensitive decision on the trusted side of the boundary.",
+    summary: recommendation || `Remediate ${title} using the safer pattern shown in the fix guidance section.`,
+    code_example: originalCode || "See the affected source line for the exact unsafe pattern.",
+    recommendation: recommendation || "Apply the safer code path and verify the fix with the report evidence.",
+  };
+  if (/(weak cryptography|cwe-327|3des|des-ede3-cbc|tripledes)/.test(lowerBlob)) {
+    return {
+      title: "Weak Cryptography Usage",
+      what_is_happening: "The code is using a legacy cipher or weak cryptographic pattern to protect data. In practice, that means the application is relying on an older encryption mode or primitive that modern standards no longer treat as a strong default.",
+      why_it_is_weak: "Legacy cryptography can be easier to attack, is often slower, and may not provide built-in authenticity. CBC-mode encryption also needs careful IV handling, and older ciphers can become risky when large amounts of data are processed.",
+      what_to_use_instead: "Prefer an authenticated modern mode such as AES-GCM. If the application must interoperate with a legacy system, keep the weak path only as a short-lived compatibility exception and plan a migration to stronger primitives.",
+      summary: recommendation || "Retire the legacy cipher, move to modern authenticated encryption, and rotate any data or keys that were protected by the weaker algorithm.",
+      code_example: originalCode || "Use a modern authenticated cipher such as crypto.createCipheriv('aes-256-gcm', key, iv).",
+      recommendation: recommendation || "Migrate to AES-GCM and rotate any keys or data tied to the legacy cipher.",
+    };
+  }
+  if (/(sql injection|cwe-89)/.test(lowerBlob)) {
+    return {
+      title: "SQL Injection",
+      what_is_happening: "Untrusted input is reaching a database query in a way that lets the input change the structure of the SQL statement.",
+      why_it_is_weak: "When user input is concatenated into SQL, an attacker can alter filters, bypass checks, or read and modify data they should not access.",
+      what_to_use_instead: "Use parameterized queries or prepared statements, and keep input validation strict but separate from query construction.",
+      summary: recommendation || "Never build SQL by string concatenation; bind parameters instead.",
+      code_example: originalCode || "Use parameterized execution such as cursor.execute(query, params).",
+      recommendation: recommendation || "Switch to prepared statements / parameterized queries.",
+    };
+  }
+  if (/(cross-site scripting|xss|cwe-79)/.test(lowerBlob)) {
+    return {
+      title: "Cross-Site Scripting (XSS)",
+      what_is_happening: "User-controlled data is reaching a browser rendering sink without enough escaping or context-aware encoding.",
+      why_it_is_weak: "That can let attacker-supplied script or markup execute in another user’s browser and expose sessions, data, or actions.",
+      what_to_use_instead: "Use framework templating, output encoding, and safe DOM APIs instead of directly injecting HTML or script content.",
+      summary: recommendation || "Encode on output and avoid unsafe HTML rendering paths.",
+      code_example: originalCode || "Render trusted markup only and escape untrusted values before display.",
+      recommendation: recommendation || "Escape untrusted output and avoid direct HTML injection.",
+    };
+  }
+  if (/(hardcoded|secret|credential|cwe-798)/.test(lowerBlob)) {
+    return {
+      title: "Hardcoded Secrets / Credentials",
+      what_is_happening: "Sensitive credentials or tokens are present in code or nearby artifacts where anyone with repo or build access could read them.",
+      why_it_is_weak: "Hardcoded secrets are easy to leak, hard to rotate safely, and often remain valid far longer than they should.",
+      what_to_use_instead: "Move secrets into a managed vault or secret manager, rotate the exposed value, and load credentials at runtime instead of embedding them in source.",
+      summary: recommendation || "Remove secrets from code, store them in a vault, and rotate anything already exposed.",
+      code_example: originalCode || "Use environment-backed secret retrieval instead of storing the secret inline.",
+      recommendation: recommendation || "Move the secret to a vault and rotate it immediately.",
+    };
+  }
+  if (/(path traversal|directory traversal|cwe-22)/.test(lowerBlob)) {
+    return {
+      title: "Path Traversal",
+      what_is_happening: "A path or filename is influenced by user input without enough normalization or allowlisting.",
+      why_it_is_weak: "An attacker can steer the application outside the intended folder and read or write files it should not touch.",
+      what_to_use_instead: "Normalize the path, enforce an allowlist, and join paths with safe helpers that keep the final location inside the approved base directory.",
+      summary: recommendation || "Never trust raw file paths from input; keep them constrained to the intended directory tree.",
+      code_example: originalCode || "Use safe path-join helpers and validate the resolved path before access.",
+      recommendation: recommendation || "Normalize and constrain file paths before reading or writing.",
+    };
+  }
+  if (/(command injection|cwe-78|shell)/.test(lowerBlob)) {
+    return {
+      title: "Command Injection",
+      what_is_happening: "User-controlled data is reaching a shell command or command string.",
+      why_it_is_weak: "If the shell interprets special characters, the attacker can append new commands or change the meaning of the original one.",
+      what_to_use_instead: "Avoid shell execution when possible, pass arguments as an array, and use strict allowlists for any input that must influence command behavior.",
+      summary: recommendation || "Do not build shell commands from raw input.",
+      code_example: originalCode || "Invoke commands without shell interpolation and with allowlisted arguments only.",
+      recommendation: recommendation || "Avoid shell concatenation and use safe argument passing.",
+    };
+  }
+  if (/(dependency vulnerability|cwe-1104|vulnerable and outdated components|cve|ghsa|osv)/.test(lowerBlob)) {
+    return {
+      title: "Dependency Vulnerability",
+      what_is_happening: "The application depends on a package or component version that has a known advisory or fixed version available.",
+      why_it_is_weak: "Even if the code looks fine, a vulnerable library can expose the application through the dependency chain, especially when the package is reachable at runtime.",
+      what_to_use_instead: "Upgrade to the fixed version, verify whether the vulnerable path is actually reachable in this application, and keep the dependency source of truth tied to an advisory record.",
+      summary: recommendation || "Update the package to a safe version and keep the advisory evidence attached to the finding.",
+      code_example: originalCode || "Upgrade to the vendor-fixed package version and re-run verification.",
+      recommendation: recommendation || "Upgrade the affected dependency to the fixed version.",
+    };
+  }
+  if (/(deserialization|cwe-502)/.test(lowerBlob)) {
+    return {
+      title: "Insecure Deserialization",
+      what_is_happening: "The code is turning untrusted serialized data back into objects without enough validation or structure checking.",
+      why_it_is_weak: "Unsafe deserialization can let attacker-controlled payloads trigger unexpected behavior, object graph abuse, or even code execution in some stacks.",
+      what_to_use_instead: "Use safe serializers, strict schemas, and reject data that is not explicitly expected by the application.",
+      summary: recommendation || "Never deserialize untrusted data with a permissive parser.",
+      code_example: originalCode || "Use schema-validated parsing instead of generic object deserialization.",
+      recommendation: recommendation || "Switch to safe serialization and validate input schemas.",
+    };
+  }
+  if (/(ssrf|cwe-918)/.test(lowerBlob)) {
+    return {
+      title: "Server-Side Request Forgery (SSRF)",
+      what_is_happening: "The application can be persuaded to make server-side requests to attacker-chosen destinations.",
+      why_it_is_weak: "That can expose internal services, metadata endpoints, or trusted network-only resources that should not be reachable externally.",
+      what_to_use_instead: "Apply destination allowlists, block internal ranges, and validate URLs before the application issues outbound requests.",
+      summary: recommendation || "Strictly control where the server is allowed to connect.",
+      code_example: originalCode || "Validate and allowlist outbound destinations before making the request.",
+      recommendation: recommendation || "Allowlist outbound destinations and block internal ranges.",
+    };
+  }
+  if (/(auth|authorization|session|privilege)/.test(lowerBlob)) {
+    return {
+      title,
+      what_is_happening: "The code path affects authentication, authorization, or session handling and needs stricter control than ordinary application logic.",
+      why_it_is_weak: "Mistakes in auth or session boundaries often turn into privilege escalation, confused-deputy behavior, or account takeover.",
+      what_to_use_instead: "Enforce the check on the server side, keep session and identity state centralized, and avoid relying on client-controlled values for access decisions.",
+      summary: recommendation || "Treat auth and session decisions as security-critical and enforce them in trusted server code.",
+      code_example: originalCode || "Use server-side access checks and trusted session state.",
+      recommendation: recommendation || "Enforce authorization on the server side and do not trust client-controlled identity data.",
+    };
+  }
+  return {
+    title,
+    what_is_happening: "The code path is handling untrusted input or a security-sensitive operation in a way that deserves tighter control.",
+    why_it_is_weak: "Unsafe patterns can let attackers change execution flow, read protected data, or weaken the trust boundary the application depends on.",
+    what_to_use_instead: "Use a safer pattern that validates input, constrains execution, and keeps the security-sensitive decision on the trusted side of the boundary.",
+    summary: recommendation || `Remediate ${title} using the safer pattern shown in the fix guidance section.`,
+    code_example: originalCode || "See the affected source line for the exact unsafe pattern.",
+    recommendation: recommendation || "Apply the safer code path and verify the fix with the report evidence.",
+  };
 }
 
 function aiFixConfidenceLabel(value: { ai_fix_confidence_label?: string; remediation_confidence?: string }): string {

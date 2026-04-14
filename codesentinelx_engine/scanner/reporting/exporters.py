@@ -129,6 +129,161 @@ def _display_report_tool_name(tool: object) -> str:
     return value
 
 
+def _plain_language_security_brief(item: dict) -> dict[str, str]:
+    def _joined_text() -> str:
+        return " ".join(
+            str(item.get(key) or "").lower()
+            for key in (
+                "vulnerability_title",
+                "vulnerability_type",
+                "cwe_id",
+                "cwe",
+                "rule_id",
+                "description",
+                "recommendation",
+                "original_code",
+                "vulnerable_code_snippet",
+                "evidence",
+            )
+        )
+
+    title = str(item.get("vulnerability_title") or item.get("vulnerability_type") or "Issue").strip() or "Issue"
+    lower_blob = _joined_text()
+    original_code = str(item.get("original_code") or item.get("vulnerable_code_snippet") or "").strip()
+    recommendation = str(item.get("recommendation") or "").strip()
+
+    def make(
+        *,
+        title: str,
+        what: str,
+        why: str,
+        instead: str,
+        summary: str,
+    ) -> dict[str, str]:
+        return {
+            "title": title,
+            "what_is_happening": what,
+            "why_it_is_weak": why,
+            "what_to_use_instead": instead,
+            "summary": recommendation or summary,
+            "code_example": original_code or "See the affected source line for the exact unsafe pattern.",
+            "recommendation": recommendation or summary,
+        }
+
+    if any(token in lower_blob for token in ("weak cryptography", "cwe-327", "3des", "des-ede3-cbc", "tripledes")):
+        return make(
+            title="Weak Cryptography Usage",
+            what="The code is using a legacy cipher or weak cryptographic pattern to protect data. In practice, that means the application is relying on an older encryption mode or primitive that modern standards no longer treat as a strong default.",
+            why="Legacy cryptography can be easier to attack, is often slower, and may not provide built-in authenticity. CBC-mode encryption also needs careful IV handling, and older ciphers can become risky when large amounts of data are processed.",
+            instead="Prefer an authenticated modern mode such as AES-GCM. If the application must interoperate with a legacy system, keep the weak path only as a short-lived compatibility exception and plan a migration to stronger primitives.",
+            summary="Retire the legacy cipher, move to modern authenticated encryption, and rotate any data or keys that were protected by the weaker algorithm.",
+        )
+
+    if any(token in lower_blob for token in ("sql injection", "cwe-89")):
+        return make(
+            title="SQL Injection",
+            what="Untrusted input is reaching a database query in a way that lets the input change the structure of the SQL statement.",
+            why="When user input is concatenated into SQL, an attacker can alter filters, bypass checks, or read and modify data they should not access.",
+            instead="Use parameterized queries or prepared statements, and keep input validation strict but separate from query construction.",
+            summary="Never build SQL by string concatenation; bind parameters instead.",
+        )
+
+    if any(token in lower_blob for token in ("cross-site scripting", "xss", "cwe-79")):
+        return make(
+            title="Cross-Site Scripting (XSS)",
+            what="User-controlled data is reaching a browser rendering sink without enough escaping or context-aware encoding.",
+            why="That can let attacker-supplied script or markup execute in another user’s browser and expose sessions, data, or actions.",
+            instead="Use framework templating, output encoding, and safe DOM APIs instead of directly injecting HTML or script content.",
+            summary="Encode on output and avoid unsafe HTML rendering paths.",
+        )
+
+    if any(token in lower_blob for token in ("hardcoded", "secret", "credential", "cwe-798")):
+        return make(
+            title="Hardcoded Secrets / Credentials",
+            what="Sensitive credentials or tokens are present in code or nearby artifacts where anyone with repo or build access could read them.",
+            why="Hardcoded secrets are easy to leak, hard to rotate safely, and often remain valid far longer than they should.",
+            instead="Move secrets into a managed vault or secret manager, rotate the exposed value, and load credentials at runtime instead of embedding them in source.",
+            summary="Remove secrets from code, store them in a vault, and rotate anything already exposed.",
+        )
+
+    if any(token in lower_blob for token in ("path traversal", "directory traversal", "cwe-22")):
+        return make(
+            title="Path Traversal",
+            what="A path or filename is influenced by user input without enough normalization or allowlisting.",
+            why="An attacker can steer the application outside the intended folder and read or write files it should not touch.",
+            instead="Normalize the path, enforce an allowlist, and join paths with safe helpers that keep the final location inside the approved base directory.",
+            summary="Never trust raw file paths from input; keep them constrained to the intended directory tree.",
+        )
+
+    if any(token in lower_blob for token in ("command injection", "cwe-78", "shell")):
+        return make(
+            title="Command Injection",
+            what="User-controlled data is reaching a shell command or command string.",
+            why="If the shell interprets special characters, the attacker can append new commands or change the meaning of the original one.",
+            instead="Avoid shell execution when possible, pass arguments as an array, and use strict allowlists for any input that must influence command behavior.",
+            summary="Do not build shell commands from raw input.",
+        )
+
+    if any(token in lower_blob for token in ("dependency vulnerability", "cwe-1104", "vulnerable and outdated components", "cve", "ghsa", "osv")):
+        return make(
+            title="Dependency Vulnerability",
+            what="The application depends on a package or component version that has a known advisory or fixed version available.",
+            why="Even if the code looks fine, a vulnerable library can expose the application through the dependency chain, especially when the package is reachable at runtime.",
+            instead="Upgrade to the fixed version, verify whether the vulnerable path is actually reachable in this application, and keep the dependency source of truth tied to an advisory record.",
+            summary="Update the package to a safe version and keep the advisory evidence attached to the finding.",
+        )
+
+    if any(token in lower_blob for token in ("deserialization", "cwe-502")):
+        return make(
+            title="Insecure Deserialization",
+            what="The code is turning untrusted serialized data back into objects without enough validation or structure checking.",
+            why="Unsafe deserialization can let attacker-controlled payloads trigger unexpected behavior, object graph abuse, or even code execution in some stacks.",
+            instead="Use safe serializers, strict schemas, and reject data that is not explicitly expected by the application.",
+            summary="Never deserialize untrusted data with a permissive parser.",
+        )
+
+    if any(token in lower_blob for token in ("ssrf", "cwe-918")):
+        return make(
+            title="Server-Side Request Forgery (SSRF)",
+            what="The application can be persuaded to make server-side requests to attacker-chosen destinations.",
+            why="That can expose internal services, metadata endpoints, or trusted network-only resources that should not be reachable externally.",
+            instead="Apply destination allowlists, block internal ranges, and validate URLs before the application issues outbound requests.",
+            summary="Strictly control where the server is allowed to connect.",
+        )
+
+    if any(token in lower_blob for token in ("auth", "authorization", "session", "privilege")):
+        return make(
+            title=title,
+            what="The code path affects authentication, authorization, or session handling and needs stricter control than ordinary application logic.",
+            why="Mistakes in auth or session boundaries often turn into privilege escalation, confused-deputy behavior, or account takeover.",
+            instead="Enforce the check on the server side, keep session and identity state centralized, and avoid relying on client-controlled values for access decisions.",
+            summary="Treat auth and session decisions as security-critical and enforce them in trusted server code.",
+        )
+
+    return make(
+        title=title,
+        what="The code path is handling untrusted input or a security-sensitive operation in a way that deserves tighter control.",
+        why="Unsafe patterns can let attackers change execution flow, read protected data, or weaken the trust boundary the application depends on.",
+        instead="Use a safer pattern that validates input, constrains execution, and keeps the security-sensitive decision on the trusted side of the boundary.",
+        summary=f"Remediate {title} using the safer pattern shown in the fix guidance section.",
+    )
+
+
+def _render_plain_language_security_brief_html(item: dict) -> str:
+    brief = _plain_language_security_brief(item)
+    return (
+        "<div class='plain-language-brief'>"
+        f"<h4>Plain-Language Security Brief: {html.escape(brief['title'])}</h4>"
+        "<table>"
+        f"<tr><th>What’s happening here</th><td>{html.escape(brief['what_is_happening'])}</td></tr>"
+        f"<tr><th>Why it’s considered weak</th><td>{html.escape(brief['why_it_is_weak'])}</td></tr>"
+        f"<tr><th>What you should use instead</th><td>{html.escape(brief['what_to_use_instead'])}</td></tr>"
+        f"<tr><th>Summary</th><td>{html.escape(brief['summary'])}</td></tr>"
+        "</table>"
+        "</div>"
+    )
+
+
 def _quality_benchmark_from_report(report: dict) -> dict[str, Any] | None:
     executive = _as_dict(report.get("executive_summary"))
     existing = _as_dict(report.get("existing_implementation_report"))
@@ -691,6 +846,12 @@ class ReportExporter:
                     if test_info:
                         write_line(f"Workspace Test: {test_info.get('status', 'unknown')} | {test_info.get('command', '')}", size=8)
                         write_block(str(test_info.get("output", "")), size=8)
+                brief = _plain_language_security_brief(item)
+                write_line(f"Plain-Language Security Brief: {brief['title']}", size=8)
+                write_line(f"What’s happening here: {brief['what_is_happening']}", size=8)
+                write_line(f"Why it’s considered weak: {brief['why_it_is_weak']}", size=8)
+                write_line(f"What you should use instead: {brief['what_to_use_instead']}", size=8)
+                write_line(f"Summary: {brief['summary']}", size=8)
                 write_line("Original Code:", size=8)
                 write_block(str(item.get("original_code", "Snippet unavailable.")), font="Courier", size=8)
                 write_line("Suggested Fix:", size=8)
@@ -1456,7 +1617,8 @@ class ReportExporter:
                 "<div><h4>Suggested Fix</h4>"
                 f"<pre>{html.escape(str(item.get('ai_suggested_fix') or item.get('fixed_code', 'No direct fix available.')))}</pre></div>"
                 "</div>"
-                f"<h4>Patch Preview</h4><pre>{html.escape(str(item.get('patch_preview', 'No patch preview available.')))}</pre>"
+                + _render_plain_language_security_brief_html(item)
+                + f"<h4>Patch Preview</h4><pre>{html.escape(str(item.get('patch_preview', 'No patch preview available.')))}</pre>"
                 "</section>"
             )
             for idx, item in enumerate(findings[:220])
@@ -1489,6 +1651,10 @@ class ReportExporter:
     .panel {{ margin-bottom:14px; }}
     .summary {{ max-width:460px; }}
     .fix-card {{ margin-top:14px; padding:14px; border:1px solid rgba(120,168,205,.28); border-radius:14px; background:rgba(11,26,45,.14); }}
+    .plain-language-brief {{ margin:14px 0 8px; }}
+    .plain-language-brief h4 {{ margin-top:0; }}
+    .plain-language-brief {{ margin-top:12px; }}
+    .plain-language-brief h4 {{ margin-top:0; }}
     .code-grid {{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }}
     pre {{ margin:0; white-space:pre-wrap; word-break:break-word; font-family:Consolas, monospace; background:rgba(7,19,33,.16); border:1px solid rgba(120,168,205,.24); border-radius:14px; padding:12px; color:#dce9f7; line-height:1.55; }}
     @media (max-width: 980px) {{ .code-grid {{ grid-template-columns:1fr; }} }}
