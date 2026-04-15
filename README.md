@@ -31,6 +31,10 @@ CodeSentinelX is intentionally focused on authenticity and developer usefulness.
 - Desktop reports built for multiple audiences:
   leadership, security teams, and developers can use the same scan output in different ways
 
+## Architecture
+
+If you want the layered system layout and request flow, see [`README_ARCHITECTURE.md`](README_ARCHITECTURE.md).
+
 ## Core Capabilities
 
 ### Secure Code Scanning
