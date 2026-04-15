@@ -79,6 +79,82 @@ Reports are rendered in HTML, PDF, JSON, and SARIF
 History and export artifacts are stored locally
 ```
 
+## Visual Diagram
+
+```mermaid
+flowchart TD
+  U[User] --> UI[Desktop Experience Layer]
+  UI --> RP[Role & Policy Layer]
+  RP --> SO[Scan Orchestration]
+  SO --> AD[Analyzer Adapters]
+  AD --> EN[Evidence & Normalization]
+  EN --> TV[Triage & Verification]
+  TV --> RE[Reporting & Export]
+  RE --> ST[Storage & History]
+  SO --> OT[Toolchain & Offline Support]
+  OT --> AD
+
+  subgraph Desktop["Desktop Experience"]
+    L[Landing / Welcome]
+    M[Main Workspace]
+    R[Reports Center]
+    H[Help Center]
+  end
+
+  subgraph Policy["Role & Policy"]
+    A[Admin]
+    S[Security Analyst]
+    D[Developer]
+    AU[Auditor]
+    MG[Management]
+  end
+
+  subgraph Tools["Analyzer Adapters"]
+    SQ[Semgrep]
+    CQ[CodeQL]
+    OSV[OSV-Scanner]
+    ESL[ESLint Security]
+    DEP[Dependency / Secret / IaC Tools]
+  end
+
+  subgraph Reports["Reporting & Export"]
+    C[Combined]
+    V[Vulnerability]
+    F[Fixes]
+    E[Existing Controls]
+    X[HTML / PDF / JSON / SARIF]
+  end
+
+  UI --> Desktop
+  RP --> Policy
+  AD --> Tools
+  RE --> Reports
+```
+
+### ASCII fallback
+
+```text
+User
+  ↓
+Desktop Experience
+  ↓
+Role & Policy
+  ↓
+Scan Orchestration
+  ↓
+Analyzer Adapters
+  ↓
+Evidence & Normalization
+  ↓
+Triage & Verification
+  ↓
+Reporting & Export
+  ↓
+Storage & History
+  ↘
+Toolchain & Offline Support
+```
+
 ## Design Principles
 
 - Keep scanning logic separate from report rendering.
