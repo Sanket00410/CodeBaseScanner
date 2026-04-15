@@ -30,6 +30,11 @@ _ROLE_DEFAULT_SCAN_PRESETS = {
 class RoleScope:
     role: str
     tool_allowlist: frozenset[str]
+    run_external_tools: bool
+    run_file_findings: bool
+    run_project_rules: bool
+    run_native_code_analysis: bool
+    run_native_dependency_analysis: bool
     run_active_poc: bool
     run_fix_verification: bool
     redact_findings: bool
@@ -112,6 +117,11 @@ _ROLE_SCOPES = {
     "Admin": RoleScope(
         role="Admin",
         tool_allowlist=_ROLE_TOOL_ALLOWLIST["Admin"],
+        run_external_tools=True,
+        run_file_findings=True,
+        run_project_rules=True,
+        run_native_code_analysis=True,
+        run_native_dependency_analysis=True,
         run_active_poc=True,
         run_fix_verification=True,
         redact_findings=False,
@@ -123,6 +133,11 @@ _ROLE_SCOPES = {
     "Security Analyst": RoleScope(
         role="Security Analyst",
         tool_allowlist=_ROLE_TOOL_ALLOWLIST["Security Analyst"],
+        run_external_tools=True,
+        run_file_findings=True,
+        run_project_rules=True,
+        run_native_code_analysis=True,
+        run_native_dependency_analysis=True,
         run_active_poc=True,
         run_fix_verification=True,
         redact_findings=False,
@@ -134,6 +149,11 @@ _ROLE_SCOPES = {
     "Developer": RoleScope(
         role="Developer",
         tool_allowlist=_ROLE_TOOL_ALLOWLIST["Developer"],
+        run_external_tools=True,
+        run_file_findings=True,
+        run_project_rules=True,
+        run_native_code_analysis=True,
+        run_native_dependency_analysis=True,
         run_active_poc=True,
         run_fix_verification=True,
         redact_findings=False,
@@ -149,6 +169,11 @@ _ROLE_SCOPES = {
     "Auditor": RoleScope(
         role="Auditor",
         tool_allowlist=_ROLE_TOOL_ALLOWLIST["Auditor"],
+        run_external_tools=True,
+        run_file_findings=False,
+        run_project_rules=False,
+        run_native_code_analysis=False,
+        run_native_dependency_analysis=False,
         run_active_poc=False,
         run_fix_verification=False,
         redact_findings=True,
@@ -160,6 +185,11 @@ _ROLE_SCOPES = {
     "Management": RoleScope(
         role="Management",
         tool_allowlist=_ROLE_TOOL_ALLOWLIST["Management"],
+        run_external_tools=False,
+        run_file_findings=False,
+        run_project_rules=False,
+        run_native_code_analysis=False,
+        run_native_dependency_analysis=False,
         run_active_poc=False,
         run_fix_verification=False,
         redact_findings=True,
@@ -375,6 +405,25 @@ def scope_report_for_role(report: dict[str, Any], role: str | None) -> dict[str,
                 scoped.pop(section_key, None)
 
     if report_role == "Management":
+        data_quality = scoped.get("executive_summary", {}).get("data_quality") if isinstance(scoped.get("executive_summary"), dict) else None
+        if isinstance(data_quality, dict):
+            data_quality.pop("quality_benchmark", None)
+        executive_summary = scoped.get("executive_summary")
+        if isinstance(executive_summary, dict):
+            executive_summary.pop("data_quality", None)
+        enterprise_assurance = scoped.get("executive_summary", {}).get("enterprise_assurance") if isinstance(scoped.get("executive_summary"), dict) else None
+        if isinstance(enterprise_assurance, dict):
+            enterprise_assurance.pop("quality_benchmark", None)
+        vuln_summary = scoped.get("vulnerability_fixed_code_report", {}).get("summary") if isinstance(scoped.get("vulnerability_fixed_code_report"), dict) else None
+        if isinstance(vuln_summary, dict):
+            data_quality = vuln_summary.get("data_quality")
+            if isinstance(data_quality, dict):
+                data_quality.pop("quality_benchmark", None)
+        role_aware = scoped.get("role_aware_report")
+        if isinstance(role_aware, dict):
+            enterprise_assurance = role_aware.get("enterprise_assurance")
+            if isinstance(enterprise_assurance, dict):
+                enterprise_assurance.pop("quality_benchmark", None)
         scoped.pop("false_positive_report", None)
         scoped.pop("deterministic_replay", None)
         scoped.pop("report_integrity_chain", None)

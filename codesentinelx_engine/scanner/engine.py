@@ -272,6 +272,7 @@ class ScanEngine:
         path: Path,
         control_analyzer: ExistingSecurityMeasuresAnalyzer,
         scan_cache: FileScanCache,
+        allow_file_findings: bool,
     ) -> dict[str, object]:
         relative_path = path.relative_to(target)
         relative_key = str(relative_path).replace("\\", "/")
@@ -300,40 +301,42 @@ class ScanEngine:
             }
 
         findings: list[Finding] = []
-        if self.native_scanner.enabled:
-            try:
-                findings.extend(self.native_scanner.scan_file(relative_path, content))
-            except Exception as exc:  # pragma: no cover - defensive branch
-                return {
-                    "relative_path": relative_key,
-                    "error": f"Native code analysis failed on {relative_key}: {exc}",
-                    "findings": [],
-                    "control_observations": {},
-                    "cached": False,
-                }
-        for rule in self.file_rules:
-            try:
-                findings.extend(rule.scan_file(relative_path, content))
-            except Exception as exc:  # pragma: no cover - defensive branch
-                return {
-                    "relative_path": relative_key,
-                    "error": f"Rule {rule.metadata.rule_id} failed on {relative_key}: {exc}",
-                    "findings": [],
-                    "control_observations": {},
-                    "cached": False,
-                }
-        for plugin in self.plugins:
-            if plugin.supports(relative_path):
+        if allow_file_findings:
+            if self.native_scanner.enabled and self.role_scope.run_native_code_analysis:
                 try:
-                    findings.extend(plugin.scan_file(relative_path, content))
+                    findings.extend(self.native_scanner.scan_file(relative_path, content))
                 except Exception as exc:  # pragma: no cover - defensive branch
                     return {
                         "relative_path": relative_key,
-                        "error": f"Plugin {plugin.metadata.plugin_id} failed on {relative_key}: {exc}",
+                        "error": f"Native code analysis failed on {relative_key}: {exc}",
                         "findings": [],
                         "control_observations": {},
                         "cached": False,
                     }
+            if self.role_scope.run_file_findings:
+                for rule in self.file_rules:
+                    try:
+                        findings.extend(rule.scan_file(relative_path, content))
+                    except Exception as exc:  # pragma: no cover - defensive branch
+                        return {
+                            "relative_path": relative_key,
+                            "error": f"Rule {rule.metadata.rule_id} failed on {relative_key}: {exc}",
+                            "findings": [],
+                            "control_observations": {},
+                            "cached": False,
+                        }
+                for plugin in self.plugins:
+                    if plugin.supports(relative_path):
+                        try:
+                            findings.extend(plugin.scan_file(relative_path, content))
+                        except Exception as exc:  # pragma: no cover - defensive branch
+                            return {
+                                "relative_path": relative_key,
+                                "error": f"Plugin {plugin.metadata.plugin_id} failed on {relative_key}: {exc}",
+                                "findings": [],
+                                "control_observations": {},
+                                "cached": False,
+                            }
 
         control_observations = control_analyzer.collect_observations(relative_path, content)
         return {
@@ -471,6 +474,7 @@ class ScanEngine:
             progress_callback(0.0, "discovering", None, f"Discovered {len(files)} files")
 
         file_workers = max(1, int(self.config.file_scan_workers or 1))
+        allow_file_findings = self.role_scope.run_file_findings or self.role_scope.run_native_code_analysis
         if file_workers == 1:
             for index, path in enumerate(files, start=1):
                 relative_path = path.relative_to(target)
@@ -486,6 +490,7 @@ class ScanEngine:
                     path=path,
                     control_analyzer=control_analyzer,
                     scan_cache=scan_cache,
+                    allow_file_findings=allow_file_findings,
                 )
                 completed_steps += 1
                 progress = round((completed_steps / total_steps) * 100.0, 2)
@@ -532,6 +537,7 @@ class ScanEngine:
                             path=path,
                             control_analyzer=control_analyzer,
                             scan_cache=scan_cache,
+                            allow_file_findings=allow_file_findings,
                         )
                     ] = (index, path.relative_to(target))
 
@@ -596,17 +602,18 @@ class ScanEngine:
                         pending[
                             executor.submit(
                                 self._scan_file_payload,
-                                target=target,
-                                path=next_path,
-                                control_analyzer=control_analyzer,
-                                scan_cache=scan_cache,
-                            )
-                        ] = (next_index, next_path.relative_to(target))
+                            target=target,
+                            path=next_path,
+                            control_analyzer=control_analyzer,
+                            scan_cache=scan_cache,
+                            allow_file_findings=allow_file_findings,
+                        )
+                ] = (next_index, next_path.relative_to(target))
 
                     if findings_limit_reached():
                         break
 
-        if self.config.use_project_rules:
+        if self.role_scope.run_project_rules and self.config.use_project_rules:
             for project_rule in self.project_rules:
                 completed_steps += 1
                 progress = round((completed_steps / total_steps) * 100.0, 2)
@@ -649,7 +656,7 @@ class ScanEngine:
                 "Project rules skipped for this role preset",
             )
 
-        if self.native_dependency_scanner.enabled:
+        if self.role_scope.run_native_dependency_analysis and self.native_dependency_scanner.enabled:
             completed_steps += 1
             progress = round((completed_steps / total_steps) * 100.0, 2)
             honor_pause_control(
@@ -683,7 +690,7 @@ class ScanEngine:
                     )
                 )
 
-        if active_external_tools or catalog_tools:
+        if self.role_scope.run_external_tools and (active_external_tools or catalog_tools):
             completed_steps += 1
             progress = round((completed_steps / total_steps) * 100.0, 2)
             honor_pause_control(
@@ -758,7 +765,7 @@ class ScanEngine:
 
         if findings_limit_reached():
             errors.append("Maximum findings limit reached; external checks skipped.")
-        elif selected_runner_tools:
+        elif self.role_scope.run_external_tools and selected_runner_tools:
             external_workers = max(1, int(self.config.external_tool_workers or 1))
             with ThreadPoolExecutor(max_workers=external_workers) as executor:
                 future_map = {

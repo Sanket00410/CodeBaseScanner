@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from codesentinelx_engine.config import ScannerConfig
+from codesentinelx_engine.scanner.engine import ScanEngine
+from codesentinelx_engine.scanner.role_scope import resolve_role_scope
 
 
 @pytest.mark.parametrize(
@@ -52,4 +56,29 @@ def test_role_defaults_exclude_removed_noise_tools(monkeypatch: pytest.MonkeyPat
     }
 
     assert not removed_tools.intersection({tool.lower() for tool in config.codebase_external_tools})
+
+
+def test_management_role_scans_as_summary_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    (tmp_path / "app.py").write_text(
+        "def handler(user_input):\n"
+        "    return eval(user_input)\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.delenv("USS_SCAN_PRESET", raising=False)
+    monkeypatch.delenv("USS_CODEBASE_TOOLS", raising=False)
+    monkeypatch.delenv("USS_EXTERNAL_TOOLS", raising=False)
+
+    scope = resolve_role_scope("Management")
+    assert not scope.run_external_tools
+    assert not scope.run_file_findings
+    assert not scope.run_project_rules
+    assert not scope.run_native_code_analysis
+    assert not scope.run_native_dependency_analysis
+
+    engine = ScanEngine(ScannerConfig.from_env("Management"))
+    result = engine.scan(tmp_path)
+
+    assert result.scan_role == "Management"
+    assert result.findings == []
 

@@ -448,6 +448,36 @@ def test_role_scoped_findings_preserve_canonical_severity_for_non_management_rol
     assert management_scope == []
 
 
+def test_management_report_strips_quality_benchmark_noise(tmp_path: Path) -> None:
+    report = build_report(
+        ScanResult(
+            target_path=str(tmp_path),
+            started_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(timezone.utc),
+            files_scanned=0,
+            findings=[],
+            errors=[],
+            existing_security_measures=[],
+            toolchain_status={},
+            quality_benchmark={
+                "configured": True,
+                "cases_total": 3,
+                "benchmark_name": "CodeSentinelX quality benchmark",
+                "benchmark_status": "warning",
+                "precision_percent": 0.0,
+                "recall_percent": 0.0,
+                "f1_percent": 0.0,
+            },
+            scan_role="Management",
+        )
+    )
+
+    executive = report["executive_summary"]
+    assert "data_quality" not in executive
+    assert "enterprise_assurance" in executive
+    assert "quality_benchmark" not in executive["enterprise_assurance"]
+
+
 def test_fix_report_queue_rows_link_to_detail_cards(tmp_path: Path) -> None:
     (tmp_path / "app.py").write_text(
         "user_id = request.args.get('id')\n"
