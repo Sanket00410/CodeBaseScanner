@@ -6,7 +6,8 @@ import pytest
 
 from codesentinelx_engine.config import ScannerConfig
 from codesentinelx_engine.scanner.engine import ScanEngine
-from codesentinelx_engine.scanner.role_scope import resolve_role_scope
+from codesentinelx_engine.scanner.reporting.report_builder import build_report
+from codesentinelx_engine.scanner.role_scope import resolve_role_scope, scope_report_for_role
 
 
 @pytest.mark.parametrize(
@@ -70,15 +71,19 @@ def test_management_role_scans_as_summary_only(tmp_path: Path, monkeypatch: pyte
     monkeypatch.delenv("USS_EXTERNAL_TOOLS", raising=False)
 
     scope = resolve_role_scope("Management")
-    assert not scope.run_external_tools
-    assert not scope.run_file_findings
+    assert scope.run_external_tools
+    assert scope.run_file_findings
     assert not scope.run_project_rules
-    assert not scope.run_native_code_analysis
-    assert not scope.run_native_dependency_analysis
+    assert scope.run_native_code_analysis
+    assert scope.run_native_dependency_analysis
 
     engine = ScanEngine(ScannerConfig.from_env("Management"))
     result = engine.scan(tmp_path)
+    report = build_report(result)
+    scoped_report = scope_report_for_role(report, "Management")
 
     assert result.scan_role == "Management"
-    assert result.findings == []
+    assert result.findings
+    assert report["executive_summary"]["deduplicated_vulnerabilities"] > 0
+    assert scoped_report["vulnerability_fixed_code_report"]["findings"] == []
 
