@@ -2526,11 +2526,13 @@ def build_report(scan_result: ScanResult) -> dict:
     duplicate_reduction = max(0, len(raw_enriched) - len(enriched_findings))
     distribution = _severity_distribution_from_enriched(enriched_findings)
     scoped_distribution = _severity_distribution_from_enriched(scoped_findings)
+    summary_findings = enriched_findings if scan_role == "Management" else scoped_findings
+    summary_distribution = distribution if scan_role == "Management" else scoped_distribution
     risk_score = _risk_score_from_distribution(distribution)
-    impacted_files = len({item["file_path"] for item in scoped_findings})
-    active_risk_count = distribution.get("Critical", 0) + distribution.get("High", 0)
-    active_poc_summary = _active_poc_summary(scoped_findings)
-    fix_verification_summary = _fix_verification_summary(scoped_findings)
+    impacted_files = len({item["file_path"] for item in summary_findings})
+    active_risk_count = summary_distribution.get("Critical", 0) + summary_distribution.get("High", 0)
+    active_poc_summary = _active_poc_summary(summary_findings)
+    fix_verification_summary = _fix_verification_summary(summary_findings)
 
     confidence = str(suppression_lifecycle.get("average_rule_confidence_label") or "Medium")
     if len(scan_result.errors) > 5 and confidence == "High":
@@ -2542,11 +2544,11 @@ def build_report(scan_result: ScanResult) -> dict:
     controls_payload = [item.to_dict() for item in controls]
     controls_summary = _controls_summary(controls)
     compliance_matrix = _compliance_matrix(controls_summary)
-    profile_compliance = build_profile_compliance(scan_result.target_path, scoped_findings, controls_payload)
-    autofix = _autofix_recommendations(scoped_findings)
+    profile_compliance = build_profile_compliance(scan_result.target_path, summary_findings, controls_payload)
+    autofix = _autofix_recommendations(summary_findings)
     toolchain_execution = _build_toolchain_execution_summary(scan_result.toolchain_status)
-    kev_catalog = _apply_kev_correlation(scoped_findings)
-    risk_intelligence = _build_risk_intelligence(scoped_findings)
+    kev_catalog = _apply_kev_correlation(summary_findings)
+    risk_intelligence = _build_risk_intelligence(summary_findings)
     risk_intelligence.update(
         {
             "kev_catalog_source": kev_catalog.get("kev_catalog_source"),
@@ -2555,12 +2557,12 @@ def build_report(scan_result: ScanResult) -> dict:
             "kev_catalog_count": kev_catalog.get("kev_catalog_count"),
         }
     )
-    auth_abuse_session_security = _build_auth_abuse_session_security(scoped_findings)
-    false_positive_report = _build_false_positive_report(scoped_findings)
+    auth_abuse_session_security = _build_auth_abuse_session_security(summary_findings)
+    false_positive_report = _build_false_positive_report(summary_findings)
     data_quality = _build_data_quality(
-        scoped_findings,
+        summary_findings,
         raw_total=len(raw_enriched),
-        deduplicated_total=len(scoped_findings),
+        deduplicated_total=len(summary_findings),
         duplicate_reduction=duplicate_reduction,
         confidence=confidence,
         toolchain_execution=toolchain_execution,
@@ -2569,16 +2571,16 @@ def build_report(scan_result: ScanResult) -> dict:
     )
     data_quality["noise_filtered_findings"] = noise_filtered_count
     enterprise_assurance = _build_enterprise_assurance(
-        scoped_findings,
+        summary_findings,
         scan_result.toolchain_status,
         toolchain_execution,
         scan_profile=profile_compliance["scan_profile"],
         quality_benchmark=getattr(scan_result, "quality_benchmark", None) or None,
     )
-    cto_board_view = _build_cto_board_view(scoped_findings, risk_score)
-    ciso_security_view = _build_ciso_security_view(scoped_findings)
-    developer_devops_view = _build_developer_devops_view(scoped_findings)
-    risk_story_mode = _build_risk_story_mode(scoped_findings)
+    cto_board_view = _build_cto_board_view(summary_findings, risk_score)
+    ciso_security_view = _build_ciso_security_view(summary_findings)
+    developer_devops_view = _build_developer_devops_view(summary_findings)
+    risk_story_mode = _build_risk_story_mode(summary_findings)
     advanced_features["security_maturity_scoring"] = _build_security_maturity_scoring(
         controls_summary,
         toolchain_execution,
@@ -2590,21 +2592,21 @@ def build_report(scan_result: ScanResult) -> dict:
         "generated_at": scan_result.completed_at.isoformat(),
         "files_scanned": scan_result.files_scanned,
         "total_vulnerabilities": len(raw_enriched),
-        "deduplicated_vulnerabilities": len(scoped_findings),
-        "duplicate_findings_removed": max(0, len(raw_enriched) - len(scoped_findings)),
+        "deduplicated_vulnerabilities": len(summary_findings),
+        "duplicate_findings_removed": max(0, len(raw_enriched) - len(summary_findings)),
         "noise_filtered_findings": noise_filtered_count,
         "total_files_impacted": impacted_files,
-        "active_risk_findings": scoped_distribution.get("Critical", 0) + scoped_distribution.get("High", 0),
+        "active_risk_findings": summary_distribution.get("Critical", 0) + summary_distribution.get("High", 0),
         "assessment_confidence": confidence,
-        "severity_distribution": scoped_distribution,
+        "severity_distribution": summary_distribution,
         "risk_score": risk_score,
         "risk_rating": risk_rating(risk_score),
-        "top_vulnerability_types": _top_vulnerability_types(scoped_findings),
-        "top_owasp_categories": _top_owasp_categories(scoped_findings),
-        "affected_modules": _affected_modules(scoped_findings),
-        "affected_files": _affected_files(scoped_findings),
-        "affected_folders": _affected_folders(scoped_findings),
-        "recommended_action_plan": _build_action_plan(scoped_distribution, scoped_findings),
+        "top_vulnerability_types": _top_vulnerability_types(summary_findings),
+        "top_owasp_categories": _top_owasp_categories(summary_findings),
+        "affected_modules": _affected_modules(summary_findings),
+        "affected_files": _affected_files(summary_findings),
+        "affected_folders": _affected_folders(summary_findings),
+        "recommended_action_plan": _build_action_plan(summary_distribution, summary_findings),
         "implemented_controls": controls_summary["implemented_controls"],
         "scan_profile": profile_compliance["scan_profile"],
         "scan_profile_label": profile_compliance["scan_profile_label"],
@@ -2638,11 +2640,11 @@ def build_report(scan_result: ScanResult) -> dict:
 
     vulnerability_findings = {
         "summary": {
-            "total": len(scoped_findings),
+            "total": len(summary_findings),
             "raw_total": len(raw_enriched),
-            "duplicate_reduction": max(0, len(raw_enriched) - len(scoped_findings)),
-            "severity_distribution": scoped_distribution,
-            "top_vulnerability_types": _top_vulnerability_types(scoped_findings),
+            "duplicate_reduction": max(0, len(raw_enriched) - len(summary_findings)),
+            "severity_distribution": summary_distribution,
+            "top_vulnerability_types": _top_vulnerability_types(summary_findings),
             "scan_profile": profile_compliance["scan_profile"],
             "noise_filtered_findings": noise_filtered_count,
         },
@@ -2672,22 +2674,22 @@ def build_report(scan_result: ScanResult) -> dict:
         "target_path": scan_result.target_path,
         "generated_at": scan_result.completed_at.isoformat(),
         "summary": {
-            "total_findings": len(scoped_findings),
+            "total_findings": len(summary_findings),
             "raw_findings_total": len(raw_enriched),
-            "duplicate_findings_removed": max(0, len(raw_enriched) - len(scoped_findings)),
+            "duplicate_findings_removed": max(0, len(raw_enriched) - len(summary_findings)),
             "noise_filtered_findings": noise_filtered_count,
-            "severity_distribution": scoped_distribution,
+            "severity_distribution": summary_distribution,
             "risk_score": risk_score,
             "risk_rating": risk_rating(risk_score),
-            "active_risk_findings": scoped_distribution.get("Critical", 0) + scoped_distribution.get("High", 0),
+            "active_risk_findings": summary_distribution.get("Critical", 0) + summary_distribution.get("High", 0),
             "files_impacted": impacted_files,
-            "top_vulnerability_types": _top_vulnerability_types(scoped_findings),
-            "top_owasp_categories": _top_owasp_categories(scoped_findings),
-            "affected_modules": _affected_modules(scoped_findings),
-            "affected_files": _affected_files(scoped_findings),
-            "affected_folders": _affected_folders(scoped_findings),
+            "top_vulnerability_types": _top_vulnerability_types(summary_findings),
+            "top_owasp_categories": _top_owasp_categories(summary_findings),
+            "affected_modules": _affected_modules(summary_findings),
+            "affected_files": _affected_files(summary_findings),
+            "affected_folders": _affected_folders(summary_findings),
             "scan_profile": profile_compliance["scan_profile"],
-            "release_gate_distribution": dict(Counter(_release_gate_action(item) for item in scoped_findings)),
+            "release_gate_distribution": dict(Counter(_release_gate_action(item) for item in summary_findings)),
             "risk_intelligence": risk_intelligence,
             "auth_abuse_session_security": auth_abuse_session_security,
             "toolchain_execution": toolchain_execution,

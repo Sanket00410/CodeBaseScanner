@@ -5744,6 +5744,7 @@ function renderCombinedHtml(scan: ScanView): string {
   const report = scan.report.vulnerability_fixed_code_report;
   const summary = report.summary;
   const findings = sortedFindings(report.findings || []);
+  const reportRole = resolveReportRole(scan);
   const toolchainExecution = resolveToolchainExecution(scan, summary);
   const enterprise = resolveEnterpriseAssurance(scan, summary);
   const dataQuality = summary.data_quality || scan.report.executive_summary.data_quality || null;
@@ -5751,8 +5752,13 @@ function renderCombinedHtml(scan: ScanView): string {
     risk_intelligence?: { findings_with_cve?: number; findings_cvss_ge_7?: number; known_exploited_findings?: number };
   }, findings);
   const exportedAt = formatDisplayTimestamp(resolveReportGeneratedAt(scan, "combined"));
+  const summaryFindingCount = Number(summary.total_findings || findings.length || 0);
+  const summarySeverityDistribution =
+    summary.severity_distribution && Object.keys(summary.severity_distribution).length > 0
+      ? summary.severity_distribution
+      : buildSeverityDistribution(findings);
   const severityRows = SEVERITY_ORDER.map((severity) => {
-    const count = Number(summary.severity_distribution?.[severity] || 0);
+    const count = Number(summarySeverityDistribution?.[severity] || 0);
     if (count <= 0) {
       return "";
     }
@@ -5936,19 +5942,19 @@ function renderCombinedHtml(scan: ScanView): string {
   const cards = renderStatGrid([
     {
       label: "Total Issues",
-      value: Number(summary.total_findings || findings.length),
+      value: summaryFindingCount,
       tone: "accent",
       sub: "Deduplicated findings in this scan scope",
     },
     {
       label: "Critical",
-      value: Number(summary.severity_distribution?.Critical || 0),
+      value: Number(summarySeverityDistribution?.Critical || 0),
       tone: "critical",
       sub: "Immediate release blockers",
     },
     {
       label: "High",
-      value: Number(summary.severity_distribution?.High || 0),
+      value: Number(summarySeverityDistribution?.High || 0),
       tone: "high",
       sub: "High-priority remediation candidates",
     },
@@ -5965,12 +5971,113 @@ function renderCombinedHtml(scan: ScanView): string {
       sub: String(summary.risk_rating || scan.report.executive_summary.risk_rating || ""),
     },
   ]);
+  const managementSeverityBands = SEVERITY_ORDER.map((severity) => {
+    const count = Number(summarySeverityDistribution?.[severity] || 0);
+    return { severity, count };
+  });
+  const managementSeverityTotal = managementSeverityBands.reduce((total, item) => total + item.count, 0);
+  let managementSeverityCursor = 0;
+  const managementSeverityGradient =
+    managementSeverityTotal > 0
+      ? managementSeverityBands
+          .filter((item) => item.count > 0)
+          .map((item) => {
+            const start = managementSeverityCursor;
+            const span = (item.count / managementSeverityTotal) * 100;
+            managementSeverityCursor += span;
+            const color =
+              item.severity === "Critical"
+                ? "var(--critical)"
+                : item.severity === "High"
+                  ? "var(--high)"
+                  : item.severity === "Medium"
+                    ? "var(--warning)"
+                    : item.severity === "Low"
+                      ? "var(--info)"
+                      : "var(--success)";
+            return `${color} ${start.toFixed(2)}% ${managementSeverityCursor.toFixed(2)}%`;
+          })
+          .join(", ")
+      : "";
+  const managementTopTypes = Array.isArray(summary.top_vulnerability_types) ? summary.top_vulnerability_types.slice(0, 6) : [];
+  const managementTopOwasp = Array.isArray(summary.top_owasp_categories) ? summary.top_owasp_categories.slice(0, 6) : [];
+  const managementChartSection = reportRole === "Management"
+    ? `<section class="panel">
+      <h2>Management Snapshot</h2>
+      <p class="muted">Diagrammatic summary of the full deduplicated scan scope. Raw finding rows remain hidden for Management, but the visual risk profile is preserved.</p>
+      <div class="management-visual-grid">
+        <div class="management-visual-card">
+          <h3>Severity Ring</h3>
+          <div class="management-ring-wrap">
+            <div class="management-ring"${managementSeverityGradient ? ` style="background:conic-gradient(${managementSeverityGradient});"` : ""}>
+              <div class="management-ring-center">
+                <div class="management-ring-value">${summaryFindingCount}</div>
+                <div class="management-ring-label">${summaryFindingCount > 0 ? "Findings" : "Clean"}</div>
+              </div>
+            </div>
+            <div class="management-ring-legend">
+              ${SEVERITY_ORDER.map((severity) => {
+                const count = Number(summarySeverityDistribution?.[severity] || 0);
+                const color =
+                  severity === "Critical"
+                    ? "var(--critical)"
+                    : severity === "High"
+                      ? "var(--high)"
+                      : severity === "Medium"
+                        ? "var(--warning)"
+                        : severity === "Low"
+                          ? "var(--info)"
+                          : "var(--success)";
+                return `<div class="legend-item"><span class="dot" style="background:${color}"></span><span>${escapeHtml(severity)}: ${count}</span></div>`;
+              }).join("")}
+            </div>
+          </div>
+        </div>
+        <div class="management-visual-card">
+          <h3>Top Vulnerability Types</h3>
+          <div class="diagram-bars">
+            ${
+              managementTopTypes.length
+                ? managementTopTypes
+                    .map((item) => {
+                      const value = Number(item.count || 0);
+                      const label = String(item.type || "Issue");
+                      const max = Math.max(...managementTopTypes.map((entry) => Number(entry.count || 0)), 1);
+                      const width = Math.max(2, Math.round((value / max) * 100));
+                      return `<div class="diagram-bar-row"><div class="bar-label" title="${escapeHtml(label)}">${escapeHtml(label)}</div><div class="bar-track"><div class="bar-fill" style="width:${width}%"></div></div><div>${value}</div></div>`;
+                    })
+                    .join("")
+                : `<p class="muted">No vulnerability categories available.</p>`
+            }
+          </div>
+        </div>
+        <div class="management-visual-card">
+          <h3>Top OWASP Categories</h3>
+          <div class="diagram-bars">
+            ${
+              managementTopOwasp.length
+                ? managementTopOwasp
+                    .map((item) => {
+                      const value = Number(item.count || 0);
+                      const label = String(item.owasp_category || "OWASP");
+                      const max = Math.max(...managementTopOwasp.map((entry) => Number(entry.count || 0)), 1);
+                      const width = Math.max(2, Math.round((value / max) * 100));
+                      return `<div class="diagram-bar-row"><div class="bar-label" title="${escapeHtml(label)}">${escapeHtml(label)}</div><div class="bar-track"><div class="bar-fill" style="width:${width}%"></div></div><div>${value}</div></div>`;
+                    })
+                    .join("")
+                : `<p class="muted">No OWASP category data available.</p>`
+            }
+          </div>
+        </div>
+      </div>
+    </section>`
+    : "";
   const wrapDisclosure = (title: string, body: string, open = false) =>
     body.trim()
       ? `<details class="report-disclosure"${open ? " open" : ""}><summary>${escapeHtml(title)}</summary><div class="section-body">${body}</div></details>`
       : "";
   const severitySection = wrapDisclosure(
-    `Severity Distribution (${findings.length})`,
+    `Severity Distribution (${summaryFindingCount})`,
     `<div class="table-frame section-frame">
           <h2 style="padding:12px 14px 0">Severity Distribution</h2>
           <div class="table-scroll">
@@ -6036,7 +6143,22 @@ function renderCombinedHtml(scan: ScanView): string {
 <head>
   <meta charset="utf-8" />
   <title>CodeSentinelX Combined Report</title>
-  <style>${exportThemeCss(".report-shell{max-width:1300px}.card{max-width:none}")}</style>
+  <style>${exportThemeCss(`
+    .report-shell{max-width:1300px}
+    .card{max-width:none}
+    .management-visual-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+    .management-visual-card{padding:14px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(165deg,rgba(13,27,46,.7),rgba(8,19,33,.45));box-shadow:0 12px 28px rgba(0,0,0,.12)}
+    .management-ring-wrap{display:grid;grid-template-columns:260px 1fr;gap:14px;align-items:center}
+    .management-ring{width:240px;height:240px;border-radius:50%;position:relative;box-shadow:inset 0 0 0 1px rgba(120,168,205,.25)}
+    .management-ring::after{content:"";position:absolute;inset:24px;border-radius:50%;background:rgba(7,20,36,.94);box-shadow:inset 0 0 0 1px rgba(120,168,205,.18)}
+    .management-ring-center{position:absolute;inset:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:1;text-align:center}
+    .management-ring-value{font-size:34px;font-weight:800;line-height:1}
+    .management-ring-label{margin-top:6px;color:var(--muted);font-weight:700}
+    .management-ring-legend{display:grid;gap:8px}
+    .diagram-bars{display:grid;gap:10px}
+    .diagram-bar-row{display:grid;grid-template-columns:1fr 1.4fr auto;gap:10px;align-items:center}
+    @media (max-width:1200px){.management-visual-grid,.management-ring-wrap{grid-template-columns:1fr}.management-ring{margin-inline:auto}}
+  `)}</style>
 </head>
 <body>
   <main class="report-shell">
@@ -6052,6 +6174,8 @@ function renderCombinedHtml(scan: ScanView): string {
         Combined export now includes executive metrics, prioritized risks, analyzer execution evidence, and quality signals in one report.
       </div>
     </section>
+
+    ${managementChartSection}
 
     <section class="section">
       <div class="section-grid">
