@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CodeSentinelX Demo</title>
+    <style>
+      :root {
+        --bg: #050b12;
+        --bg-2: #0a1320;
+        --panel: rgba(11, 23, 34, 0.84);
+        --panel-strong: rgba(16, 31, 45, 0.96);
+        --line: rgba(92, 143, 190, 0.22);
+        --text: #e3edf7;
+        --muted: #8ea9c5;
+        --accent: #4bd5ff;
+        --accent-2: #8dffcb;
+        --shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+        --critical: #ff6d72;
+        --high: #ffab5b;
+        --medium: #ffd56b;
+        --low: #7de3a1;
+        --info: #89b8ff;
+      }
+      * { box-sizing: border-box; }
+      html, body { min-height: 100%; }
+      body {
+        margin: 0;
+        color: var(--text);
+        font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+        background:
+          radial-gradient(circle at 20% 20%, rgba(75, 213, 255, 0.14), transparent 28%),
+          radial-gradient(circle at 80% 10%, rgba(141, 255, 203, 0.10), transparent 22%),
+          linear-gradient(180deg, #03070d 0%, #07111b 60%, #04070c 100%);
+      }
+      button, select { font: inherit; }
+      .app-shell { display: grid; grid-template-columns: 330px minmax(0, 1fr); min-height: 100vh; }
+      .left-rail {
+        padding: 22px 16px;
+        border-right: 1px solid var(--line);
+        background: linear-gradient(180deg, rgba(10, 18, 29, 0.94), rgba(7, 13, 20, 0.92));
+        backdrop-filter: blur(14px);
+      }
+      .brand { display: flex; gap: 14px; align-items: center; margin-bottom: 18px; }
+      .logo-mark {
+        width: 54px; height: 54px; border-radius: 18px; display: grid; place-items: center;
+        background: linear-gradient(145deg, rgba(75, 213, 255, 0.18), rgba(141, 255, 203, 0.08));
+        border: 1px solid rgba(75, 213, 255, 0.28); color: var(--accent);
+        font-weight: 800; font-size: 28px; box-shadow: var(--shadow);
+      }
+      .brand h1, .hero-panel h2, .glass-card h3, .report-summary-panel h4 { margin: 0; }
+      .brand h1 { font-size: 22px; line-height: 1.05; }
+      .eyebrow { margin: 0 0 3px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.14em; font-size: 11px; font-weight: 800; }
+      .section-title { margin: 0 0 10px; color: #c5d5e5; text-transform: uppercase; letter-spacing: 0.08em; font-size: 12px; font-weight: 700; }
+      .rail-panel {
+        padding: 14px; margin-bottom: 14px; border-radius: 20px; border: 1px solid var(--line);
+        background: linear-gradient(180deg, rgba(15, 28, 42, 0.72), rgba(9, 16, 24, 0.86)); box-shadow: var(--shadow);
+      }
+      .role-list { display: grid; gap: 10px; }
+      .role-card {
+        width: 100%; text-align: left; border: 1px solid rgba(101, 154, 199, 0.2);
+        background: rgba(12, 22, 33, 0.76); color: var(--text); border-radius: 16px; padding: 12px;
+        cursor: pointer; transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+      }
+      .role-card:hover, .role-card.active { transform: translateY(-1px); border-color: rgba(75, 213, 255, 0.6); background: rgba(16, 32, 48, 0.94); }
+      .role-card strong { display: block; font-size: 13px; line-height: 1.35; }
+      .role-card p { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+      .role-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 800; color: #ffffff; margin-bottom: 6px; }
+      .rail-copy { margin: 0; color: var(--muted); line-height: 1.55; font-size: 13px; }
+      .scope-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+      .scope-tags span {
+        border: 1px solid rgba(75, 213, 255, 0.18); border-radius: 999px; padding: 6px 10px; font-size: 12px;
+        color: #d4e9ff; background: rgba(10, 23, 34, 0.88);
+      }
+      .scope-tags.compact span { padding: 5px 9px; font-size: 11px; }
+      .main-stage { padding: 22px; }
+      .hero-panel, .glass-card, .stat-panel {
+        border-radius: 22px; border: 1px solid var(--line); background: linear-gradient(180deg, rgba(15, 28, 42, 0.84), rgba(8, 16, 25, 0.9)); box-shadow: var(--shadow);
+      }
+      .hero-panel { display: flex; align-items: end; justify-content: space-between; gap: 18px; padding: 22px 24px; }
+      .hero-panel h2 { font-size: clamp(28px, 3vw, 46px); line-height: 1.05; margin-bottom: 10px; }
+      .hero-copy, .muted { color: var(--muted); line-height: 1.6; }
+      .hero-copy { max-width: 900px; margin: 0; }
+      .hero-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+      .primary-btn, .secondary-btn {
+        border-radius: 999px; padding: 11px 16px; border: 1px solid transparent; cursor: pointer; font-weight: 800;
+      }
+      .primary-btn { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #04202b; }
+      .secondary-btn { background: rgba(11, 23, 34, 0.94); color: var(--text); border-color: rgba(75, 213, 255, 0.24); }
+      .stats-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 16px 0; }
+      .stat-panel { padding: 14px 16px; }
+      .stat-panel span { display: block; color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+      .stat-panel strong { font-size: 20px; }
+      .content-grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 16px; }
+      .glass-card { padding: 18px; }
+      .card-head { display: flex; align-items: start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+      .chip, .status {
+        border-radius: 999px; padding: 8px 12px; border: 1px solid rgba(75, 213, 255, 0.22); background: rgba(11, 22, 32, 0.94); color: var(--text); font-weight: 800; font-size: 12px;
+      }
+      .chip { cursor: pointer; }
+      .chip.active { border-color: rgba(75, 213, 255, 0.7); box-shadow: 0 0 0 1px rgba(75, 213, 255, 0.35) inset; }
+      .chip.full { color: var(--accent); } .chip.security { color: var(--medium); } .chip.fix { color: var(--low); } .chip.audit { color: #ffdca8; } .chip.exec { color: #a8e3ff; }
+      .execution-columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+      .severity-bars, .mini-bars { display: grid; gap: 10px; }
+      .severity-row, .mini-bar-row { display: grid; grid-template-columns: 90px 1fr 40px; gap: 10px; align-items: center; }
+      .severity-row span, .mini-bar-row span { color: var(--muted); font-size: 13px; }
+      .track, .mini-track { height: 10px; background: rgba(8, 17, 26, 0.96); border: 1px solid rgba(97, 145, 191, 0.22); border-radius: 999px; overflow: hidden; }
+      .fill, .mini-fill { height: 100%; border-radius: inherit; }
+      .report-tabs { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+      .report-preview { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(320px, 1.1fr); gap: 14px; }
+      .report-summary-panel {
+        padding: 16px; border-radius: 18px; border: 1px solid rgba(97, 145, 191, 0.22); background: rgba(7, 14, 21, 0.72);
+      }
+      .findings-list { display: grid; gap: 10px; margin-top: 14px; }
+      .finding-row {
+        display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center;
+        padding: 10px 12px; border-radius: 14px; background: rgba(14, 25, 38, 0.86); border: 1px solid rgba(97, 145, 191, 0.18);
+      }
+      .finding-row p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+      .report-panels { display: grid; gap: 12px; align-content: start; }
+      .report-card {
+        padding: 14px; border-radius: 18px; border: 1px solid rgba(97, 145, 191, 0.18); background: rgba(10, 18, 27, 0.82); opacity: 0.72;
+      }
+      .report-card.selected { opacity: 1; border-color: rgba(75, 213, 255, 0.56); box-shadow: 0 0 0 1px rgba(75, 213, 255, 0.28) inset; }
+      .report-card-head { display: flex; justify-content: space-between; gap: 12px; align-items: start; margin-bottom: 12px; }
+      .report-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+      .report-stat { padding: 10px; border-radius: 14px; background: rgba(14, 25, 38, 0.72); border: 1px solid rgba(97, 145, 191, 0.15); }
+      .report-stat span {
+        display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.08em;
+      }
+      .report-stat strong { font-size: 13px; }
+      .sev { border-radius: 999px; padding: 5px 8px; font-weight: 800; font-size: 11px; }
+      .sev.critical { background: rgba(255, 109, 114, 0.18); color: var(--critical); }
+      .sev.high { background: rgba(255, 171, 91, 0.18); color: var(--high); }
+      .sev.medium { background: rgba(255, 213, 107, 0.18); color: var(--medium); }
+      .sev.low { background: rgba(125, 227, 161, 0.18); color: var(--low); }
+      .sev.info { background: rgba(137, 184, 255, 0.18); color: var(--info); }
+      @media (max-width: 1180px) {
+        .app-shell { grid-template-columns: 1fr; }
+        .left-rail { border-right: 0; border-bottom: 1px solid var(--line); }
+        .content-grid, .report-preview, .stats-row, .execution-columns { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="left-rail">
+        <div class="brand">
+          <div class="logo-mark">C</div>
+          <div>
+            <p class="eyebrow">CodeSentinelX Demo</p>
+            <h1>Executive Security Console</h1>
+          </div>
+        </div>
+
+        <div class="rail-panel">
+          <p class="section-title">Roles</p>
+          <div class="role-list" id="roleList"></div>
+        </div>
+
+        <div class="rail-panel">
+          <p class="section-title">Scope</p>
+          <p class="rail-copy" id="roleScope"></p>
+          <div class="scope-tags" id="scopeTags"></div>
+        </div>
+      </aside>
+
+      <main class="main-stage">
+        <header class="hero-panel">
+          <div>
+            <p class="eyebrow">Leadership demo</p>
+            <h2>One screen for all role scans and reports</h2>
+            <p class="hero-copy">
+              Show how CodeSentinelX turns raw scanner output into role-specific, decision-ready reporting for Admin, Security Analyst, Developer, Auditor, and Management.
+            </p>
+          </div>
+          <div class="hero-actions">
+            <button type="button" class="primary-btn">Run Demo Scan</button>
+            <button type="button" class="secondary-btn">Open Reports</button>
+          </div>
+        </header>
+
+        <section class="stats-row" id="statsRow"></section>
+
+        <section class="content-grid">
+          <article class="glass-card execution-card">
+            <div class="card-head">
+              <div>
+                <p class="eyebrow">Execution plan</p>
+                <h3>What this role scans</h3>
+              </div>
+              <span class="chip full" id="roleChip"></span>
+            </div>
+
+            <div class="execution-columns">
+              <div>
+                <p class="section-title">Scope</p>
+                <p class="muted" id="executionScope"></p>
+              </div>
+              <div>
+                <p class="section-title">Tools</p>
+                <div class="scope-tags compact" id="toolTags"></div>
+              </div>
+              <div>
+                <p class="section-title">Report output</p>
+                <p class="muted" id="reportOutput"></p>
+              </div>
+            </div>
+          </article>
+
+          <article class="glass-card chart-card">
+            <div class="card-head">
+              <div>
+                <p class="eyebrow">Risk summary</p>
+                <h3>Severity distribution</h3>
+              </div>
+              <span class="status" id="scoreBadge"></span>
+            </div>
+            <div class="severity-bars" id="severityBars"></div>
+          </article>
+        </section>
+
+        <section class="glass-card reports-card">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Reports</p>
+              <h3>Role-aware previews</h3>
+            </div>
+            <p class="muted" id="reportSummary"></p>
+          </div>
+
+          <div class="report-tabs" id="reportTabs"></div>
+
+          <div class="report-preview">
+            <div class="report-summary-panel">
+              <p class="eyebrow">Preview</p>
+              <h4 id="previewTitle"></h4>
+              <p class="muted" id="previewCopy"></p>
+              <div class="findings-list" id="findingsList"></div>
+            </div>
+
+            <div class="report-panels" id="reportPanels"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      const roles = {
+        "Admin": {
+          tone: "full",
+          subtitle: "Full scope execution and evidence review",
+          scope: "Runs the broadest toolset across the whole repository with raw evidence and full drill-down.",
+          report: "Combined + Vulnerability + Fixes + Existing",
+          tools: ["Semgrep", "CodeQL", "OSV-Scanner", "Gitleaks", "ESLint Security", "Checkov"],
+          summary: { critical: 11, high: 24, medium: 37, low: 13, info: 4, score: 86.2 },
+          chart: [
+            { label: "Critical", value: 11, color: "#ff6b6b" },
+            { label: "High", value: 24, color: "#ff9f43" },
+            { label: "Medium", value: 37, color: "#ffd166" },
+            { label: "Low", value: 13, color: "#6ee7a2" },
+            { label: "Info", value: 4, color: "#8ab4ff" },
+          ],
+          findings: [
+            { severity: "Critical", title: "SQL Injection", file: "user_service/api.py", cwe: "CWE-89" },
+            { severity: "High", title: "Weak Cryptography Usage", file: "auth/crypto.js", cwe: "CWE-327" },
+            { severity: "High", title: "Hardcoded Secret", file: ".env.prod", cwe: "CWE-798" },
+          ],
+        },
+        "Security Analyst": {
+          tone: "security",
+          subtitle: "Broad analysis with triage and prioritization",
+          scope: "Focuses on exploitable findings, KEV correlation, and grouped attack paths with less noise than Admin.",
+          report: "Vulnerability + Combined + Active PoC focus",
+          tools: ["Semgrep", "OSV-Scanner", "CodeQL", "Gitleaks", "Grype"],
+          summary: { critical: 7, high: 19, medium: 31, low: 7, info: 2, score: 79.4 },
+          chart: [
+            { label: "Critical", value: 7, color: "#ff6b6b" },
+            { label: "High", value: 19, color: "#ff9f43" },
+            { label: "Medium", value: 31, color: "#ffd166" },
+            { label: "Low", value: 7, color: "#6ee7a2" },
+            { label: "Info", value: 2, color: "#8ab4ff" },
+          ],
+          findings: [
+            { severity: "Critical", title: "Broken Access Control", file: "orders/routes.ts", cwe: "CWE-284" },
+            { severity: "High", title: "Dependency Vulnerability", file: "package-lock.json", cwe: "CWE-1104" },
+            { severity: "High", title: "Command Injection", file: "jobs/runner.go", cwe: "CWE-78" },
+          ],
+        },
+        "Developer": {
+          tone: "fix",
+          subtitle: "Developer-ready remediation and PoC verification",
+          scope: "Shows fix guidance, code locations, and verification steps for repo-relevant issues only.",
+          report: "Fixes + Detailed Findings + Proof of repair",
+          tools: ["Semgrep", "OSV-Scanner", "CodeQL", "Bandit", "ESLint Security"],
+          summary: { critical: 5, high: 16, medium: 22, low: 8, info: 1, score: 73.1 },
+          chart: [
+            { label: "Critical", value: 5, color: "#ff6b6b" },
+            { label: "High", value: 16, color: "#ff9f43" },
+            { label: "Medium", value: 22, color: "#ffd166" },
+            { label: "Low", value: 8, color: "#6ee7a2" },
+            { label: "Info", value: 1, color: "#8ab4ff" },
+          ],
+          findings: [
+            { severity: "Critical", title: "SQL Injection", file: "user_service/db.py", cwe: "CWE-89" },
+            { severity: "High", title: "Weak Cryptography Usage", file: "auth/hash.ts", cwe: "CWE-327" },
+            { severity: "Medium", title: "Insecure Logging", file: "logger/main.py", cwe: "CWE-532" },
+          ],
+        },
+        "Auditor": {
+          tone: "audit",
+          subtitle: "Redacted evidence with traceable control coverage",
+          scope: "Shows compliance posture, controls, and redacted drill-down without overexposing raw secrets.",
+          report: "Existing + Compliance + Audit evidence",
+          tools: ["OSV-Scanner", "Semgrep", "Checkov", "Gitleaks"],
+          summary: { critical: 3, high: 8, medium: 11, low: 5, info: 0, score: 68.7 },
+          chart: [
+            { label: "Critical", value: 3, color: "#ff6b6b" },
+            { label: "High", value: 8, color: "#ff9f43" },
+            { label: "Medium", value: 11, color: "#ffd166" },
+            { label: "Low", value: 5, color: "#6ee7a2" },
+            { label: "Info", value: 0, color: "#8ab4ff" },
+          ],
+          findings: [
+            { severity: "Critical", title: "Hardcoded Secret", file: "deploy/config.yml", cwe: "CWE-798" },
+            { severity: "High", title: "Outdated Dependency", file: "package-lock.json", cwe: "CWE-1104" },
+            { severity: "Medium", title: "Missing Security Header", file: "nginx.conf", cwe: "CWE-693" },
+          ],
+        },
+        "Management": {
+          tone: "exec",
+          subtitle: "Board-friendly charts and risk summaries",
+          scope: "Shows diagrams, trends, and counts only. No raw evidence, no technical overload, just decision-ready visuals.",
+          report: "Executive Summary + Risk Charts",
+          tools: ["Summary engine", "Trend aggregation", "Risk scoring"],
+          summary: { critical: 3, high: 8, medium: 14, low: 6, info: 0, score: 61.9 },
+          chart: [
+            { label: "Critical", value: 3, color: "#ff6b6b" },
+            { label: "High", value: 8, color: "#ff9f43" },
+            { label: "Medium", value: 14, color: "#ffd166" },
+            { label: "Low", value: 6, color: "#6ee7a2" },
+            { label: "Info", value: 0, color: "#8ab4ff" },
+          ],
+          findings: [
+            { severity: "Critical", title: "Risk Concentration in API Gateway", file: "Executive summary", cwe: "Risk chart" },
+            { severity: "High", title: "Open Dependency Exposure", file: "Executive summary", cwe: "Risk chart" },
+            { severity: "Medium", title: "Security Hygiene Trend", file: "Executive summary", cwe: "Trend chart" },
+          ],
+        },
+      };
+      const reportTabs = [
+        { key: "combined", label: "Combined" },
+        { key: "vulnerability", label: "Vulnerability" },
+        { key: "fixes", label: "Fixes" },
+        { key: "existing", label: "Existing" },
+        { key: "management", label: "Management" },
+      ];
+      const reportCopy = {
+        combined: "Executive view with deduped findings, charts, and drill-down links.",
+        vulnerability: "Severity-first analysis with grouped alerts and evidence-by-issue.",
+        fixes: "Developer remediation flow with PoC, verification, and fix guidance.",
+        existing: "Current control posture with coverage and control verification.",
+        management: "Board-friendly charts and trends with no raw evidence overload.",
+      };
+
+      let selectedRole = "Management";
+      let selectedReport = "combined";
+
+      function barWidth(value, max) {
+        return `${Math.max(8, Math.round((value / max) * 100))}%`;
+      }
+
+      function render() {
+        const roleData = roles[selectedRole];
+        document.title = `CodeSentinelX Demo - ${selectedRole}`;
+
+        document.getElementById("roleScope").textContent = roleData.scope;
+        document.getElementById("executionScope").textContent = roleData.scope;
+        document.getElementById("reportOutput").textContent = roleData.report;
+        document.getElementById("roleChip").textContent = selectedRole;
+        document.getElementById("scoreBadge").textContent = roleData.summary.score.toFixed(1);
+        document.getElementById("reportSummary").textContent = reportCopy[selectedReport];
+        document.getElementById("previewTitle").textContent = selectedReport === "combined" ? "Combined intelligence view" : `${selectedReport[0].toUpperCase()}${selectedReport.slice(1)} report`;
+        document.getElementById("previewCopy").textContent = reportCopy[selectedReport];
+
+        const roleList = document.getElementById("roleList");
+        roleList.innerHTML = Object.keys(roles).map((role) => `
+          <button class="role-card ${role === selectedRole ? "active" : ""}" data-role="${role}" type="button">
+            <span class="role-badge">${role}</span>
+            <strong>${roles[role].subtitle}</strong>
+            <p>${roles[role].report}</p>
+          </button>
+        `).join("");
+        roleList.querySelectorAll("[data-role]").forEach((button) => {
+          button.addEventListener("click", () => {
+            selectedRole = button.dataset.role;
+            render();
+          });
+        });
+
+        const scopeTags = document.getElementById("scopeTags");
+        scopeTags.innerHTML = roleData.tools.map((tool) => `<span>${tool}</span>`).join("");
+        const toolTags = document.getElementById("toolTags");
+        toolTags.innerHTML = roleData.tools.map((tool) => `<span>${tool}</span>`).join("");
+
+        document.getElementById("statsRow").innerHTML = `
+          <article class="stat-panel"><span>Selected role</span><strong>${selectedRole}</strong></article>
+          <article class="stat-panel"><span>Report type</span><strong>${roleData.report}</strong></article>
+          <article class="stat-panel"><span>Risk score</span><strong>${roleData.summary.score.toFixed(1)}</strong></article>
+          <article class="stat-panel"><span>Coverage</span><strong>${roleData.summary.critical + roleData.summary.high + roleData.summary.medium + roleData.summary.low + roleData.summary.info}</strong></article>
+        `;
+
+        document.getElementById("severityBars").innerHTML = roleData.chart.map((item) => {
+          const max = Math.max(...roleData.chart.map((entry) => entry.value)) || 1;
+          return `
+            <div class="severity-row">
+              <span>${item.label}</span>
+              <div class="track"><div class="fill" style="width:${barWidth(item.value, max)}; background:${item.color}"></div></div>
+              <strong>${item.value}</strong>
+            </div>
+          `;
+        }).join("");
+
+        document.getElementById("reportTabs").innerHTML = reportTabs.map((tab) => `
+          <button class="chip ${tab.key === selectedReport ? "active" : ""}" data-tab="${tab.key}" type="button">${tab.label}</button>
+        `).join("");
+        document.getElementById("reportTabs").querySelectorAll("[data-tab]").forEach((button) => {
+          button.addEventListener("click", () => {
+            selectedReport = button.dataset.tab;
+            render();
+          });
+        });
+
+        document.getElementById("findingsList").innerHTML = roleData.findings.map((item) => `
+          <div class="finding-row">
+            <span class="sev ${item.severity.toLowerCase()}">${item.severity}</span>
+            <div>
+              <strong>${item.title}</strong>
+              <p>${item.file}</p>
+            </div>
+            <span>${item.cwe}</span>
+          </div>
+        `).join("");
+
+        document.getElementById("reportPanels").innerHTML = reportTabs.map((tab) => {
+          const max = Math.max(...roleData.chart.map((entry) => entry.value)) || 1;
+          return `
+            <section class="report-card ${tab.key === selectedReport ? "selected" : ""}">
+              <div class="report-card-head">
+                <div>
+                  <p class="eyebrow">${tab.label}</p>
+                  <h3>${selectedRole}</h3>
+                </div>
+                <span class="status ${roleData.tone}">${roleData.summary.score.toFixed(1)}</span>
+              </div>
+              <div class="report-grid">
+                <div class="report-stat"><span>Critical / High</span><strong>${roleData.summary.critical} / ${roleData.summary.high}</strong></div>
+                <div class="report-stat"><span>Scope</span><strong>${roleData.report}</strong></div>
+              </div>
+              <div class="mini-bars">
+                ${roleData.chart.map((item) => `
+                  <div class="mini-bar-row">
+                    <span>${item.label}</span>
+                    <div class="mini-track"><div class="mini-fill" style="width:${barWidth(item.value, max)}; background:${item.color}"></div></div>
+                    <strong>${item.value}</strong>
+                  </div>
+                `).join("")}
+              </div>
+            </section>
+          `;
+        }).join("");
+      }
+
+      render();
+    </script>
+  </body>
+</html>

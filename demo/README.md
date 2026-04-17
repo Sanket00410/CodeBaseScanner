@@ -10,7 +10,11 @@ Standalone web demo for presenting CodeSentinelX role-based scans and reports.
 - Report previews for Combined, Vulnerability, Fixes, Existing, and Management
 - Board-friendly charts and developer-friendly findings
 
-## Run
+## Zero-install fallback
+
+Open `standalone-demo.html` directly in any browser. No npm install required.
+
+## Run the React version
 
 ```powershell
 cd demo
