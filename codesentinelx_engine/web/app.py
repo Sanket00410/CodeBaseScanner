@@ -128,8 +128,8 @@ def index(request: Request) -> HTMLResponse:
 @app.post("/api/scans", response_model=StartScanResponse)
 def start_scan(payload: StartScanRequest) -> StartScanResponse:
     target = Path(payload.target_path).expanduser()
-    if not target.exists() or not target.is_dir():
-        raise HTTPException(status_code=400, detail="Provided path does not exist or is not a directory")
+    if not target.exists() or (not target.is_dir() and not target.is_file()):
+        raise HTTPException(status_code=400, detail="Provided path does not exist or is not a file or directory")
 
     scan_id = uuid.uuid4().hex
     job = ScanJob(scan_id=scan_id, target_path=str(target.resolve()))

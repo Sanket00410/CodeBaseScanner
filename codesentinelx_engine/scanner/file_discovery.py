@@ -16,6 +16,16 @@ def discover_files(project_root: Path, config: ScannerConfig) -> list[Path]:
     files: list[Path] = []
     max_size_bytes = config.max_file_size_kb * 1024
 
+    if project_root.is_file():
+        if not _is_supported_file(project_root, config):
+            return []
+        try:
+            if project_root.stat().st_size > max_size_bytes:
+                return []
+        except OSError:
+            return []
+        return [project_root]
+
     for current_root, dirs, filenames in os.walk(project_root):
         dirs[:] = [
             item for item in dirs if item not in config.exclude_dirs and not item.startswith(".scanner-cache")

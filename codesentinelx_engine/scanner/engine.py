@@ -416,8 +416,8 @@ class ScanEngine:
 
     def scan(self, target_path: str | Path, progress_callback: ProgressCallback | None = None) -> ScanResult:
         target = Path(target_path).expanduser().resolve()
-        if not target.exists() or not target.is_dir():
-            raise FileNotFoundError(f"Target path does not exist or is not a directory: {target}")
+        if not target.exists() or (not target.is_dir() and not target.is_file()):
+            raise FileNotFoundError(f"Target path does not exist or is not a file or directory: {target}")
 
         started_at = datetime.now(timezone.utc)
         files = discover_files(target, self.config)

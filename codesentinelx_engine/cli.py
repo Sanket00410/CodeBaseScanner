@@ -233,7 +233,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     scan_parser = subparsers.add_parser("scan", help="Run a security scan")
-    scan_parser.add_argument("--path", required=True, help="Target project folder path")
+    scan_parser.add_argument("--path", required=True, help="Target project file or folder path")
     scan_parser.add_argument(
         "--target-type",
         default="auto",

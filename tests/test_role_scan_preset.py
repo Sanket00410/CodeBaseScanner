@@ -87,3 +87,23 @@ def test_management_role_scans_as_summary_only(tmp_path: Path, monkeypatch: pyte
     assert report["executive_summary"]["deduplicated_vulnerabilities"] > 0
     assert scoped_report["vulnerability_fixed_code_report"]["findings"] == []
 
+
+def test_scan_accepts_single_file_target(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    file_target = tmp_path / "app.py"
+    file_target.write_text(
+        "def handler(user_input):\n"
+        "    return eval(user_input)\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.delenv("USS_SCAN_PRESET", raising=False)
+    monkeypatch.delenv("USS_CODEBASE_TOOLS", raising=False)
+    monkeypatch.delenv("USS_EXTERNAL_TOOLS", raising=False)
+
+    engine = ScanEngine(ScannerConfig.from_env("Developer"))
+    result = engine.scan(file_target)
+
+    assert result.target_path == str(file_target.resolve())
+    assert result.files_scanned == 1
+    assert result.findings
+

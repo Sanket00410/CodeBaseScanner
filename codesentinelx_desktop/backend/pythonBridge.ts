@@ -600,8 +600,8 @@ function normalizeTargetInput(rawTarget: string): string {
   } catch {
     throw new Error("Selected codebase folder is not accessible.");
   }
-  if (!stats.isDirectory()) {
-    throw new Error("Only directories can be scanned in codebase-only mode.");
+  if (!stats.isDirectory() && !stats.isFile()) {
+    throw new Error("Only files or directories can be scanned in codebase-only mode.");
   }
   return resolved;
 }

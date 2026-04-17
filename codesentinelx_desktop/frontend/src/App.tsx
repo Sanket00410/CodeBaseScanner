@@ -1408,7 +1408,7 @@ export default function App(): React.JSX.Element {
     }
     const targetPath = projectPath.trim();
     if (!targetPath) {
-      setStatusText("Select a project folder before scanning.");
+      setStatusText("Select a project file or folder before scanning.");
       return;
     }
     const roleForScan = role;
@@ -1761,7 +1761,7 @@ export default function App(): React.JSX.Element {
 
   const copyProjectFolderPath = async (): Promise<void> => {
     if (!projectPath.trim()) {
-      setStatusText("No project folder selected yet.");
+      setStatusText("No project file or folder selected yet.");
       return;
     }
     await navigator.clipboard.writeText(projectPath.trim());
