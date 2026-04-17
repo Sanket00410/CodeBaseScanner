@@ -1857,13 +1857,13 @@ export default function App(): React.JSX.Element {
   >(
     () => ({
       file: [
-        { label: "Browse Project Folder", onSelect: browseProject },
+        { label: "Browse File or Folder", onSelect: browseProject },
         { label: "Run Scan", disabled: !projectPath.trim() || !roleCaps.canRunScan, onSelect: runScan },
         { label: "Open Last Export", disabled: !lastExport, onSelect: openLastExport },
         { label: "Open Export Folder", disabled: !lastExport, onSelect: openLastExportFolder },
       ],
       edit: [
-        { label: "Copy Project Folder", disabled: !projectPath.trim(), onSelect: copyProjectFolderPath },
+        { label: "Copy Project Path", disabled: !projectPath.trim(), onSelect: copyProjectFolderPath },
         { label: "Clear Search", disabled: !searchText.trim(), onSelect: () => setSearchText("") },
         { label: "Reset Finding Filters", onSelect: resetFindingFilters },
       ],
@@ -2140,6 +2140,21 @@ export default function App(): React.JSX.Element {
     }
     const summary = scan.report.executive_summary;
     const vulnSummary = scan.report.vulnerability_fixed_code_report.summary;
+    const managementSummary = (summary as Record<string, unknown>).management_summary as Record<string, unknown> | undefined;
+    const dashboardSummary = role === "Management" ? (managementSummary || summary) : summary;
+    const dashboardVulnSummary = role === "Management" ? (managementSummary || vulnSummary) : vulnSummary;
+    const dashboardSummaryAny = dashboardSummary as Record<string, any>;
+    const dashboardVulnSummaryAny = dashboardVulnSummary as Record<string, any>;
+    const dashboardSeverityDistribution = dashboardVulnSummaryAny.severity_distribution as Record<string, number> | undefined;
+    const dashboardOwaspCategories: Array<{ owasp_category: string; count: number }> = role === "Management"
+      ? (Array.isArray(dashboardSummaryAny.top_owasp_categories) ? dashboardSummaryAny.top_owasp_categories : [])
+      : ((vulnSummary.top_owasp_categories || summary.top_owasp_categories || []) as Array<{ owasp_category: string; count: number }>);
+    const dashboardAffectedModules: Array<{ module: string; count: number; critical: number; high: number }> = role === "Management"
+      ? (Array.isArray(dashboardSummaryAny.affected_modules) ? dashboardSummaryAny.affected_modules : [])
+      : ((vulnSummary.affected_modules || []) as Array<{ module: string; count: number; critical: number; high: number }>);
+    const dashboardActionPlan: string[] = role === "Management"
+      ? (Array.isArray(dashboardSummaryAny.recommended_action_plan) ? dashboardSummaryAny.recommended_action_plan : [])
+      : ((summary.recommended_action_plan || []) as string[]);
 
     return (
       <section className="panel stack-gap">
@@ -2159,10 +2174,34 @@ export default function App(): React.JSX.Element {
             <div className="metric-grid">
               <MetricCard label="Risk Score" value={`${summary.risk_score} (${summary.risk_rating})`} />
               <MetricCard label="Files Scanned" value={String(summary.files_scanned)} />
-              <MetricCard label="Raw Findings" value={String(summary.total_vulnerabilities)} />
-              <MetricCard label="Deduplicated Findings" value={String(vulnSummary.total_findings)} />
-              <MetricCard label="Open Findings" value={String(vulnSummary.open_findings ?? vulnSummary.total_findings)} />
-              <MetricCard label="Reviewed Findings" value={String(vulnSummary.reviewed_findings || 0)} />
+              <MetricCard
+                label="Raw Findings"
+                value={String(role === "Management" ? (dashboardSummaryAny.total_findings ?? summary.total_vulnerabilities) : summary.total_vulnerabilities)}
+              />
+              <MetricCard
+                label="Deduplicated Findings"
+                value={String(
+                  role === "Management"
+                    ? (dashboardSummaryAny.deduplicated_vulnerabilities ?? dashboardSummaryAny.total_findings ?? vulnSummary.total_findings)
+                    : vulnSummary.total_findings,
+                )}
+              />
+              <MetricCard
+                label="Open Findings"
+                value={String(
+                  role === "Management"
+                    ? (dashboardSummaryAny.active_risk_findings ?? dashboardSummaryAny.total_findings ?? vulnSummary.total_findings)
+                    : vulnSummary.open_findings ?? vulnSummary.total_findings,
+                )}
+              />
+              <MetricCard
+                label="Reviewed Findings"
+                value={String(
+                  role === "Management"
+                    ? (dashboardSummaryAny.deduplicated_vulnerabilities ?? dashboardSummaryAny.total_findings ?? 0)
+                    : vulnSummary.reviewed_findings || 0,
+                )}
+              />
               <MetricCard
                 label="Enterprise Status"
                 value={(enterpriseAssurance?.status || "blocked").toUpperCase()}
@@ -2179,7 +2218,7 @@ export default function App(): React.JSX.Element {
               {SEVERITY_ORDER.map((severity) => (
                 <article key={severity} className={`severity-card severity-${severity}`}>
                   <p>{severity}</p>
-                  <h4>{vulnSummary.severity_distribution?.[severity] || 0}</h4>
+                  <h4>{dashboardSeverityDistribution?.[severity] || 0}</h4>
                 </article>
               ))}
             </div>
@@ -2195,13 +2234,15 @@ export default function App(): React.JSX.Element {
                     </tr>
                   </thead>
                   <tbody>
-                    {(vulnSummary.top_owasp_categories || summary.top_owasp_categories || []).slice(0, 10).map((item) => (
+                    {dashboardOwaspCategories
+                      .slice(0, 10)
+                      .map((item) => (
                       <tr key={item.owasp_category}>
                         <td>{item.owasp_category}</td>
                         <td>{item.count}</td>
                       </tr>
                     ))}
-                    {(vulnSummary.top_owasp_categories || summary.top_owasp_categories || []).length === 0 && (
+                    {dashboardOwaspCategories.length === 0 && (
                       <tr>
                         <td colSpan={2}>No OWASP category data available.</td>
                       </tr>
@@ -2222,7 +2263,9 @@ export default function App(): React.JSX.Element {
                     </tr>
                   </thead>
                   <tbody>
-                    {(vulnSummary.affected_modules || []).slice(0, 10).map((item) => (
+                    {dashboardAffectedModules
+                      .slice(0, 10)
+                      .map((item) => (
                       <tr key={`${item.module}-${item.count}`}>
                         <td>{item.module}</td>
                         <td>{item.count}</td>
@@ -2230,7 +2273,7 @@ export default function App(): React.JSX.Element {
                         <td>{item.high}</td>
                       </tr>
                     ))}
-                    {(vulnSummary.affected_modules || []).length === 0 && (
+                    {dashboardAffectedModules.length === 0 && (
                       <tr>
                         <td colSpan={4}>No affected module data available.</td>
                       </tr>
@@ -2242,10 +2285,10 @@ export default function App(): React.JSX.Element {
               <div className="subpanel">
                 <h3>Action Plan</h3>
                 <ol className="action-list">
-                  {(summary.recommended_action_plan || []).slice(0, 7).map((item) => (
+                  {dashboardActionPlan.slice(0, 7).map((item) => (
                     <li key={item}>{item}</li>
                   ))}
-                  {(summary.recommended_action_plan || []).length === 0 && <li>No action plan available.</li>}
+                  {dashboardActionPlan.length === 0 && <li>No action plan available.</li>}
                 </ol>
               </div>
             </div>
@@ -3886,7 +3929,7 @@ export default function App(): React.JSX.Element {
       <main className="workspace">
         <header className="panel header">
           <div className="header-row">
-            <label htmlFor="projectPath">Codebase Folder</label>
+            <label htmlFor="projectPath">Codebase File or Folder</label>
             <input
               id="projectPath"
               value={projectPath}
