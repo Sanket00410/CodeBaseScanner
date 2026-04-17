@@ -239,8 +239,8 @@
             </p>
           </div>
           <div class="hero-actions">
-            <button type="button" class="primary-btn">Run Demo Scan</button>
-            <button type="button" class="secondary-btn">Open Reports</button>
+            <button type="button" class="primary-btn" id="runDemoScanBtn">Run Demo Scan</button>
+            <button type="button" class="secondary-btn" id="openReportsBtn">Open Reports</button>
           </div>
         </header>
 
@@ -284,7 +284,7 @@
           </article>
         </section>
 
-        <section class="glass-card reports-card">
+        <section class="glass-card reports-card" id="reportsSection">
           <div class="card-head">
             <div>
               <p class="eyebrow">Reports</p>
@@ -430,6 +430,8 @@
       let selectedRole = "Management";
       let selectedReport = "combined";
       const body = document.body;
+      const roleOrder = Object.keys(roles);
+      const reportOrder = reportTabs.map((item) => item.key);
 
       function barWidth(value, max) {
         return `${Math.max(8, Math.round((value / max) * 100))}%`;
@@ -449,6 +451,23 @@
         } catch (error) {
           console.warn("Fullscreen request failed:", error);
         }
+      }
+
+      function runDemoScan() {
+        const currentRoleIndex = roleOrder.indexOf(selectedRole);
+        const currentReportIndex = reportOrder.indexOf(selectedReport);
+        selectedRole = roleOrder[(currentRoleIndex + 1) % roleOrder.length];
+        selectedReport = reportOrder[(currentReportIndex + 1) % reportOrder.length];
+        render();
+        const status = document.getElementById("previewCopy");
+        if (status) {
+          status.textContent = "Demo scan refreshed. The role, summary, and report preview were updated to simulate a live scan.";
+        }
+        document.getElementById("reportsSection").scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+
+      function openReports() {
+        document.getElementById("reportsSection").scrollIntoView({ behavior: "smooth", block: "start" });
       }
 
       function render() {
@@ -554,6 +573,8 @@
 
       render();
       syncPresentationMode();
+      document.getElementById("runDemoScanBtn").addEventListener("click", runDemoScan);
+      document.getElementById("openReportsBtn").addEventListener("click", openReports);
       document.getElementById("fullscreenBtn").addEventListener("click", enterFullscreen);
       document.getElementById("presentToggleBtn").addEventListener("click", () => {
         const params = new URLSearchParams(window.location.search);
