@@ -2864,15 +2864,20 @@ function writeCombinedPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     (managementSummary as Record<string, unknown> | null)?.severity_distribution &&
     Object.keys((managementSummary as Record<string, unknown> | null)!.severity_distribution as Record<string, unknown>).length > 0
       ? ((managementSummary as Record<string, unknown> | null)!.severity_distribution as Record<string, number>)
-      : 
+    : 
     (summarySource as Record<string, unknown>)?.severity_distribution &&
     Object.keys((summarySource as Record<string, unknown>).severity_distribution as Record<string, unknown>).length > 0
       ? ((summarySource as Record<string, unknown>).severity_distribution as Record<string, number>)
       : buildSeverityDistribution(findings);
+  const summarySeverityDistributionTotal = SEVERITY_ORDER.reduce((total, severity) => total + Number(summarySeverityDistribution?.[severity] || 0), 0);
+  const effectiveSummarySeverityDistribution =
+    reportRole === "Management" && summaryFindingCount > 0 && summarySeverityDistributionTotal <= 0
+      ? buildSeverityDistribution(findings)
+      : summarySeverityDistribution;
   writePdfMetricStrip(doc, [
     { label: "Total Issues", value: String(summaryFindingCount), tone: "accent" },
-    { label: "Critical", value: String(Number(summarySeverityDistribution?.Critical || 0)), tone: "critical" },
-    { label: "High", value: String(Number(summarySeverityDistribution?.High || 0)), tone: "high" },
+    { label: "Critical", value: String(Number(effectiveSummarySeverityDistribution?.Critical || 0)), tone: "critical" },
+    { label: "High", value: String(Number(effectiveSummarySeverityDistribution?.High || 0)), tone: "high" },
     { label: "Known Exploited", value: String(knownExploitedMetricText(riskIntel) || "0"), tone: "info" },
     {
       label: "Risk Score",
@@ -2885,7 +2890,7 @@ function writeCombinedPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     doc,
     SEVERITY_ORDER.map((severity) => ({
       key: severity,
-      value: String(Number(summarySeverityDistribution?.[severity] || 0)),
+      value: String(Number(effectiveSummarySeverityDistribution?.[severity] || 0)),
     })),
   );
   if (enterprise) {
@@ -5801,9 +5806,14 @@ function renderCombinedHtml(scan: ScanView): string {
     Object.keys((managementSummarySource as Record<string, unknown>).severity_distribution as Record<string, unknown>).length > 0
       ? ((managementSummarySource as Record<string, unknown>).severity_distribution as Record<string, number>)
       : buildSeverityDistribution(findings);
+  const summarySeverityDistributionTotal = SEVERITY_ORDER.reduce((total, severity) => total + Number(summarySeverityDistribution?.[severity] || 0), 0);
+  const effectiveSummarySeverityDistribution =
+    reportRole === "Management" && summaryFindingCount > 0 && summarySeverityDistributionTotal <= 0
+      ? buildSeverityDistribution(findings)
+      : summarySeverityDistribution;
   const managementTopSource = (managementSummary as Record<string, unknown> | null) || managementSummarySource;
   const severityRows = SEVERITY_ORDER.map((severity) => {
-    const count = Number(summarySeverityDistribution?.[severity] || 0);
+    const count = Number(effectiveSummarySeverityDistribution?.[severity] || 0);
     if (count <= 0) {
       return "";
     }
@@ -6017,7 +6027,7 @@ function renderCombinedHtml(scan: ScanView): string {
     },
   ]);
   const managementSeverityBands = SEVERITY_ORDER.map((severity) => {
-    const count = Number(summarySeverityDistribution?.[severity] || 0);
+    const count = Number(effectiveSummarySeverityDistribution?.[severity] || 0);
     return { severity, count };
   });
   const managementSeverityTotal = managementSeverityBands.reduce((total, item) => total + item.count, 0);
