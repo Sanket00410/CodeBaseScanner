@@ -14,6 +14,18 @@ Standalone web demo for presenting CodeSentinelX role-based scans and reports.
 
 Open `standalone-demo.html` directly in any browser. No npm install required.
 
+## Presentation mode
+
+For a cleaner live demo, open:
+
+```text
+standalone-demo.html?present=1
+```
+
+Then click **Enter Fullscreen** or press **F11**.
+
+Presentation mode hides the left navigation and gives the demo a more deck-like executive layout.
+
 ## Run the React version
 
 ```powershell
