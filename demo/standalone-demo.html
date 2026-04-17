@@ -184,6 +184,68 @@
       .stat-panel span { display: block; color: var(--muted); font-size: 12px; margin-bottom: 6px; }
       .stat-panel strong { font-size: 20px; }
       .content-grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 16px; }
+      .real-report-card {
+        margin: 16px 0;
+      }
+      .real-report-layout {
+        display: grid;
+        grid-template-columns: 280px minmax(0, 1fr);
+        gap: 14px;
+      }
+      .real-report-list {
+        display: grid;
+        gap: 8px;
+        max-height: 580px;
+        overflow: auto;
+        padding-right: 4px;
+      }
+      .real-report-item {
+        width: 100%;
+        text-align: left;
+        border-radius: 14px;
+        border: 1px solid rgba(97, 145, 191, 0.18);
+        background: rgba(14, 25, 38, 0.72);
+        color: var(--text);
+        padding: 10px 12px;
+        cursor: pointer;
+      }
+      .real-report-item.active {
+        border-color: rgba(75, 213, 255, 0.7);
+        box-shadow: 0 0 0 1px rgba(75, 213, 255, 0.25) inset;
+      }
+      .real-report-item strong {
+        display: block;
+        font-size: 13px;
+        margin-bottom: 4px;
+      }
+      .real-report-item span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .real-report-viewer {
+        display: grid;
+        gap: 10px;
+      }
+      .real-report-meta {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        flex-wrap: wrap;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .real-report-frame {
+        width: 100%;
+        height: 700px;
+        border: 1px solid rgba(97, 145, 191, 0.22);
+        border-radius: 18px;
+        background: #08111a;
+      }
+      .real-report-actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
       .glass-card { padding: 18px; }
       .card-head { display: flex; align-items: start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
       .chip, .status {
@@ -333,6 +395,38 @@
         </section>
 
         <section class="stats-row" id="statsRow"></section>
+
+        <section class="glass-card real-report-card" id="realReportCard">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Real reports</p>
+              <h3>Open actual exported HTML or PDF reports</h3>
+            </div>
+            <div class="real-report-actions">
+              <button type="button" class="ghost-btn" id="loadReportFolderBtn">Load Report Folder</button>
+              <button type="button" class="ghost-btn" id="clearReportFolderBtn">Clear Loaded Reports</button>
+            </div>
+          </div>
+          <p class="muted">
+            Select your <strong>CodeSentinelX_Reports</strong> export folder and the demo will list real report files so you can open the generated output live.
+          </p>
+          <input id="reportFolderInput" type="file" webkitdirectory multiple accept=".html,.htm,.pdf" hidden />
+          <div class="real-report-layout">
+            <div class="real-report-list" id="realReportList">
+              <button type="button" class="real-report-item active">
+                <strong>No report loaded</strong>
+                <span>Use Load Report Folder to pick exported report files.</span>
+              </button>
+            </div>
+            <div class="real-report-viewer">
+              <div class="real-report-meta">
+                <span id="realReportMeta">Waiting for a report file...</span>
+                <span id="realReportCount">0 loaded</span>
+              </div>
+              <iframe id="realReportFrame" class="real-report-frame" title="Real report preview"></iframe>
+            </div>
+          </div>
+        </section>
 
         <section class="content-grid">
           <article class="glass-card execution-card">
@@ -520,6 +614,9 @@
       const body = document.body;
       const roleOrder = Object.keys(roles);
       const reportOrder = reportTabs.map((item) => item.key);
+      const reportInputs = [];
+      let realReports = [];
+      let activeRealReportIndex = -1;
       const scanPhases = [
         "Preparing target",
         "Detecting stack",
@@ -607,6 +704,93 @@
         document.getElementById("reportsSection").scrollIntoView({ behavior: "smooth", block: "start" });
       }
 
+      function isReportFile(file) {
+        return /\.(html?|pdf)$/i.test(file.name);
+      }
+
+      function clearRealReportPreview(message = "Waiting for a report file...") {
+        const frame = document.getElementById("realReportFrame");
+        if (frame) {
+          frame.removeAttribute("src");
+        }
+        const meta = document.getElementById("realReportMeta");
+        const count = document.getElementById("realReportCount");
+        if (meta) meta.textContent = message;
+        if (count) count.textContent = `${realReports.length} loaded`;
+      }
+
+      function renderRealReportList() {
+        const list = document.getElementById("realReportList");
+        const count = document.getElementById("realReportCount");
+        if (!realReports.length) {
+          list.innerHTML = `
+            <button type="button" class="real-report-item active">
+              <strong>No report loaded</strong>
+              <span>Use Load Report Folder to pick exported report files.</span>
+            </button>
+          `;
+          if (count) count.textContent = "0 loaded";
+          clearRealReportPreview();
+          return;
+        }
+        if (count) count.textContent = `${realReports.length} loaded`;
+        list.innerHTML = realReports.map((item, index) => `
+          <button type="button" class="real-report-item ${index === activeRealReportIndex ? "active" : ""}" data-report-index="${index}">
+            <strong>${item.name}</strong>
+            <span>${item.source}</span>
+          </button>
+        `).join("");
+        list.querySelectorAll("[data-report-index]").forEach((button) => {
+          button.addEventListener("click", () => {
+            activeRealReportIndex = Number(button.dataset.reportIndex);
+            renderRealReportList();
+            showRealReport(realReports[activeRealReportIndex].file);
+          });
+        });
+        if (realReports[activeRealReportIndex]) {
+          showRealReport(realReports[activeRealReportIndex].file);
+        }
+      }
+
+      function showRealReport(file) {
+        if (!file) {
+          clearRealReportPreview();
+          return;
+        }
+        const url = URL.createObjectURL(file);
+        const frame = document.getElementById("realReportFrame");
+        const meta = document.getElementById("realReportMeta");
+        if (frame) {
+          frame.src = url;
+        }
+        if (meta) {
+          meta.textContent = `${file.name} ? ${Math.round(file.size / 1024)} KB`;
+        }
+      }
+
+      function handleLoadedReportFiles(fileList) {
+        const files = Array.from(fileList || []).filter(isReportFile);
+        if (!files.length) {
+          realReports = [];
+          activeRealReportIndex = -1;
+          renderRealReportList();
+          clearRealReportPreview("No HTML or PDF reports found in that folder.");
+          return;
+        }
+        realReports = files.map((file) => ({
+          name: file.name,
+          source: file.webkitRelativePath || file.name,
+          file,
+        }));
+        activeRealReportIndex = 0;
+        renderRealReportList();
+        showRealReport(realReports[activeRealReportIndex].file);
+      }
+
+      function openReportFolderPicker() {
+        document.getElementById("reportFolderInput").click();
+      }
+
       function render() {
         const roleData = roles[selectedRole];
         document.title = `CodeSentinelX Demo - ${selectedRole}`;
@@ -622,6 +806,9 @@
           : (selectedReport === "combined" ? "Combined intelligence view" : `${selectedReport[0].toUpperCase()}${selectedReport.slice(1)} report`);
         document.getElementById("previewCopy").textContent = scanState.running ? scanState.details : reportCopy[selectedReport];
         document.getElementById("scanTitle").textContent = scanState.title;
+        if (activeRealReportIndex >= 0 && realReports[activeRealReportIndex]) {
+          showRealReport(realReports[activeRealReportIndex].file);
+        }
         document.getElementById("scanPhase").textContent = scanState.phase;
         document.getElementById("scanPercent").textContent = `${scanState.progress}%`;
         document.getElementById("scanTarget").textContent = scanState.running ? `Scanning ${selectedRole} with ${roles[selectedRole].tools.length} scoped tools.` : `Last scope: ${selectedRole}`;
@@ -730,6 +917,15 @@
       document.getElementById("runDemoScanBtn").addEventListener("click", runDemoScan);
       document.getElementById("openReportsBtn").addEventListener("click", openReports);
       document.getElementById("fullscreenBtn").addEventListener("click", enterFullscreen);
+      document.getElementById("loadReportFolderBtn").addEventListener("click", openReportFolderPicker);
+      document.getElementById("clearReportFolderBtn").addEventListener("click", () => {
+        realReports = [];
+        activeRealReportIndex = -1;
+        renderRealReportList();
+      });
+      document.getElementById("reportFolderInput").addEventListener("change", (event) => {
+        handleLoadedReportFiles(event.target.files);
+      });
       document.getElementById("presentToggleBtn").addEventListener("click", () => {
         const params = new URLSearchParams(window.location.search);
         if (params.get("present") === "1") {

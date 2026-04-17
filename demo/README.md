@@ -14,6 +14,16 @@ Standalone web demo for presenting CodeSentinelX role-based scans and reports.
 
 Open `standalone-demo.html` directly in any browser. No npm install required.
 
+## Show real reports
+
+Inside the static demo, click **Load Report Folder** and pick your exported reports folder, for example:
+
+```text
+C:\Users\sanketa\Documents\CodeSentinelX_Reports\export
+```
+
+The demo will list the HTML/PDF report files from that folder and let you open them live.
+
 ## Presentation mode
 
 For a cleaner live demo, open:
