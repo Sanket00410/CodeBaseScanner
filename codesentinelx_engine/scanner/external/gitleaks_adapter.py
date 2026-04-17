@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 
 from codesentinelx_engine.models import Finding, Severity
-from codesentinelx_engine.scanner.external.common import normalize_path, run_command, safe_json_loads, to_severity
+from codesentinelx_engine.scanner.external.common import iter_files, normalize_path, run_command, safe_json_loads, to_severity
 
 
 _GITLEAKS_NOISE_SEGMENTS = {
@@ -226,9 +226,7 @@ def _prepare_gitleaks_workspace(target_root: Path) -> tuple[Path, Path]:
     staged_root = workspace / "source"
     staged_root.mkdir(parents=True, exist_ok=True)
     staged_files = 0
-    for candidate in target_root.rglob("*"):
-        if not candidate.is_file():
-            continue
+    for candidate in iter_files(target_root):
         if not _should_stage_for_gitleaks(target_root, candidate):
             continue
         try:

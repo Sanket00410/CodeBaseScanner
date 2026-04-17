@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 
 from codesentinelx_engine.models import Finding
-from codesentinelx_engine.scanner.external.common import extract_cwe, normalize_path, run_command, safe_json_loads, to_severity
+from codesentinelx_engine.scanner.external.common import extract_cwe, iter_files, normalize_path, run_command, safe_json_loads, to_severity
 
 
 LANGUAGE_MAP = {
@@ -93,12 +93,13 @@ def _candidate_query_suites(search_path: str, language: str) -> list[str]:
                     seen.add(resolved)
                     candidates.append(resolved)
         for suite_name in QUERY_SUITES.get(language, []):
-            for discovered in root.rglob(Path(suite_name).name):
-                if discovered.is_file():
-                    resolved = str(discovered.resolve())
-                    if resolved not in seen:
-                        seen.add(resolved)
-                        candidates.append(resolved)
+            for discovered in iter_files(root):
+                if discovered.name != Path(suite_name).name:
+                    continue
+                resolved = str(discovered.resolve())
+                if resolved not in seen:
+                    seen.add(resolved)
+                    candidates.append(resolved)
     return candidates
 
 
@@ -176,9 +177,7 @@ def _bootstrap_codeql_packs(
 
 def _detect_languages(target_root: Path) -> list[str]:
     detected: set[str] = set()
-    for path in target_root.rglob("*"):
-        if not path.is_file():
-            continue
+    for path in iter_files(target_root):
         if any(part in {".git", "node_modules", ".venv", "venv", "dist", "build"} for part in path.parts):
             continue
         lang = LANGUAGE_MAP.get(path.suffix.lower())

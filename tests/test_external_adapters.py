@@ -4,6 +4,7 @@ import pytest
 
 from codesentinelx_engine.config import ScannerConfig
 from codesentinelx_engine.models import Severity
+from codesentinelx_engine.scanner.external import common as external_common
 from codesentinelx_engine.scanner.external import codeql_adapter
 from codesentinelx_engine.scanner.external import semgrep_adapter
 from codesentinelx_engine.scanner.external import osv_scanner_adapter
@@ -20,6 +21,27 @@ def test_external_tool_names_deduplicates_and_respects_switch() -> None:
 
     disabled = ScannerConfig(use_external_tools=False)
     assert external_tool_names(disabled) == []
+
+
+def test_iter_files_skips_missing_nested_directories(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / "keep.py").write_text("print('hello')", encoding="utf-8")
+    gone_dir = root / "gone"
+    gone_dir.mkdir()
+
+    original_scandir = external_common.os.scandir
+
+    def fake_scandir(path):  # type: ignore[no-untyped-def]
+        if Path(path) == gone_dir:
+            raise FileNotFoundError(str(path))
+        return original_scandir(path)
+
+    monkeypatch.setattr(external_common.os, "scandir", fake_scandir)
+
+    discovered = sorted(path.name for path in external_common.iter_files(root))
+
+    assert discovered == ["keep.py"]
 
 
 def test_role_allowlists_match_execution_policy() -> None:

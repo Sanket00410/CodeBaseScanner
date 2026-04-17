@@ -3,14 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from codesentinelx_engine.models import Finding
-from codesentinelx_engine.scanner.external.common import normalize_path, run_command, safe_json_loads, to_severity
+from codesentinelx_engine.scanner.external.common import iter_files, normalize_path, run_command, safe_json_loads, to_severity
 
 
 def _discover_dockerfiles(target_root: Path) -> list[Path]:
     matches: list[Path] = []
-    for path in target_root.rglob("*"):
-        if not path.is_file():
-            continue
+    for path in iter_files(target_root):
         lower_name = path.name.lower()
         if lower_name == "dockerfile" or lower_name.startswith("dockerfile.") or path.suffix.lower() == ".dockerfile":
             matches.append(path)

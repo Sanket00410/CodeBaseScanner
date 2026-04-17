@@ -11,6 +11,7 @@ from codesentinelx_engine.models import Finding
 from codesentinelx_engine.scanner.external.common import (
     extract_cwe,
     first_reference,
+    iter_files,
     normalize_path,
     run_command,
     safe_json_loads,
@@ -39,9 +40,7 @@ def _discover_files(target_root: Path, names: set[str] | None = None, suffixes: 
     names = {item.lower() for item in (names or set())}
     suffixes = {item.lower() for item in (suffixes or set())}
     matches: list[Path] = []
-    for path in target_root.rglob("*"):
-        if not path.is_file():
-            continue
+    for path in iter_files(target_root):
         lowered = path.name.lower()
         if names and lowered in names:
             matches.append(path)

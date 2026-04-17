@@ -11,7 +11,7 @@ from pathlib import Path
 from urllib.request import urlopen
 
 from codesentinelx_engine.models import Finding
-from codesentinelx_engine.scanner.external.common import extract_cwe, normalize_path, run_command, safe_json_loads, to_severity
+from codesentinelx_engine.scanner.external.common import extract_cwe, iter_files, normalize_path, run_command, safe_json_loads, to_severity
 
 _GO_RUNTIME_CACHE: str | None = None
 _GO_RUNTIME_FAILURE: str | None = None
@@ -74,8 +74,8 @@ def parse_gosec_output(data: dict, target_root: Path) -> tuple[list[Finding], li
 
 
 def _contains_go_files(target_root: Path) -> bool:
-    for path in target_root.rglob("*.go"):
-        if path.is_file():
+    for path in iter_files(target_root):
+        if path.suffix.lower() == ".go":
             return True
     return False
 

@@ -12,6 +12,7 @@ except ModuleNotFoundError:  # pragma: no cover
 from codesentinelx_engine.config import ScannerConfig
 from codesentinelx_engine.models import Finding, Severity
 from codesentinelx_engine.scanner.dependency_auth import build_dependency_inventory, build_dependency_usage_map
+from codesentinelx_engine.scanner.external.common import iter_files
 
 
 class NativeDependencyScanner:
@@ -43,7 +44,9 @@ class NativeDependencyScanner:
         usage_map: dict[str, list[str]],
     ) -> list[Finding]:
         findings: list[Finding] = []
-        for package_json in root.rglob("package.json"):
+        for package_json in iter_files(root):
+            if package_json.name.lower() != "package.json":
+                continue
             if any(part in {"node_modules", ".git", "dist", "build", ".toolchain"} for part in package_json.parts):
                 continue
             relative = self._relative(package_json, root)
@@ -148,7 +151,9 @@ class NativeDependencyScanner:
     ) -> list[Finding]:
         findings: list[Finding] = []
 
-        for requirements_path in root.rglob("requirements*.txt"):
+        for requirements_path in iter_files(root):
+            if not requirements_path.name.lower().startswith("requirements") or not requirements_path.name.lower().endswith(".txt"):
+                continue
             if any(part in {".git", "dist", "build", ".toolchain", ".venv", "venv"} for part in requirements_path.parts):
                 continue
             relative = self._relative(requirements_path, root)
@@ -197,7 +202,9 @@ class NativeDependencyScanner:
                         )
                     )
 
-        for pyproject in root.rglob("pyproject.toml"):
+        for pyproject in iter_files(root):
+            if pyproject.name.lower() != "pyproject.toml":
+                continue
             if any(part in {".git", "dist", "build", ".toolchain", ".venv", "venv"} for part in pyproject.parts):
                 continue
             relative = self._relative(pyproject, root)

@@ -8,6 +8,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Iterator
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -34,6 +35,28 @@ def _record_command_trace(record: dict[str, Any]) -> None:
         records = []
         _COMMAND_TRACE.records = records
     records.append(record)
+
+
+def iter_files(root: Path) -> Iterator[Path]:
+    if not root.exists():
+        return
+    stack = [root]
+    while stack:
+        current = stack.pop()
+        try:
+            if current.is_file():
+                yield current
+                continue
+            if not current.is_dir():
+                continue
+            with os.scandir(current) as entries:
+                for entry in entries:
+                    try:
+                        stack.append(Path(entry.path))
+                    except OSError:
+                        continue
+        except (FileNotFoundError, NotADirectoryError, PermissionError, OSError):
+            continue
 
 
 def _coerce_output_text(raw: Any) -> str:

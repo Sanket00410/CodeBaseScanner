@@ -7,6 +7,7 @@ from codesentinelx_engine.models import Finding
 from codesentinelx_engine.scanner.external.common import (
     extract_cwe,
     first_reference,
+    iter_files,
     normalize_path,
     run_command,
     safe_json_loads,
@@ -39,7 +40,7 @@ def _discover_local_semgrep_configs(target_root: Path) -> list[str]:
 
     semgrep_dir = target_root / ".semgrep"
     if semgrep_dir.exists() and semgrep_dir.is_dir():
-        for candidate in sorted(semgrep_dir.rglob("*.yml")) + sorted(semgrep_dir.rglob("*.yaml")):
+        for candidate in sorted(path for path in iter_files(semgrep_dir) if path.suffix.lower() in {".yml", ".yaml"}):
             if candidate.is_file():
                 resolved = str(candidate.resolve())
                 if resolved not in seen:

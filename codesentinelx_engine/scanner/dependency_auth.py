@@ -6,6 +6,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+from codesentinelx_engine.scanner.external.common import iter_files
+
 try:
     import tomllib
 except ModuleNotFoundError:  # pragma: no cover
@@ -21,9 +23,7 @@ def build_dependency_inventory(root: Path) -> dict[str, dict[str, object]]:
     if not root.exists():
         return inventory
 
-    for path in root.rglob("*"):
-        if not path.is_file():
-            continue
+    for path in iter_files(root):
         lowered = path.name.lower()
         relative = _relpath(path, root)
         if lowered == "package.json":
@@ -62,8 +62,8 @@ def build_dependency_usage_map(root: Path) -> dict[str, list[str]]:
         "CodeSentinelX_Reports",
     }
     source_suffixes = {".py", ".js", ".jsx", ".ts", ".tsx"}
-    for path in root.rglob("*"):
-        if not path.is_file() or path.suffix.lower() not in source_suffixes:
+    for path in iter_files(root):
+        if path.suffix.lower() not in source_suffixes:
             continue
         if any(part in skip_dirs for part in path.parts):
             continue
