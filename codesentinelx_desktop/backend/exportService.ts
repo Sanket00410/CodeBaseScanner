@@ -6076,7 +6076,7 @@ function renderCombinedHtml(scan: ScanView): string {
             </div>
             <div class="management-ring-legend">
               ${SEVERITY_ORDER.map((severity) => {
-                const count = Number(summarySeverityDistribution?.[severity] || 0);
+                const count = Number(effectiveSummarySeverityDistribution?.[severity] || 0);
                 const color =
                   severity === "Critical"
                     ? "var(--critical)"
