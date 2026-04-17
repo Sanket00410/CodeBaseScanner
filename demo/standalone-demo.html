@@ -113,6 +113,73 @@
         font-weight: 800;
       }
       .stats-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 16px 0; }
+      .scan-strip {
+        margin: 14px 0;
+        padding: 16px 18px;
+        border-radius: 20px;
+        border: 1px solid rgba(75, 213, 255, 0.22);
+        background: linear-gradient(180deg, rgba(11, 23, 34, 0.92), rgba(7, 14, 21, 0.84));
+        box-shadow: var(--shadow);
+      }
+      .scan-strip-head {
+        display: flex;
+        align-items: start;
+        justify-content: space-between;
+        gap: 14px;
+        margin-bottom: 10px;
+      }
+      .scan-strip-head h3 {
+        margin: 4px 0 0;
+        font-size: 18px;
+      }
+      .scan-meta {
+        display: grid;
+        gap: 4px;
+        justify-items: end;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .progress-track {
+        height: 12px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: rgba(8, 17, 26, 0.96);
+        border: 1px solid rgba(97, 145, 191, 0.22);
+      }
+      .progress-fill {
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #4bd5ff, #8dffcb);
+        transition: width 220ms ease;
+      }
+      .scan-strip-footer {
+        display: flex;
+        justify-content: space-between;
+        gap: 14px;
+        flex-wrap: wrap;
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .phase-pills {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 10px;
+      }
+      .phase-pills span {
+        border-radius: 999px;
+        padding: 5px 8px;
+        background: rgba(14, 25, 38, 0.72);
+        border: 1px solid rgba(97, 145, 191, 0.15);
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .phase-pills span.active {
+        color: var(--text);
+        border-color: rgba(75, 213, 255, 0.7);
+        box-shadow: 0 0 0 1px rgba(75, 213, 255, 0.25) inset;
+      }
       .stat-panel { padding: 14px 16px; }
       .stat-panel span { display: block; color: var(--muted); font-size: 12px; margin-bottom: 6px; }
       .stat-panel strong { font-size: 20px; }
@@ -243,6 +310,27 @@
             <button type="button" class="secondary-btn" id="openReportsBtn">Open Reports</button>
           </div>
         </header>
+
+        <section class="scan-strip" id="scanStrip">
+          <div class="scan-strip-head">
+            <div>
+              <p class="eyebrow">Live scan</p>
+              <h3 id="scanTitle">Ready to run a demo scan</h3>
+            </div>
+            <div class="scan-meta">
+              <strong id="scanPercent">0%</strong>
+              <span id="scanPhase">Idle</span>
+            </div>
+          </div>
+          <div class="progress-track">
+            <div class="progress-fill" id="scanProgress" style="width: 0%"></div>
+          </div>
+          <div class="phase-pills" id="scanPhases"></div>
+          <div class="scan-strip-footer">
+            <span id="scanTarget">Select a role, then run the scan.</span>
+            <span id="scanDetails">No scan in progress.</span>
+          </div>
+        </section>
 
         <section class="stats-row" id="statsRow"></section>
 
@@ -432,6 +520,22 @@
       const body = document.body;
       const roleOrder = Object.keys(roles);
       const reportOrder = reportTabs.map((item) => item.key);
+      const scanPhases = [
+        "Preparing target",
+        "Detecting stack",
+        "Running analyzers",
+        "Grouping findings",
+        "Generating reports",
+      ];
+      const scanState = {
+        running: false,
+        progress: 0,
+        phaseIndex: 0,
+        title: "Ready to run a demo scan",
+        phase: "Idle",
+        details: "No scan in progress.",
+      };
+      let scanTimer = null;
 
       function barWidth(value, max) {
         return `${Math.max(8, Math.round((value / max) * 100))}%`;
@@ -454,16 +558,49 @@
       }
 
       function runDemoScan() {
-        const currentRoleIndex = roleOrder.indexOf(selectedRole);
-        const currentReportIndex = reportOrder.indexOf(selectedReport);
-        selectedRole = roleOrder[(currentRoleIndex + 1) % roleOrder.length];
-        selectedReport = reportOrder[(currentReportIndex + 1) % reportOrder.length];
-        render();
-        const status = document.getElementById("previewCopy");
-        if (status) {
-          status.textContent = "Demo scan refreshed. The role, summary, and report preview were updated to simulate a live scan.";
+        if (scanTimer) {
+          clearInterval(scanTimer);
+          scanTimer = null;
         }
-        document.getElementById("reportsSection").scrollIntoView({ behavior: "smooth", block: "start" });
+        const roleData = roles[selectedRole];
+        scanState.running = true;
+        scanState.progress = 4;
+        scanState.phaseIndex = 0;
+        scanState.title = `Scanning ${selectedRole} scope`;
+        scanState.phase = scanPhases[0];
+        scanState.details = `Preparing ${selectedRole} tools: ${roleData.tools.slice(0, 3).join(", ")}${roleData.tools.length > 3 ? ", ..." : ""}`;
+        render();
+
+        const stepDurations = [700, 850, 900, 750, 700];
+        let step = 0;
+        scanTimer = window.setInterval(() => {
+          step += 1;
+          if (step < scanPhases.length) {
+            scanState.phaseIndex = step;
+            scanState.phase = scanPhases[step];
+            scanState.progress = Math.min(92, 12 + step * 18);
+            scanState.details = [
+              "Collecting repo metadata and target scope.",
+              "Inspecting file types, manifests, and active tool paths.",
+              "Executing role-specific analyzers and consolidating evidence.",
+              "Collapsing same-family findings and ranking severity.",
+              "Rendering HTML/PDF-ready report artifacts.",
+            ][step];
+            render();
+            return;
+          }
+
+          clearInterval(scanTimer);
+          scanTimer = null;
+          scanState.running = false;
+          scanState.phaseIndex = scanPhases.length - 1;
+          scanState.phase = "Complete";
+          scanState.progress = 100;
+          scanState.title = `${selectedRole} scan completed`;
+          scanState.details = `Reports refreshed for ${selectedRole}. Findings are grouped, prioritized, and ready to review.`;
+          render();
+          document.getElementById("reportsSection").scrollIntoView({ behavior: "smooth", block: "start" });
+        }, stepDurations[0]);
       }
 
       function openReports() {
@@ -479,9 +616,26 @@
         document.getElementById("reportOutput").textContent = roleData.report;
         document.getElementById("roleChip").textContent = selectedRole;
         document.getElementById("scoreBadge").textContent = roleData.summary.score.toFixed(1);
-        document.getElementById("reportSummary").textContent = reportCopy[selectedReport];
-        document.getElementById("previewTitle").textContent = selectedReport === "combined" ? "Combined intelligence view" : `${selectedReport[0].toUpperCase()}${selectedReport.slice(1)} report`;
-        document.getElementById("previewCopy").textContent = reportCopy[selectedReport];
+        document.getElementById("reportSummary").textContent = scanState.running ? scanState.details : reportCopy[selectedReport];
+        document.getElementById("previewTitle").textContent = scanState.running
+          ? `${selectedRole} scan running`
+          : (selectedReport === "combined" ? "Combined intelligence view" : `${selectedReport[0].toUpperCase()}${selectedReport.slice(1)} report`);
+        document.getElementById("previewCopy").textContent = scanState.running ? scanState.details : reportCopy[selectedReport];
+        document.getElementById("scanTitle").textContent = scanState.title;
+        document.getElementById("scanPhase").textContent = scanState.phase;
+        document.getElementById("scanPercent").textContent = `${scanState.progress}%`;
+        document.getElementById("scanTarget").textContent = scanState.running ? `Scanning ${selectedRole} with ${roles[selectedRole].tools.length} scoped tools.` : `Last scope: ${selectedRole}`;
+        document.getElementById("scanDetails").textContent = scanState.details;
+        document.getElementById("scanProgress").style.width = `${scanState.progress}%`;
+        document.getElementById("scanPhases").innerHTML = scanPhases.map((phase, index) => `
+          <span class="${index === scanState.phaseIndex ? "active" : ""}">${phase}</span>
+        `).join("");
+
+        const runDemoScanBtn = document.getElementById("runDemoScanBtn");
+        const openReportsBtn = document.getElementById("openReportsBtn");
+        runDemoScanBtn.textContent = scanState.running ? `Scanning ${scanState.progress}%` : "Run Demo Scan";
+        runDemoScanBtn.disabled = scanState.running;
+        openReportsBtn.disabled = scanState.running;
 
         const roleList = document.getElementById("roleList");
         roleList.innerHTML = Object.keys(roles).map((role) => `
