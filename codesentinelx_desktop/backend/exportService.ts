@@ -2830,6 +2830,12 @@ function writeCombinedPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
   const findings = sortedFindings(report.findings || []);
   const reportRole = resolveReportRole(scan);
   const summarySource = reportRole === "Management" ? scan.report.executive_summary : summary;
+  const managementSummary =
+    reportRole === "Management"
+      ? ((scan.report.executive_summary as unknown as Record<string, unknown>).management_summary ||
+          (summary as unknown as Record<string, unknown>).management_summary ||
+          null)
+      : null;
   const toolchainExecution = resolveToolchainExecution(scan, summary);
   const enterprise = resolveEnterpriseAssurance(scan, summary);
   const riskIntel = resolveRiskIntelligence(summary as VulnerabilityFixedCodeReport["summary"] & {
@@ -2846,8 +2852,19 @@ function writeCombinedPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     `Generated: ${formatDisplayTimestamp(resolveReportGeneratedAt(scan, "combined"))}`,
     `Role: ${reportRole}`,
   ]);
-  const summaryFindingCount = Number((summarySource as Record<string, unknown>)?.deduplicated_vulnerabilities || (summarySource as Record<string, unknown>)?.total_findings || findings.length || 0);
+  const summaryFindingCount = Number(
+    (managementSummary as Record<string, unknown> | null)?.deduplicated_vulnerabilities ||
+      (managementSummary as Record<string, unknown> | null)?.total_findings ||
+      (summarySource as Record<string, unknown>)?.deduplicated_vulnerabilities ||
+      (summarySource as Record<string, unknown>)?.total_findings ||
+      findings.length ||
+      0,
+  );
   const summarySeverityDistribution =
+    (managementSummary as Record<string, unknown> | null)?.severity_distribution &&
+    Object.keys((managementSummary as Record<string, unknown> | null)!.severity_distribution as Record<string, unknown>).length > 0
+      ? ((managementSummary as Record<string, unknown> | null)!.severity_distribution as Record<string, number>)
+      : 
     (summarySource as Record<string, unknown>)?.severity_distribution &&
     Object.keys((summarySource as Record<string, unknown>).severity_distribution as Record<string, unknown>).length > 0
       ? ((summarySource as Record<string, unknown>).severity_distribution as Record<string, number>)
@@ -5760,18 +5777,31 @@ function renderCombinedHtml(scan: ScanView): string {
     risk_intelligence?: { findings_with_cve?: number; findings_cvss_ge_7?: number; known_exploited_findings?: number };
   }, findings);
   const managementSummarySource = reportRole === "Management" ? scan.report.executive_summary : summary;
+  const managementSummary =
+    reportRole === "Management"
+      ? ((scan.report.executive_summary as unknown as Record<string, unknown>).management_summary ||
+          (summary as unknown as Record<string, unknown>).management_summary ||
+          null)
+      : null;
   const exportedAt = formatDisplayTimestamp(resolveReportGeneratedAt(scan, "combined"));
   const summaryFindingCount = Number(
+    (managementSummary as Record<string, unknown> | null)?.deduplicated_vulnerabilities ||
+      (managementSummary as Record<string, unknown> | null)?.total_findings ||
     (managementSummarySource as Record<string, unknown>)?.deduplicated_vulnerabilities ||
       (managementSummarySource as Record<string, unknown>)?.total_findings ||
       findings.length ||
       0,
   );
   const summarySeverityDistribution =
+    (managementSummary as Record<string, unknown> | null)?.severity_distribution &&
+    Object.keys((managementSummary as Record<string, unknown> | null)!.severity_distribution as Record<string, unknown>).length > 0
+      ? ((managementSummary as Record<string, unknown> | null)!.severity_distribution as Record<string, number>)
+      : 
     (managementSummarySource as Record<string, unknown>)?.severity_distribution &&
     Object.keys((managementSummarySource as Record<string, unknown>).severity_distribution as Record<string, unknown>).length > 0
       ? ((managementSummarySource as Record<string, unknown>).severity_distribution as Record<string, number>)
       : buildSeverityDistribution(findings);
+  const managementTopSource = (managementSummary as Record<string, unknown> | null) || managementSummarySource;
   const severityRows = SEVERITY_ORDER.map((severity) => {
     const count = Number(summarySeverityDistribution?.[severity] || 0);
     if (count <= 0) {
@@ -6014,11 +6044,11 @@ function renderCombinedHtml(scan: ScanView): string {
           })
           .join(", ")
       : "";
-  const managementTopTypes = Array.isArray((managementSummarySource as Record<string, unknown>).top_vulnerability_types)
-    ? ((managementSummarySource as Record<string, unknown>).top_vulnerability_types as Array<{ type: string; count: number }>).slice(0, 6)
+  const managementTopTypes = Array.isArray((managementTopSource as Record<string, unknown>).top_vulnerability_types)
+    ? ((managementTopSource as Record<string, unknown>).top_vulnerability_types as Array<{ type: string; count: number }>).slice(0, 6)
     : [];
-  const managementTopOwasp = Array.isArray((managementSummarySource as Record<string, unknown>).top_owasp_categories)
-    ? ((managementSummarySource as Record<string, unknown>).top_owasp_categories as Array<{ owasp_category: string; count: number }>).slice(0, 6)
+  const managementTopOwasp = Array.isArray((managementTopSource as Record<string, unknown>).top_owasp_categories)
+    ? ((managementTopSource as Record<string, unknown>).top_owasp_categories as Array<{ owasp_category: string; count: number }>).slice(0, 6)
     : [];
   const managementChartSection = reportRole === "Management"
     ? `<section class="panel">

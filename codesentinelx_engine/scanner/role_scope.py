@@ -184,7 +184,22 @@ _ROLE_SCOPES = {
     ),
     "Management": RoleScope(
         role="Management",
-        tool_allowlist=frozenset(_STANDARD_CODEBASE_TOOLS),
+        tool_allowlist=frozenset(
+            {
+                "bandit",
+                "brakeman",
+                "checkov",
+                "codeql",
+                "eslint-security",
+                "gosec",
+                "govulncheck",
+                "grype",
+                "hadolint",
+                "infer",
+                "osv-scanner",
+                "tfsec",
+            }
+        ),
         run_external_tools=True,
         run_file_findings=True,
         run_project_rules=False,

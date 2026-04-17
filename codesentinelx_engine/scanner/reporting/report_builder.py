@@ -2620,6 +2620,21 @@ def build_report(scan_result: ScanResult) -> dict:
         "report_integrity_chain": None,
     }
 
+    management_summary = {
+        "total_findings": len(summary_findings),
+        "deduplicated_vulnerabilities": len(summary_findings),
+        "active_risk_findings": summary_distribution.get("Critical", 0) + summary_distribution.get("High", 0),
+        "severity_distribution": summary_distribution,
+        "top_vulnerability_types": _top_vulnerability_types(summary_findings),
+        "top_owasp_categories": _top_owasp_categories(summary_findings),
+        "affected_modules": _affected_modules(summary_findings),
+        "affected_files": _affected_files(summary_findings),
+        "affected_folders": _affected_folders(summary_findings),
+        "risk_score": risk_score,
+        "risk_rating": risk_rating(risk_score),
+    }
+    executive_summary["management_summary"] = management_summary
+
     technical_report = {
         "scan_window": {
             "started_at": scan_result.started_at.isoformat(),
@@ -2700,6 +2715,7 @@ def build_report(scan_result: ScanResult) -> dict:
             "data_quality": data_quality,
             "suppression_lifecycle": suppression_lifecycle,
             "finding_origin_distribution": suppression_lifecycle.get("finding_origins", {}),
+            "management_summary": management_summary,
             "deterministic_replay": None,
             "report_integrity_chain": None,
         },
