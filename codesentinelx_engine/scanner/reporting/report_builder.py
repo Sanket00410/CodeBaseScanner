@@ -52,7 +52,13 @@ SEVERITY_WEIGHT = {
 
 
 def _normalize_severity_label(raw: object) -> str:
-    value = str(getattr(raw, "value", raw) or "").strip().lower()
+    if isinstance(raw, dict):
+        for key in ("value", "label", "name", "severity", "level", "text", "display", "code"):
+            candidate = raw.get(key)
+            if candidate:
+                raw = candidate
+                break
+    value = str(getattr(raw, "value", getattr(raw, "name", raw)) or "").strip().lower()
     value = value.replace("severity.", "").replace("severity_", "").replace("severity-", "")
     value = re.sub(r"[^a-z]+", " ", value).strip()
     if re.search(r"critical|error", value):

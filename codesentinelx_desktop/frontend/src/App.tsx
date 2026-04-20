@@ -480,6 +480,39 @@ function aggregateFindingsByFolder(findings: VulnerabilityFinding[]): FileFindin
   return [...map.values()].sort((a, b) => b.total - a.total);
 }
 
+function normalizeSeverityLabel(value: unknown): Severity {
+  const candidates: unknown[] = [];
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    candidates.push(record.value, record.label, record.name, record.severity, record.level, record.text, record.display, record.code);
+  }
+  candidates.push(value);
+  for (const candidate of candidates) {
+    const text = String(candidate ?? "").trim().toLowerCase();
+    if (!text) {
+      continue;
+    }
+    const cleaned = text.replace(/severity[._-]?/g, "").replace(/[^a-z]+/g, " ").trim();
+    if (/\bcritical\b|\berror\b/.test(cleaned)) return "Critical";
+    if (/\bhigh\b/.test(cleaned)) return "High";
+    if (/\bmedium\b|\bwarning\b/.test(cleaned)) return "Medium";
+    if (/\blow\b|\bnote\b/.test(cleaned)) return "Low";
+    if (/\binfo\b|\binformational\b/.test(cleaned)) return "Info";
+  }
+  return "Info";
+}
+
+function aggregateSeverityDistribution(findings: VulnerabilityFinding[]): Record<Severity, number> {
+  return findings.reduce<Record<Severity, number>>(
+    (acc, finding) => {
+      const severity = normalizeSeverityLabel((finding as unknown as Record<string, unknown>).severity);
+      acc[severity] += 1;
+      return acc;
+    },
+    { Critical: 0, High: 0, Medium: 0, Low: 0, Info: 0 },
+  );
+}
+
 function normalizeFindingPath(value: string): string {
   return String(value || "").replaceAll("\\", "/");
 }
@@ -2147,11 +2180,16 @@ export default function App(): React.JSX.Element {
     const dashboardVulnSummaryAny = dashboardVulnSummary as Record<string, any>;
     const managementSeverityDistribution = managementSummary?.severity_distribution as Record<string, number> | undefined;
     const fallbackSeverityDistribution = vulnSummary.severity_distribution as Record<string, number> | undefined;
+    const findingsSeverityDistribution = aggregateSeverityDistribution(findings);
     const severityTotal = (distribution: Record<string, number> | undefined) =>
       Object.values(distribution || {}).reduce((total, value) => total + Number(value || 0), 0);
     const dashboardSeverityDistribution =
-      role === "Management" && severityTotal(managementSeverityDistribution) <= 0 && severityTotal(fallbackSeverityDistribution) > 0
-        ? fallbackSeverityDistribution
+      role === "Management"
+        ? (severityTotal(managementSeverityDistribution) > 0
+            ? managementSeverityDistribution
+            : severityTotal(fallbackSeverityDistribution) > 0
+              ? fallbackSeverityDistribution
+              : findingsSeverityDistribution)
         : (dashboardVulnSummaryAny.severity_distribution as Record<string, number> | undefined);
     const positiveNumberOrFallback = (primary: unknown, fallback: number) => {
       const numeric = Number(primary);

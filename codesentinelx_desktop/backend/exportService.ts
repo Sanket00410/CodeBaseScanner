@@ -7208,7 +7208,11 @@ function isNoiseFinding(finding: VulnerabilityFinding): boolean {
 }
 
 function normalizeSeverityLabel(value: unknown): "Critical" | "High" | "Medium" | "Low" | "Info" {
-  const raw = typeof value === "object" && value !== null && "value" in value ? (value as { value?: unknown }).value : value;
+  let raw = value;
+  if (typeof value === "object" && value !== null) {
+    const record = value as Record<string, unknown>;
+    raw = record.value ?? record.label ?? record.name ?? record.severity ?? record.level ?? record.text ?? record.display ?? record.code ?? value;
+  }
   let label = String(raw ?? "").trim().toLowerCase();
   label = label.replace(/severity[._-]?/g, "");
   label = label.replace(/[^a-z]+/g, " ").trim();
