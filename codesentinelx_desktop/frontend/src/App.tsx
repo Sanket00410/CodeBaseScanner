@@ -2145,7 +2145,18 @@ export default function App(): React.JSX.Element {
     const dashboardVulnSummary = role === "Management" ? (managementSummary || vulnSummary) : vulnSummary;
     const dashboardSummaryAny = dashboardSummary as Record<string, any>;
     const dashboardVulnSummaryAny = dashboardVulnSummary as Record<string, any>;
-    const dashboardSeverityDistribution = dashboardVulnSummaryAny.severity_distribution as Record<string, number> | undefined;
+    const managementSeverityDistribution = managementSummary?.severity_distribution as Record<string, number> | undefined;
+    const fallbackSeverityDistribution = vulnSummary.severity_distribution as Record<string, number> | undefined;
+    const severityTotal = (distribution: Record<string, number> | undefined) =>
+      Object.values(distribution || {}).reduce((total, value) => total + Number(value || 0), 0);
+    const dashboardSeverityDistribution =
+      role === "Management" && severityTotal(managementSeverityDistribution) <= 0 && severityTotal(fallbackSeverityDistribution) > 0
+        ? fallbackSeverityDistribution
+        : (dashboardVulnSummaryAny.severity_distribution as Record<string, number> | undefined);
+    const positiveNumberOrFallback = (primary: unknown, fallback: number) => {
+      const numeric = Number(primary);
+      return Number.isFinite(numeric) && numeric > 0 ? numeric : fallback;
+    };
     const dashboardOwaspCategories: Array<{ owasp_category: string; count: number }> = role === "Management"
       ? (Array.isArray(dashboardSummaryAny.top_owasp_categories) ? dashboardSummaryAny.top_owasp_categories : [])
       : ((vulnSummary.top_owasp_categories || summary.top_owasp_categories || []) as Array<{ owasp_category: string; count: number }>);
@@ -2176,13 +2187,13 @@ export default function App(): React.JSX.Element {
               <MetricCard label="Files Scanned" value={String(summary.files_scanned)} />
               <MetricCard
                 label="Raw Findings"
-                value={String(role === "Management" ? (dashboardSummaryAny.total_findings ?? summary.total_vulnerabilities) : summary.total_vulnerabilities)}
+                value={String(role === "Management" ? positiveNumberOrFallback(dashboardSummaryAny.total_findings, summary.total_vulnerabilities) : summary.total_vulnerabilities)}
               />
               <MetricCard
                 label="Deduplicated Findings"
                 value={String(
                   role === "Management"
-                    ? (dashboardSummaryAny.deduplicated_vulnerabilities ?? dashboardSummaryAny.total_findings ?? vulnSummary.total_findings)
+                    ? positiveNumberOrFallback(dashboardSummaryAny.deduplicated_vulnerabilities, positiveNumberOrFallback(dashboardSummaryAny.total_findings, vulnSummary.total_findings))
                     : vulnSummary.total_findings,
                 )}
               />
@@ -2190,7 +2201,7 @@ export default function App(): React.JSX.Element {
                 label="Open Findings"
                 value={String(
                   role === "Management"
-                    ? (dashboardSummaryAny.active_risk_findings ?? dashboardSummaryAny.total_findings ?? vulnSummary.total_findings)
+                    ? positiveNumberOrFallback(dashboardSummaryAny.active_risk_findings, positiveNumberOrFallback(dashboardSummaryAny.total_findings, vulnSummary.total_findings))
                     : vulnSummary.open_findings ?? vulnSummary.total_findings,
                 )}
               />
@@ -2198,7 +2209,7 @@ export default function App(): React.JSX.Element {
                 label="Reviewed Findings"
                 value={String(
                   role === "Management"
-                    ? (dashboardSummaryAny.deduplicated_vulnerabilities ?? dashboardSummaryAny.total_findings ?? 0)
+                    ? positiveNumberOrFallback(dashboardSummaryAny.deduplicated_vulnerabilities, positiveNumberOrFallback(dashboardSummaryAny.total_findings, 0))
                     : vulnSummary.reviewed_findings || 0,
                 )}
               />

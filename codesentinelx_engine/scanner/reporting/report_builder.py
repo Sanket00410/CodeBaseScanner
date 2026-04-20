@@ -51,6 +51,21 @@ SEVERITY_WEIGHT = {
 }
 
 
+def _normalize_severity_label(raw: object) -> str:
+    value = str(getattr(raw, "value", raw) or "").strip().lower()
+    if value in {"critical", "error"}:
+        return "Critical"
+    if value in {"high"}:
+        return "High"
+    if value in {"medium", "warning"}:
+        return "Medium"
+    if value in {"low", "note"}:
+        return "Low"
+    if value in {"info", "informational"}:
+        return "Info"
+    return "Info"
+
+
 def _top_vulnerability_types(findings: list[dict], limit: int = 10) -> list[dict[str, int | str]]:
     counts = Counter(str(item.get("vulnerability_title") or item.get("vulnerability_type") or "Unknown") for item in findings)
     return [{"type": vuln_type, "count": count} for vuln_type, count in counts.most_common(limit)]
@@ -968,7 +983,7 @@ def _annotate_alert_grouping(findings: list[dict]) -> list[dict]:
 
     def sort_key(item: dict) -> tuple[int, float, str, int, str]:
         return (
-            SEVERITY_RANK.get(str(item.get("severity", "Info")), 99),
+            SEVERITY_RANK.get(_normalize_severity_label(item.get("severity")), 99),
             -float(item.get("cvss_score", 0.0)),
             str(item.get("file_path", "")),
             int(item.get("line_number", 0) or 0),
@@ -1069,7 +1084,7 @@ def _filter_report_noise(findings: list[dict]) -> tuple[list[dict], int]:
 
 
 def _severity_distribution_from_enriched(findings: list[dict]) -> dict[str, int]:
-    counts = Counter(str(item.get("severity", "Info")) for item in findings)
+    counts = Counter(_normalize_severity_label(item.get("severity")) for item in findings)
     return {
         "Critical": counts.get("Critical", 0),
         "High": counts.get("High", 0),
@@ -1098,7 +1113,7 @@ def _affected_modules(findings: list[dict], limit: int = 10) -> list[dict[str, i
     for item in findings:
         module = str(item.get("affected_module", "root"))
         module_counter[module] += 1
-        sev = item.get("severity")
+        sev = _normalize_severity_label(item.get("severity"))
         if sev == "Critical":
             critical_counter[module] += 1
         if sev == "High":
@@ -1151,7 +1166,7 @@ def _affected_files(findings: list[dict], limit: int = 40) -> list[dict[str, int
     for item in findings:
         file_path = str(item.get("file_path", "unknown"))
         file_counter[file_path] += 1
-        sev = item.get("severity")
+        sev = _normalize_severity_label(item.get("severity"))
         if sev == "Critical":
             critical_counter[file_path] += 1
         if sev == "High":
@@ -1178,7 +1193,7 @@ def _affected_folders(findings: list[dict], limit: int = 20) -> list[dict[str, i
     for item in findings:
         folder = _folder_name(str(item.get("file_path", "unknown")))
         folder_counter[folder] += 1
-        sev = item.get("severity")
+        sev = _normalize_severity_label(item.get("severity"))
         if sev == "Critical":
             critical_counter[folder] += 1
         if sev == "High":
@@ -1212,14 +1227,14 @@ def _build_action_plan(distribution: dict[str, int], findings: list[dict]) -> li
     ranked_findings = sorted(
         findings,
         key=lambda item: (
-            SEVERITY_RANK.get(str(item.get("severity", "Info")), 99),
+            SEVERITY_RANK.get(_normalize_severity_label(item.get("severity")), 99),
             -float(item.get("cvss_score", 0.0)),
         ),
     )
     top_specific: list[dict] = []
     seen_specific: set[tuple[str, str, str, str]] = set()
     for item in ranked_findings:
-        severity = str(item.get("severity", "Info"))
+        severity = _normalize_severity_label(item.get("severity"))
         if severity not in {"Critical", "High", "Medium"}:
             continue
         title = str(item.get("vulnerability_title") or item.get("vulnerability_type") or "Issue").strip()
@@ -1998,8 +2013,8 @@ def _build_enterprise_assurance(
     required_tools_coverage_percent = (
         round((required_tools_attempted / required_tools_total) * 100.0, 2) if required_tools_total else 0.0
     )
-    critical_count = sum(1 for item in findings if str(item.get("severity")) == "Critical")
-    high_count = sum(1 for item in findings if str(item.get("severity")) == "High")
+    critical_count = sum(1 for item in findings if _normalize_severity_label(item.get("severity")) == "Critical")
+    high_count = sum(1 for item in findings if _normalize_severity_label(item.get("severity")) == "High")
     blockers: list[str] = []
     advisories: list[str] = []
     if critical_count:

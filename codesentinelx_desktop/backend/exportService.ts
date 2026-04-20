@@ -7207,6 +7207,17 @@ function isNoiseFinding(finding: VulnerabilityFinding): boolean {
   return isNoisePath(String(finding.file_path || ""));
 }
 
+function normalizeSeverityLabel(value: unknown): "Critical" | "High" | "Medium" | "Low" | "Info" {
+  const raw = typeof value === "object" && value !== null && "value" in value ? (value as { value?: unknown }).value : value;
+  const label = String(raw ?? "").trim().toLowerCase();
+  if (label === "critical" || label === "error") return "Critical";
+  if (label === "high") return "High";
+  if (label === "medium" || label === "warning") return "Medium";
+  if (label === "low" || label === "note") return "Low";
+  if (label === "info" || label === "informational") return "Info";
+  return "Info";
+}
+
 function buildSeverityDistribution(findings: VulnerabilityFinding[]): Record<string, number> {
   const distribution: Record<string, number> = {
     Critical: 0,
@@ -7216,11 +7227,8 @@ function buildSeverityDistribution(findings: VulnerabilityFinding[]): Record<str
     Info: 0,
   };
   for (const finding of findings) {
-    const severity = String(finding.severity || "Info");
-    if (!(severity in distribution)) {
-      distribution[severity] = 0;
-    }
-    distribution[severity] += 1;
+    const severity = normalizeSeverityLabel(finding.severity);
+    distribution[severity] = Number(distribution[severity] || 0) + 1;
   }
   return distribution;
 }
