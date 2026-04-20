@@ -7209,12 +7209,14 @@ function isNoiseFinding(finding: VulnerabilityFinding): boolean {
 
 function normalizeSeverityLabel(value: unknown): "Critical" | "High" | "Medium" | "Low" | "Info" {
   const raw = typeof value === "object" && value !== null && "value" in value ? (value as { value?: unknown }).value : value;
-  const label = String(raw ?? "").trim().toLowerCase();
-  if (label === "critical" || label === "error") return "Critical";
-  if (label === "high") return "High";
-  if (label === "medium" || label === "warning") return "Medium";
-  if (label === "low" || label === "note") return "Low";
-  if (label === "info" || label === "informational") return "Info";
+  let label = String(raw ?? "").trim().toLowerCase();
+  label = label.replace(/severity[._-]?/g, "");
+  label = label.replace(/[^a-z]+/g, " ").trim();
+  if (/critical|error/.test(label)) return "Critical";
+  if (/high/.test(label)) return "High";
+  if (/medium|warning/.test(label)) return "Medium";
+  if (/low|note/.test(label)) return "Low";
+  if (/info|informational/.test(label)) return "Info";
   return "Info";
 }
 
