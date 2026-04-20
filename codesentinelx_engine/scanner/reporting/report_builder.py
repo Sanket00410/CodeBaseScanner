@@ -1102,6 +1102,17 @@ def _severity_distribution_from_enriched(findings: list[dict]) -> dict[str, int]
     }
 
 
+def _severity_distribution_from_scan_findings(findings: list[Finding]) -> dict[str, int]:
+    counts = Counter(_normalize_severity_label(getattr(item, "severity", None)) for item in findings)
+    return {
+        "Critical": counts.get("Critical", 0),
+        "High": counts.get("High", 0),
+        "Medium": counts.get("Medium", 0),
+        "Low": counts.get("Low", 0),
+        "Info": counts.get("Info", 0),
+    }
+
+
 def _risk_score_from_distribution(distribution: dict[str, int]) -> float:
     total = sum(distribution.values())
     if total == 0:
@@ -2549,6 +2560,10 @@ def build_report(scan_result: ScanResult) -> dict:
     duplicate_reduction = max(0, len(raw_enriched) - len(enriched_findings))
     distribution = _severity_distribution_from_enriched(enriched_findings)
     scoped_distribution = _severity_distribution_from_enriched(scoped_findings)
+    if sum(distribution.values()) <= 0 and scan_result.findings:
+        distribution = _severity_distribution_from_scan_findings(scan_result.findings)
+    if sum(scoped_distribution.values()) <= 0 and scoped_findings:
+        scoped_distribution = _severity_distribution_from_enriched(raw_enriched)
     summary_findings = enriched_findings if scan_role == "Management" else scoped_findings
     summary_distribution = distribution if scan_role == "Management" else scoped_distribution
     risk_score = _risk_score_from_distribution(distribution)
