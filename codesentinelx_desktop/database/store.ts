@@ -299,12 +299,39 @@ function compactReport(input: unknown): UniversalScanReport {
   const existingSummary = asRecord(existing.summary);
   const vulnerability = asRecord(raw.vulnerability_fixed_code_report);
   const vulnerabilitySummary = asRecord(vulnerability.summary);
+  const vulnerabilityFindings = asRecord(raw.vulnerability_findings);
+  const vulnerabilityFindingsSummary = asRecord(vulnerabilityFindings.summary);
 
   const findings = asArray(vulnerability.findings).map((item) => compactFinding(item));
   const severityDistribution = normalizeSeverityDistribution(
     vulnerabilitySummary.severity_distribution,
-    normalizeSeverityDistribution(executive.severity_distribution, summarizeSeverity(findings)),
+    normalizeSeverityDistribution(
+      vulnerabilityFindingsSummary.severity_distribution,
+      normalizeSeverityDistribution(executive.severity_distribution, summarizeSeverity(findings)),
+    ),
   );
+  const totalFindings = asNumber(
+    vulnerabilitySummary.total_findings,
+    asNumber(vulnerabilityFindingsSummary.total, findings.length),
+  );
+  const rawFindingsTotal = asNumber(
+    vulnerabilitySummary.raw_findings_total,
+    asNumber(vulnerabilityFindingsSummary.raw_total, Math.max(findings.length, totalFindings)),
+  );
+  const duplicateFindingsRemoved = asNumber(
+    vulnerabilitySummary.duplicate_findings_removed,
+    asNumber(vulnerabilityFindingsSummary.duplicate_reduction, 0),
+  );
+  const filesImpacted = asNumber(
+    vulnerabilitySummary.files_impacted,
+    asNumber(existingSummary.files_impacted, new Set(findings.map((item) => item.file_path)).size),
+  );
+  const activeRiskFindings = asNumber(
+    vulnerabilitySummary.active_risk_findings,
+    (severityDistribution.Critical || 0) + (severityDistribution.High || 0),
+  );
+  const reviewedFindings = asOptionalNumber(vulnerabilitySummary.reviewed_findings) ?? asNumber(vulnerabilityFindingsSummary.reviewed_findings, 0);
+  const openFindings = asOptionalNumber(vulnerabilitySummary.open_findings) ?? asNumber(vulnerabilityFindingsSummary.open_findings, Math.max(0, totalFindings - reviewedFindings));
 
   const controls = asArray(existing.controls).map((item) => {
     const control = asRecord(item);
@@ -461,14 +488,14 @@ function compactReport(input: unknown): UniversalScanReport {
       target_path: asString(vulnerability.target_path, asString(executive.target_path, "unknown")),
       generated_at: normalizeIso(vulnerability.generated_at || executive.generated_at),
       summary: {
-        total_findings: findings.length,
-        raw_findings_total: asNumber(vulnerabilitySummary.raw_findings_total, findings.length),
-        duplicate_findings_removed: asNumber(vulnerabilitySummary.duplicate_findings_removed, 0),
+        total_findings: totalFindings,
+        raw_findings_total: rawFindingsTotal,
+        duplicate_findings_removed: duplicateFindingsRemoved,
         severity_distribution: severityDistribution,
         risk_score: asNumber(vulnerabilitySummary.risk_score, asNumber(executive.risk_score, 0)),
         risk_rating: asString(vulnerabilitySummary.risk_rating, asString(executive.risk_rating, "Informational")),
-        active_risk_findings: asNumber(vulnerabilitySummary.active_risk_findings, 0),
-        files_impacted: asNumber(vulnerabilitySummary.files_impacted, new Set(findings.map((item) => item.file_path)).size),
+        active_risk_findings: activeRiskFindings,
+        files_impacted: filesImpacted,
         top_vulnerability_types: normalizeTopTypeRows(vulnerabilitySummary.top_vulnerability_types),
         top_owasp_categories: normalizeTopOwaspRows(vulnerabilitySummary.top_owasp_categories),
         affected_modules: normalizeAffectedModuleRows(vulnerabilitySummary.affected_modules),
@@ -476,8 +503,8 @@ function compactReport(input: unknown): UniversalScanReport {
         risk_intelligence: riskIntelligence,
         git_diff_tracking: gitDiffTracking,
         auth_abuse_session_security: authAbuseSessionSecurity,
-        open_findings: asOptionalNumber(vulnerabilitySummary.open_findings),
-        reviewed_findings: asOptionalNumber(vulnerabilitySummary.reviewed_findings),
+        open_findings: openFindings,
+        reviewed_findings: reviewedFindings,
         toolchain_execution: toolchainExecution,
         enterprise_assurance: enterpriseAssurance,
         active_poc: activePocSummary,
@@ -619,27 +646,61 @@ function compactAuditEntry(input: Partial<AuditEntry> | LooseRecord, aggressive 
 
 function syncReportSummary(report: UniversalScanReport): void {
   const findings = report.vulnerability_fixed_code_report.findings || [];
-  const severityDistribution = summarizeSeverity(findings);
-  const filesImpacted = new Set(findings.map((item) => item.file_path)).size;
-  const reviewed = findings.filter((item) => item.status === "Reviewed").length;
-  const open = Math.max(0, findings.length - reviewed);
-
-  report.vulnerability_fixed_code_report.summary.total_findings = findings.length;
-  report.vulnerability_fixed_code_report.summary.raw_findings_total = Math.max(
-    findings.length,
-    asNumber(report.vulnerability_fixed_code_report.summary.raw_findings_total, findings.length),
+  const currentVulnSummary = report.vulnerability_fixed_code_report.summary;
+  const currentExecSummary = report.executive_summary;
+  const severityFromFindings = summarizeSeverity(findings);
+  const severityFromSummary = normalizeSeverityDistribution(
+    currentVulnSummary.severity_distribution,
+    normalizeSeverityDistribution(currentExecSummary.severity_distribution),
   );
+  const severityDistribution =
+    Object.values(severityFromFindings).some((value) => Number(value || 0) > 0) || findings.length > 0
+      ? severityFromFindings
+      : severityFromSummary;
+  const filesImpacted = findings.length > 0
+    ? new Set(findings.map((item) => item.file_path)).size
+    : asNumber(currentVulnSummary.files_impacted, asNumber(currentExecSummary.total_files_impacted, 0));
+  const reviewedSummaryFallback = asNumber((currentVulnSummary as Record<string, unknown>).reviewed_findings, asNumber((currentExecSummary as unknown as Record<string, unknown>).reviewed_findings, 0));
+  const openSummaryFallback = asNumber((currentVulnSummary as Record<string, unknown>).open_findings, asNumber((currentExecSummary as unknown as Record<string, unknown>).open_findings, 0));
+  const reviewed = findings.length > 0
+    ? findings.filter((item) => item.status === "Reviewed").length
+    : reviewedSummaryFallback;
+  const open = findings.length > 0
+    ? Math.max(0, findings.length - reviewed)
+    : openSummaryFallback || Math.max(0, asNumber(currentVulnSummary.total_findings, asNumber(currentExecSummary.total_vulnerabilities, 0)) - reviewed);
+  const totalFindings = findings.length > 0
+    ? findings.length
+    : asNumber(currentVulnSummary.total_findings, asNumber(currentExecSummary.total_vulnerabilities, 0));
+  const rawTotal = Math.max(
+    totalFindings,
+    asNumber(currentVulnSummary.raw_findings_total, asNumber(currentExecSummary.total_vulnerabilities, totalFindings)),
+  );
+  const duplicateRemoved = asNumber(
+    currentVulnSummary.duplicate_findings_removed,
+    asNumber(currentExecSummary.duplicate_findings_removed, 0),
+  );
+  const activeRiskFindings = asNumber(
+    currentVulnSummary.active_risk_findings,
+    asNumber(currentExecSummary.active_risk_findings, (severityDistribution.Critical || 0) + (severityDistribution.High || 0)),
+  );
+
+  report.vulnerability_fixed_code_report.summary.total_findings = totalFindings;
+  report.vulnerability_fixed_code_report.summary.raw_findings_total = rawTotal;
   report.vulnerability_fixed_code_report.summary.severity_distribution = severityDistribution;
   report.vulnerability_fixed_code_report.summary.files_impacted = filesImpacted;
-  report.vulnerability_fixed_code_report.summary.active_risk_findings =
-    (severityDistribution.Critical || 0) + (severityDistribution.High || 0);
+  report.vulnerability_fixed_code_report.summary.active_risk_findings = activeRiskFindings;
   report.vulnerability_fixed_code_report.summary.open_findings = open;
   report.vulnerability_fixed_code_report.summary.reviewed_findings = reviewed;
 
-  report.executive_summary.total_vulnerabilities = findings.length;
-  report.executive_summary.severity_distribution = { ...severityDistribution };
+  report.executive_summary.total_vulnerabilities = totalFindings;
+  report.executive_summary.deduplicated_vulnerabilities = asNumber(
+    report.executive_summary.deduplicated_vulnerabilities,
+    totalFindings,
+  );
+  report.executive_summary.duplicate_findings_removed = duplicateRemoved;
   report.executive_summary.total_files_impacted = filesImpacted;
-  report.executive_summary.active_risk_findings = (severityDistribution.Critical || 0) + (severityDistribution.High || 0);
+  report.executive_summary.severity_distribution = { ...severityDistribution };
+  report.executive_summary.active_risk_findings = activeRiskFindings;
 }
 
 function buildFindingIdentity(finding: VulnerabilityFinding): string {
