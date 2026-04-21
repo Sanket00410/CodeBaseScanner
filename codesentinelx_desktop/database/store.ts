@@ -435,6 +435,39 @@ function compactReport(input: unknown): UniversalScanReport {
   const suppressionLifecycle =
     normalizeCompactObject(vulnerabilitySummary.suppression_lifecycle) ||
     normalizeCompactObject(executive.suppression_lifecycle);
+  const managementSummary = asRecord(executive.management_summary);
+  const vulnerabilityManagementSummary = asRecord(vulnerabilityFindings.summary);
+  const managementSeverityBreakdownGroups = asArray(managementSummary.severity_breakdown_groups).map((item) => asRecord(item));
+  const vulnerabilitySeverityBreakdownGroups = asArray(vulnerabilityManagementSummary.severity_breakdown_groups).map((item) => asRecord(item));
+  const managementSummaryPayload = {
+    total_findings: asNumber(managementSummary.total_findings, asNumber(vulnerabilityManagementSummary.total_findings, totalFindings)),
+    deduplicated_vulnerabilities: asNumber(
+      managementSummary.deduplicated_vulnerabilities,
+      asNumber(vulnerabilityManagementSummary.deduplicated_vulnerabilities, totalFindings),
+    ),
+    active_risk_findings: asNumber(
+      managementSummary.active_risk_findings,
+      asNumber(vulnerabilityManagementSummary.active_risk_findings, activeRiskFindings),
+    ),
+    severity_distribution: normalizeSeverityDistribution(
+      managementSummary.severity_distribution,
+      normalizeSeverityDistribution(vulnerabilityManagementSummary.severity_distribution, severityDistribution),
+    ),
+    severity_distribution_raw: normalizeSeverityDistribution(
+      managementSummary.severity_distribution_raw,
+      normalizeSeverityDistribution(vulnerabilityManagementSummary.severity_distribution_raw, severityDistribution),
+    ),
+    severity_breakdown_groups: managementSeverityBreakdownGroups.length
+      ? managementSeverityBreakdownGroups
+      : vulnerabilitySeverityBreakdownGroups,
+    top_vulnerability_types: normalizeTopTypeRows(managementSummary.top_vulnerability_types || vulnerabilityManagementSummary.top_vulnerability_types),
+    top_owasp_categories: normalizeTopOwaspRows(managementSummary.top_owasp_categories || vulnerabilityManagementSummary.top_owasp_categories),
+    affected_modules: normalizeAffectedModuleRows(managementSummary.affected_modules || vulnerabilityManagementSummary.affected_modules),
+    affected_files: normalizeAffectedFileRows(managementSummary.affected_files || vulnerabilityManagementSummary.affected_files),
+    affected_folders: normalizeAffectedFolderRows(managementSummary.affected_folders || vulnerabilityManagementSummary.affected_folders),
+    risk_score: asNumber(managementSummary.risk_score, asNumber(vulnerabilityManagementSummary.risk_score, asNumber(executive.risk_score, 0))),
+    risk_rating: asString(managementSummary.risk_rating, asString(vulnerabilityManagementSummary.risk_rating, asString(executive.risk_rating, "Informational"))),
+  };
 
   const report: UniversalScanReport = {
     scanner: {
@@ -465,6 +498,7 @@ function compactReport(input: unknown): UniversalScanReport {
       report_integrity_chain: reportIntegrityChain,
       policy_workflow: policyWorkflow,
       suppression_lifecycle: suppressionLifecycle,
+      management_summary: managementSummaryPayload,
     },
     existing_implementation_report: {
       report_type: "existing_implementation",
@@ -653,10 +687,17 @@ function syncReportSummary(report: UniversalScanReport): void {
     currentVulnSummary.severity_distribution,
     normalizeSeverityDistribution(currentExecSummary.severity_distribution),
   );
+  const severityFromManagementBreakdown = summarizeSeverityBreakdownGroups(
+    asRecord(currentExecSummary.management_summary).severity_breakdown_groups,
+  );
   const severityDistribution =
-    Object.values(severityFromFindings).some((value) => Number(value || 0) > 0) || findings.length > 0
+    Object.values(severityFromFindings).some((value) => Number(value || 0) > 0)
       ? severityFromFindings
-      : severityFromSummary;
+      : Object.values(severityFromSummary).some((value) => Number(value || 0) > 0)
+        ? severityFromSummary
+        : Object.values(severityFromManagementBreakdown).some((value) => Number(value || 0) > 0)
+          ? severityFromManagementBreakdown
+          : severityFromSummary;
   const filesImpacted = findings.length > 0
     ? new Set(findings.map((item) => item.file_path)).size
     : asNumber(currentVulnSummary.files_impacted, asNumber(currentExecSummary.total_files_impacted, 0));
@@ -748,6 +789,21 @@ function normalizeSeverityDistribution(input: unknown, fallback?: Record<string,
     Low: asNumber(source.Low, base.Low || 0),
     Info: asNumber(source.Info, base.Info || 0),
   };
+}
+
+function summarizeSeverityBreakdownGroups(input: unknown): Record<Severity, number> {
+  const summary: Record<Severity, number> = { Critical: 0, High: 0, Medium: 0, Low: 0, Info: 0 };
+  for (const section of asArray(input)) {
+    const sectionRecord = asRecord(section);
+    const severity = normalizeSeverity(sectionRecord.severity);
+    if (!SEVERITY_SET.has(severity)) {
+      continue;
+    }
+    for (const group of asArray(sectionRecord.groups)) {
+      summary[severity] += asNumber(asRecord(group).count, 0);
+    }
+  }
+  return summary;
 }
 
 function summarizeSeverity(findings: VulnerabilityFinding[]): Record<string, number> {
@@ -1241,6 +1297,23 @@ function normalizeAffectedFileRows(
       };
     })
     .filter((row) => row.file)
+    .slice(0, 120);
+}
+
+function normalizeAffectedFolderRows(
+  input: unknown,
+): Array<{ folder: string; count: number; critical: number; high: number }> {
+  return asArray(input)
+    .map((item) => {
+      const row = asRecord(item);
+      return {
+        folder: asString(row.folder, "."),
+        count: asNumber(row.count, 0),
+        critical: asNumber(row.critical, 0),
+        high: asNumber(row.high, 0),
+      };
+    })
+    .filter((row) => row.folder)
     .slice(0, 120);
 }
 

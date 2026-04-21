@@ -50,6 +50,8 @@ SEVERITY_WEIGHT = {
     "Info": 0,
 }
 
+SEVERITY_SEQUENCE = ("Critical", "High", "Medium", "Low", "Info")
+
 
 def _normalize_severity_label(raw: object) -> str:
     if isinstance(raw, dict):
@@ -82,6 +84,74 @@ def _top_vulnerability_types(findings: list[dict], limit: int = 10) -> list[dict
 def _top_owasp_categories(findings: list[dict], limit: int = 10) -> list[dict[str, int | str]]:
     counts = Counter(normalize_owasp_top10_label(str(item.get("owasp_mapping") or item.get("owasp_category") or "N/A")) for item in findings)
     return [{"owasp_category": category, "count": count} for category, count in counts.most_common(limit)]
+
+
+def _management_severity_breakdown(findings: list[dict], max_groups_per_severity: int = 40, max_instances_per_group: int = 10) -> list[dict[str, object]]:
+    grouped: dict[str, dict[tuple[str, str], dict[str, object]]] = {severity: {} for severity in SEVERITY_SEQUENCE}
+    for item in findings:
+        severity = _normalize_severity_label(item.get("severity"))
+        title = _resolved_vulnerability_title(item)
+        cwe = str(item.get("cwe_id") or item.get("cwe") or "N/A").strip() or "N/A"
+        owasp = normalize_owasp_top10_label(str(item.get("owasp_mapping") or item.get("owasp_category") or "N/A"))
+        file_path = str(item.get("file_path") or "unknown")
+        line_number = max(1, int(item.get("line_number") or 1))
+        location = f"{file_path}:{line_number}"
+        module = str(item.get("affected_module") or "").strip() or "root"
+        key = (title, cwe)
+        bucket = grouped.setdefault(severity, {}).get(key)
+        if not bucket:
+            bucket = {
+                "severity": severity,
+                "title": title,
+                "cwe": cwe,
+                "owasp": owasp,
+                "count": 0,
+                "modules": [],
+                "instances": [],
+            }
+            grouped[severity][key] = bucket
+        bucket["count"] = int(bucket["count"]) + 1
+        modules = bucket["modules"]
+        if module and module not in modules:
+            modules.append(module)
+        instances = bucket["instances"]
+        if len(instances) < max_instances_per_group:
+            instances.append(
+                {
+                    "file_path": file_path,
+                    "line_number": line_number,
+                    "location": location,
+                    "module": module,
+                }
+            )
+
+    result: list[dict[str, object]] = []
+    for severity in SEVERITY_SEQUENCE:
+        severity_groups = list(grouped.get(severity, {}).values())
+        if not severity_groups:
+            continue
+        severity_groups.sort(key=lambda item: (-int(item.get("count") or 0), str(item.get("title") or ""), str(item.get("cwe") or "")))
+        trimmed_groups = severity_groups[:max_groups_per_severity]
+        severity_count = sum(int(item.get("count") or 0) for item in trimmed_groups)
+        result.append(
+            {
+                "severity": severity,
+                "count": severity_count,
+                "group_count": len(trimmed_groups),
+                "groups": trimmed_groups,
+            }
+        )
+    return result
+
+
+def _severity_distribution_from_breakdown(breakdown: list[dict[str, object]]) -> dict[str, int]:
+    distribution = {severity: 0 for severity in SEVERITY_SEQUENCE}
+    for section in breakdown:
+        severity = _normalize_severity_label(section.get("severity"))
+        if severity not in distribution:
+            continue
+        distribution[severity] += sum(int(group.get("count") or 0) for group in (section.get("groups") or []))
+    return distribution
 
 
 def _severity_cvss(severity: str) -> float:
@@ -2659,12 +2729,19 @@ def build_report(scan_result: ScanResult) -> dict:
         "report_integrity_chain": None,
     }
 
+    severity_breakdown_groups = _management_severity_breakdown(summary_findings)
+    severity_distribution_from_breakdown = _severity_distribution_from_breakdown(severity_breakdown_groups)
+    management_severity_distribution = summary_distribution
+    if sum(management_severity_distribution.values()) <= 0 and sum(severity_distribution_from_breakdown.values()) > 0:
+        management_severity_distribution = severity_distribution_from_breakdown
+
     management_summary = {
         "total_findings": len(summary_findings),
         "deduplicated_vulnerabilities": len(summary_findings),
-        "active_risk_findings": summary_distribution.get("Critical", 0) + summary_distribution.get("High", 0),
-        "severity_distribution": summary_distribution,
+        "active_risk_findings": management_severity_distribution.get("Critical", 0) + management_severity_distribution.get("High", 0),
+        "severity_distribution": management_severity_distribution,
         "severity_distribution_raw": distribution,
+        "severity_breakdown_groups": severity_breakdown_groups,
         "top_vulnerability_types": _top_vulnerability_types(summary_findings),
         "top_owasp_categories": _top_owasp_categories(summary_findings),
         "affected_modules": _affected_modules(summary_findings),
@@ -2698,7 +2775,8 @@ def build_report(scan_result: ScanResult) -> dict:
             "total": len(summary_findings),
             "raw_total": len(raw_enriched),
             "duplicate_reduction": max(0, len(raw_enriched) - len(summary_findings)),
-            "severity_distribution": summary_distribution,
+            "severity_distribution": management_severity_distribution,
+            "severity_breakdown_groups": severity_breakdown_groups,
             "top_vulnerability_types": _top_vulnerability_types(summary_findings),
             "scan_profile": profile_compliance["scan_profile"],
             "noise_filtered_findings": noise_filtered_count,

@@ -529,6 +529,101 @@ function aggregateSeverityDistribution(findings: VulnerabilityFinding[]): Record
   );
 }
 
+type SeverityBreakdownInstance = {
+  file_path: string;
+  line_number: number;
+  location: string;
+  module?: string;
+};
+
+type SeverityBreakdownGroup = {
+  severity: Severity;
+  title: string;
+  cwe: string;
+  owasp: string;
+  count: number;
+  group_count?: number;
+  modules: string[];
+  instances: SeverityBreakdownInstance[];
+};
+
+type SeverityBreakdownSeverity = {
+  severity: Severity;
+  count: number;
+  group_count: number;
+  groups: SeverityBreakdownGroup[];
+};
+
+function normalizeSeverityBreakdownGroups(value: unknown): SeverityBreakdownSeverity[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry) => {
+      const record = entry as Record<string, unknown>;
+      const severity = normalizeSeverityLabel(record.severity);
+      const groups = Array.isArray(record.groups)
+        ? record.groups
+            .map((group) => {
+              const item = group as Record<string, unknown>;
+              const instances = Array.isArray(item.instances)
+                ? item.instances
+                    .map((instance) => {
+                      const inst = instance as Record<string, unknown>;
+                      const filePath = String(inst.file_path || inst.file || "unknown");
+                      const lineNumber = Number(inst.line_number || inst.line || 1);
+                      return {
+                        file_path: filePath,
+                        line_number: lineNumber,
+                        location: String(inst.location || `${filePath}:${lineNumber}`),
+                        module: String(inst.module || "").trim() || undefined,
+                      };
+                    })
+                    .filter((inst) => inst.file_path)
+                : [];
+              return {
+                severity,
+                title: String(item.title || item.vulnerability_title || item.issue || "Issue"),
+                cwe: String(item.cwe || item.cwe_id || "N/A"),
+                owasp: String(item.owasp || item.owasp_mapping || "N/A"),
+                count: Number(item.count || instances.length || 0),
+                group_count: Number(item.group_count || 0),
+                modules: Array.isArray(item.modules) ? item.modules.map((module) => String(module)).filter(Boolean) : [],
+                instances,
+              };
+            })
+            .filter((group) => group.title)
+        : [];
+      const count = Number(record.count || groups.reduce((total, group) => total + Number(group.count || 0), 0));
+      const groupCount = Number(record.group_count || groups.length);
+      return {
+        severity,
+        count,
+        group_count: groupCount,
+        groups: groups.sort((left, right) => Number(right.count || 0) - Number(left.count || 0) || left.title.localeCompare(right.title)),
+      };
+    })
+    .filter((entry) => entry.groups.length > 0)
+    .sort((left, right) => SEVERITY_ORDER.indexOf(left.severity) - SEVERITY_ORDER.indexOf(right.severity));
+}
+
+function aggregateSeverityFromBreakdown(groups: SeverityBreakdownSeverity[]): Record<Severity, number> {
+  return groups.reduce<Record<Severity, number>>(
+    (acc, group) => {
+      acc[group.severity] += Number(group.count || 0);
+      return acc;
+    },
+    { Critical: 0, High: 0, Medium: 0, Low: 0, Info: 0 },
+  );
+}
+
+function fileNameFromPath(value: string): string {
+  const normalized = String(value || "").replaceAll("\\", "/");
+  const parts = normalized.split("/").filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : normalized || "unknown";
+}
+
 function normalizeFindingPath(value: string): string {
   return String(value || "").replaceAll("\\", "/");
 }
@@ -2198,6 +2293,9 @@ export default function App(): React.JSX.Element {
     const summaryRecord = summary as unknown as Record<string, unknown>;
     const managementSummaryRecord = managementSummary as Record<string, unknown> | undefined;
     const vulnerabilityFindingsSummaryRecord = vulnerabilityFindingsSummary || {};
+    const managementSeverityBreakdown = normalizeSeverityBreakdownGroups(
+      managementSummaryRecord?.severity_breakdown_groups || vulnerabilityFindingsSummaryRecord.severity_breakdown_groups,
+    );
     const executiveSeverityDistribution = normalizeSeverityDistribution(
       summaryRecord.severity_distribution_raw || summaryRecord.severity_distribution,
     );
@@ -2209,6 +2307,7 @@ export default function App(): React.JSX.Element {
     );
     const fallbackSeverityDistribution = normalizeSeverityDistribution(vulnSummary.severity_distribution);
     const findingsSeverityDistribution = aggregateSeverityDistribution(findings);
+    const severityBreakdownSeverityDistribution = aggregateSeverityFromBreakdown(managementSeverityBreakdown);
     const severityTotal = (distribution: Record<Severity, number> | undefined) =>
       Object.values(distribution || {}).reduce((total, value) => total + Number(value || 0), 0);
     const dashboardSeverityDistribution =
@@ -2219,9 +2318,11 @@ export default function App(): React.JSX.Element {
               ? managementSeverityDistribution
               : severityTotal(findingsSeverityDistributionFromSummary) > 0
                 ? findingsSeverityDistributionFromSummary
-              : severityTotal(fallbackSeverityDistribution) > 0
-                ? fallbackSeverityDistribution
-                : findingsSeverityDistribution)
+                : severityTotal(fallbackSeverityDistribution) > 0
+                  ? fallbackSeverityDistribution
+                  : severityTotal(severityBreakdownSeverityDistribution) > 0
+                    ? severityBreakdownSeverityDistribution
+                    : findingsSeverityDistribution)
         : (dashboardVulnSummaryAny.severity_distribution as Record<string, number> | undefined);
     const positiveNumberOrFallback = (primary: unknown, fallback: number) => {
       const numeric = Number(primary);
@@ -2331,6 +2432,85 @@ export default function App(): React.JSX.Element {
                 </article>
               ))}
             </div>
+
+              {role === "Management" && managementSeverityBreakdown.length > 0 && (
+                <div className="subpanel">
+                  <h3>Severity Drilldown</h3>
+                  <p className="muted-text">
+                    Grouped by severity, vulnerability, and CWE. Expand a group to see the file and line instances behind the count.
+                  </p>
+                <div className="severity-breakdown-list">
+                  {managementSeverityBreakdown.map((severityGroup) => (
+                    <details key={severityGroup.severity} className="severity-breakdown-section" open={severityGroup.severity === "Critical"}>
+                      <summary>
+                        <span>{severityGroup.severity}</span>
+                        <strong>{severityGroup.count}</strong>
+                      </summary>
+                      <div className="table-frame" style={{ marginTop: 12 }}>
+                        <table className="simple-table severity-breakdown-table">
+                          <thead>
+                            <tr>
+                              <th>Vulnerability</th>
+                              <th>CWE</th>
+                              <th>OWASP</th>
+                              <th>Instances</th>
+                              <th>Top File</th>
+                              <th>Top Line</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {severityGroup.groups.map((group) => {
+                              const topInstance = group.instances[0];
+                              const topFile = topInstance ? fileNameFromPath(topInstance.file_path) : "N/A";
+                              const topLine = topInstance?.line_number || "N/A";
+                              return (
+                                <tr key={`${severityGroup.severity}-${group.title}-${group.cwe}`}>
+                                  <td>
+                                    <details className="severity-breakdown-group">
+                                      <summary>
+                                        {group.title}
+                                        <span className="severity-breakdown-count">{group.count}</span>
+                                      </summary>
+                                      <div className="severity-breakdown-instances">
+                                        <table className="simple-table">
+                                          <thead>
+                                            <tr>
+                                              <th>File Name</th>
+                                              <th>File / Path</th>
+                                              <th>Line</th>
+                                              <th>Module</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {group.instances.map((instance) => (
+                                              <tr key={`${severityGroup.severity}-${group.title}-${group.cwe}-${instance.location}`}>
+                                                <td>{fileNameFromPath(instance.file_path)}</td>
+                                                <td title={instance.file_path}>{instance.file_path}</td>
+                                                <td>{instance.line_number}</td>
+                                                <td>{instance.module || "root"}</td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    </details>
+                                  </td>
+                                  <td>{group.cwe}</td>
+                                  <td>{group.owasp}</td>
+                                  <td>{group.count}</td>
+                                  <td title={topInstance?.file_path || "N/A"}>{topFile}</td>
+                                  <td>{topLine}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </details>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="three-col">
               <div className="subpanel">

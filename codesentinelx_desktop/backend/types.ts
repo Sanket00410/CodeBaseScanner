@@ -582,6 +582,21 @@ export interface ExecutiveSummary {
   report_integrity_chain?: ReportIntegrityChain;
   policy_workflow?: Record<string, unknown>;
   suppression_lifecycle?: Record<string, unknown>;
+  management_summary?: {
+    total_findings: number;
+    deduplicated_vulnerabilities: number;
+    active_risk_findings: number;
+    severity_distribution: Record<string, number>;
+    severity_distribution_raw?: Record<string, number>;
+    severity_breakdown_groups?: Array<Record<string, unknown>>;
+    top_vulnerability_types?: Array<{ type: string; count: number }>;
+    top_owasp_categories?: Array<{ owasp_category: string; count: number }>;
+    affected_modules?: Array<{ module: string; count: number; critical: number; high: number }>;
+    affected_files?: Array<{ file: string; folder: string; count: number; critical: number; high: number }>;
+    affected_folders?: Array<{ folder: string; count: number; critical: number; high: number }>;
+    risk_score: number;
+    risk_rating: string;
+  };
 }
 
 export interface UniversalScanReport {

@@ -5816,8 +5816,53 @@ function renderCombinedHtml(scan: ScanView): string {
       ? buildSeverityDistribution(findings)
       : summarySeverityDistribution;
   const managementTopSource = (managementSummary as Record<string, unknown> | null) || managementSummarySource;
+  const managementSeverityBreakdown = normalizeManagementSeverityBreakdown(
+    (managementSummary as Record<string, unknown> | null)?.severity_breakdown_groups ||
+      (managementSummarySource as Record<string, unknown> | null)?.severity_breakdown_groups,
+  );
+  const managementSeverityFromGroups = managementSeverityBreakdown.reduce<Record<string, number>>(
+    (acc, item) => {
+      acc[item.severity] = Number(acc[item.severity] || 0) + Number(item.count || 0);
+      return acc;
+    },
+    { Critical: 0, High: 0, Medium: 0, Low: 0, Info: 0 },
+  );
+  const effectiveManagementSeverityDistribution =
+    reportRole === "Management" && Object.values(effectiveSummarySeverityDistribution).every((value) => Number(value || 0) <= 0) && managementSeverityBreakdown.length > 0
+      ? normalizeSeverityDistribution(managementSeverityFromGroups)
+      : effectiveSummarySeverityDistribution;
+  const managementSeverityGradientResolved =
+    reportRole === "Management" && managementSeverityBreakdown.length > 0
+      ? (() => {
+          const bands = SEVERITY_ORDER.map((severity) => ({ severity, count: Number(effectiveManagementSeverityDistribution?.[severity] || 0) }));
+          const total = bands.reduce((sum, band) => sum + band.count, 0);
+          let cursor = 0;
+          return total > 0
+            ? bands
+                .filter((band) => band.count > 0)
+                .map((band) => {
+                  const start = cursor;
+                  const span = (band.count / total) * 100;
+                  cursor += span;
+                  const color =
+                    band.severity === "Critical"
+                      ? "var(--critical)"
+                      : band.severity === "High"
+                        ? "var(--high)"
+                        : band.severity === "Medium"
+                          ? "var(--warning)"
+                          : band.severity === "Low"
+                            ? "var(--info)"
+                            : "var(--success)";
+                  return `${color} ${start.toFixed(2)}% ${cursor.toFixed(2)}%`;
+                })
+                .join(", ")
+            : "";
+        })()
+      : "";
+  const severityRowsSource = reportRole === "Management" ? effectiveManagementSeverityDistribution : effectiveSummarySeverityDistribution;
   const severityRows = SEVERITY_ORDER.map((severity) => {
-    const count = Number(effectiveSummarySeverityDistribution?.[severity] || 0);
+    const count = Number(severityRowsSource?.[severity] || 0);
     if (count <= 0) {
       return "";
     }
@@ -6064,6 +6109,8 @@ function renderCombinedHtml(scan: ScanView): string {
   const managementTopOwasp = Array.isArray((managementTopSource as Record<string, unknown>).top_owasp_categories)
     ? ((managementTopSource as Record<string, unknown>).top_owasp_categories as Array<{ owasp_category: string; count: number }>).slice(0, 6)
     : [];
+  const managementSeverityLegendSource =
+    reportRole === "Management" ? effectiveManagementSeverityDistribution : effectiveSummarySeverityDistribution;
   const managementChartSection = reportRole === "Management"
     ? `<section class="panel">
       <h2>Management Snapshot</h2>
@@ -6072,7 +6119,7 @@ function renderCombinedHtml(scan: ScanView): string {
         <div class="management-visual-card">
           <h3>Severity Ring</h3>
           <div class="management-ring-wrap">
-            <div class="management-ring"${managementSeverityGradient ? ` style="background:conic-gradient(${managementSeverityGradient});"` : ""}>
+            <div class="management-ring"${managementSeverityGradientResolved ? ` style="background:conic-gradient(${managementSeverityGradientResolved});"` : ""}>
               <div class="management-ring-center">
                 <div class="management-ring-value">${summaryFindingCount}</div>
                 <div class="management-ring-label">${summaryFindingCount > 0 ? "Findings" : "Clean"}</div>
@@ -6080,7 +6127,7 @@ function renderCombinedHtml(scan: ScanView): string {
             </div>
             <div class="management-ring-legend">
               ${SEVERITY_ORDER.map((severity) => {
-                const count = Number(effectiveSummarySeverityDistribution?.[severity] || 0);
+                const count = Number(managementSeverityLegendSource?.[severity] || 0);
                 const color =
                   severity === "Critical"
                     ? "var(--critical)"
@@ -6149,6 +6196,63 @@ function renderCombinedHtml(scan: ScanView): string {
               <tbody>${severityRows || `<tr><td colspan="2">No findings in this scope.</td></tr>`}</tbody>
             </table>
           </div>
+          ${
+            reportRole === "Management" && managementSeverityBreakdown.length
+              ? `<div class="management-severity-breakdown">
+                  <h3 style="padding:14px 14px 8px">Severity Drilldown</h3>
+                  ${managementSeverityBreakdown
+                    .map((severityGroup) => {
+                      const severityTotal = Number(severityGroup.count || 0);
+                      const rows = severityGroup.groups
+                        .map((group) => {
+                          const instances = group.instances
+                            .map(
+                              (instance) =>
+                                `<tr><td>${escapeHtml(fileNameFromPath(instance.file_path))}</td><td title="${escapeHtml(instance.file_path)}">${escapeHtml(instance.file_path)}</td><td>${Number(instance.line_number || 1)}</td><td>${escapeHtml(instance.module || "root")}</td></tr>`,
+                            )
+                            .join("");
+                          return `<details class="management-severity-group">
+                            <summary>${escapeHtml(group.title)} <span class="severity-count">${Number(group.count || 0)}</span></summary>
+                            <div class="management-severity-group-body">
+                              <table>
+                                <thead><tr><th>File Name</th><th>File / Path</th><th>Line</th><th>Module</th></tr></thead>
+                                <tbody>${instances || `<tr><td colspan="4">No grouped instances available.</td></tr>`}</tbody>
+                              </table>
+                            </div>
+                          </details>`;
+                        })
+                        .join("");
+                      return `<details class="management-severity-section"${severityGroup.severity === "Critical" ? " open" : ""}>
+                        <summary><span>${escapeHtml(severityGroup.severity)}</span><strong>${severityTotal}</strong></summary>
+                        <div class="management-severity-section-body">
+                          <table>
+                            <thead><tr><th>Vulnerability</th><th>CWE</th><th>OWASP</th><th>Instances</th><th>Top File</th><th>Top Line</th></tr></thead>
+                            <tbody>
+                              ${severityGroup.groups
+                                .map((group) => {
+                                  const topInstance = group.instances[0];
+                                  const topFile = topInstance ? fileNameFromPath(topInstance.file_path) : "N/A";
+                                  const topLine = topInstance?.line_number || "N/A";
+                                  return `<tr>
+                                    <td>${escapeHtml(group.title)}</td>
+                                    <td>${escapeHtml(group.cwe)}</td>
+                                    <td>${escapeHtml(group.owasp)}</td>
+                                    <td>${Number(group.count || 0)}</td>
+                                    <td title="${escapeHtml(topInstance?.file_path || "N/A")}">${escapeHtml(topFile)}</td>
+                                    <td>${escapeHtml(String(topLine))}</td>
+                                  </tr>`;
+                                })
+                                .join("")}
+                            </tbody>
+                          </table>
+                          <div class="management-severity-group-list">${rows}</div>
+                        </div>
+                      </details>`;
+                    })
+                    .join("")}
+                </div>`
+              : ""
+          }
         </div>`,
     true,
   );
@@ -8772,6 +8876,31 @@ type GroupedFalsePositiveRow = {
   confidence: number;
 };
 
+type SeverityDrilldownInstance = {
+  file_path: string;
+  line_number: number;
+  location: string;
+  module?: string;
+};
+
+type SeverityDrilldownGroup = {
+  severity: string;
+  title: string;
+  cwe: string;
+  owasp: string;
+  count: number;
+  group_count: number;
+  modules: string[];
+  instances: SeverityDrilldownInstance[];
+};
+
+type SeverityDrilldownSection = {
+  severity: string;
+  count: number;
+  group_count: number;
+  groups: SeverityDrilldownGroup[];
+};
+
 function groupFalsePositiveRows(candidates: Array<Record<string, unknown>>): GroupedFalsePositiveRow[] {
   const grouped = new Map<string, { item: Record<string, unknown>; locations: string[]; confidence: number }>();
   for (const item of candidates) {
@@ -8813,6 +8942,64 @@ function groupFalsePositiveRows(candidates: Array<Record<string, unknown>>): Gro
       confidence: Number(entry.confidence || 0),
     }))
     .sort((a, b) => b.confidence - a.confidence);
+}
+
+function normalizeManagementSeverityBreakdown(input: unknown): SeverityDrilldownSection[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  return input
+    .map((entry) => {
+      const record = entry as Record<string, unknown>;
+      const severity = normalizeSeverityLabel(record.severity);
+      const groups = Array.isArray(record.groups)
+        ? record.groups
+            .map((group) => {
+              const item = group as Record<string, unknown>;
+              const instances = Array.isArray(item.instances)
+                ? item.instances
+                    .map((instance) => {
+                      const inst = instance as Record<string, unknown>;
+                      const filePath = String(inst.file_path || inst.file || "unknown");
+                      const lineNumber = Number(inst.line_number || inst.line || 1);
+                      return {
+                        file_path: filePath,
+                        line_number: lineNumber,
+                        location: String(inst.location || `${filePath}:${lineNumber}`),
+                        module: String(inst.module || "").trim() || undefined,
+                      };
+                    })
+                    .filter((inst) => inst.file_path)
+                : [];
+              return {
+                severity,
+                title: String(item.title || item.vulnerability_title || item.issue || "Issue"),
+                cwe: String(item.cwe || item.cwe_id || "N/A"),
+                owasp: String(item.owasp || item.owasp_mapping || "N/A"),
+                count: Number(item.count || instances.length || 0),
+                group_count: Number(item.group_count || 0),
+                modules: Array.isArray(item.modules) ? item.modules.map((module) => String(module)).filter(Boolean) : [],
+                instances,
+              };
+            })
+            .filter((group) => group.title)
+        : [];
+      return {
+        severity,
+        count: Number(record.count || groups.reduce((total, group) => total + Number(group.count || 0), 0)),
+        group_count: Number(record.group_count || groups.length),
+        groups: groups.sort((left, right) => Number(right.count || 0) - Number(left.count || 0) || left.title.localeCompare(right.title)),
+      };
+    })
+    .filter((entry) => entry.groups.length > 0)
+    .sort((left, right) => SEVERITY_ORDER.indexOf(left.severity as never) - SEVERITY_ORDER.indexOf(right.severity as never));
+}
+
+function fileNameFromPath(value: string): string {
+  const normalized = String(value || "").replaceAll("\\", "/");
+  const parts = normalized.split("/").filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : normalized || "unknown";
 }
 
 function escapeHtml(value: string): string {
