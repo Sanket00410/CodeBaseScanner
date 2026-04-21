@@ -7,6 +7,7 @@ from codesentinelx_engine.models import Finding
 from codesentinelx_engine.scanner.external.common import (
     extract_cwe,
     first_reference,
+    iter_files,
     normalize_path,
     run_command,
     safe_json_loads,
@@ -20,6 +21,30 @@ def _iter_checkov_documents(payload: Any) -> list[dict[str, Any]]:
     if isinstance(payload, list):
         return [item for item in payload if isinstance(item, dict)]
     return []
+
+
+def _discover_checkov_targets(target_root: Path) -> list[Path]:
+    targets: list[Path] = []
+    for path in iter_files(target_root):
+        lower_name = path.name.lower()
+        suffix = path.suffix.lower()
+        if lower_name == "dockerfile" or lower_name.startswith("dockerfile.") or suffix == ".dockerfile":
+            targets.append(path)
+            continue
+        if suffix in {".tf", ".tfvars"} or path.name.lower().endswith(".tf.json") or path.name.lower().endswith(".tfvars.json"):
+            targets.append(path)
+            continue
+        if suffix in {".yaml", ".yml", ".json"} and any(token in lower_name for token in ("k8s", "kubernetes", "helm", "chart", "deployment", "service", "pod", "ingress", "namespace", "configmap", "secret", "statefulset", "daemonset", "job", "cronjob", "clusterrole", "rolebinding", "role", "rbac", "template", "cfn", "cloudformation")):
+            targets.append(path)
+    deduped: list[Path] = []
+    seen: set[str] = set()
+    for target in sorted(targets):
+        key = str(target)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(target)
+    return deduped
 
 
 def parse_checkov_output(data: Any, target_root: Path) -> list[Finding]:
@@ -91,31 +116,45 @@ def run_checkov_scan(
     timeout_seconds: int,
     binary: str = "checkov",
 ) -> tuple[list[Finding], list[str]]:
-    command = [
-        binary,
-        "-d",
-        str(target_root),
-        "--quiet",
-        "--compact",
-        "-o",
-        "json",
-    ]
+    targets = _discover_checkov_targets(target_root)
+    if not targets:
+        return [], []
 
-    try:
-        return_code, stdout, stderr = run_command(command, timeout_seconds=timeout_seconds)
-    except FileNotFoundError:
-        return [], ["Checkov not found in PATH/toolchain. Install or bootstrap Checkov for IaC scanning coverage."]
-    except Exception as exc:
-        return [], [f"Checkov execution failed: {exc}"]
+    findings: list[Finding] = []
+    errors: list[str] = []
+    per_file_timeout = max(30, min(timeout_seconds, 180))
 
-    if return_code not in {0, 1}:
-        short_error = " | ".join((stderr or "").strip().splitlines()[:3])
-        return [], [f"Checkov returned code {return_code}: {short_error}"]
+    for target in targets:
+        command = [
+            binary,
+            "-f",
+            str(target),
+            "--quiet",
+            "--compact",
+            "-o",
+            "json",
+        ]
 
-    payload = safe_json_loads(stdout)
-    if payload is None:
-        short_error = " | ".join((stderr or "").strip().splitlines()[:3])
-        return [], [f"Checkov produced non-JSON output. {short_error}".strip()]
+        try:
+            return_code, stdout, stderr = run_command(command, timeout_seconds=per_file_timeout)
+        except FileNotFoundError:
+            return [], ["Checkov not found in PATH/toolchain. Install or bootstrap Checkov for IaC scanning coverage."]
+        except Exception as exc:
+            errors.append(f"{target.name}: Checkov execution failed: {exc}")
+            continue
 
-    return parse_checkov_output(payload, target_root), []
+        if return_code not in {0, 1}:
+            short_error = " | ".join((stderr or "").strip().splitlines()[:3])
+            errors.append(f"{target.name}: Checkov returned code {return_code}: {short_error}")
+            continue
+
+        payload = safe_json_loads(stdout)
+        if payload is None:
+            short_error = " | ".join((stderr or "").strip().splitlines()[:3])
+            errors.append(f"{target.name}: Checkov produced non-JSON output. {short_error}".strip())
+            continue
+
+        findings.extend(parse_checkov_output(payload, target_root))
+
+    return findings, errors
 

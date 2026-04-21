@@ -6,6 +6,7 @@ from codesentinelx_engine.config import ScannerConfig
 from codesentinelx_engine.models import Severity
 from codesentinelx_engine.scanner.external import common as external_common
 from codesentinelx_engine.scanner.external import codeql_adapter
+from codesentinelx_engine.scanner.external import checkov_adapter
 from codesentinelx_engine.scanner.external import semgrep_adapter
 from codesentinelx_engine.scanner.external import osv_scanner_adapter
 from codesentinelx_engine.scanner.external.gitleaks_adapter import parse_gitleaks_output
@@ -332,6 +333,21 @@ def test_codeql_bootstraps_from_local_mirror(monkeypatch: pytest.MonkeyPatch, tm
 
     assert findings == []
     assert errors == []
+
+
+def test_checkov_discovers_only_iac_targets(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / "main.tf").write_text('resource "aws_s3_bucket" "bucket" {}', encoding="utf-8")
+    (root / "Dockerfile").write_text("FROM alpine:3.19", encoding="utf-8")
+    (root / "node_modules").mkdir()
+    (root / "node_modules" / "package.json").write_text("{}", encoding="utf-8")
+    (root / "k8s-deployment.yaml").write_text("apiVersion: v1\nkind: Pod", encoding="utf-8")
+    (root / "notes.txt").write_text("hello", encoding="utf-8")
+
+    targets = checkov_adapter._discover_checkov_targets(root)
+
+    assert [path.name for path in targets] == ["Dockerfile", "k8s-deployment.yaml", "main.tf"]
 
 
 def test_parse_trivy_output() -> None:
