@@ -2836,6 +2836,7 @@ function writeCombinedPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
           (summary as unknown as Record<string, unknown>).management_summary ||
           null)
       : null;
+  const vulnerabilityFindingsSummary = resolveVulnerabilityFindingsSummary(scan);
   const toolchainExecution = resolveToolchainExecution(scan, summary);
   const enterprise = resolveEnterpriseAssurance(scan, summary);
   const riskIntel = resolveRiskIntelligence(summary as VulnerabilityFixedCodeReport["summary"] & {
@@ -2862,7 +2863,9 @@ function writeCombinedPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
   );
   const summarySeverityDistributionSource =
     reportRole === "Management"
-      ? (summarySource as Record<string, unknown>)?.severity_distribution_raw ||
+      ? (vulnerabilityFindingsSummary as Record<string, unknown> | null)?.severity_distribution_raw ||
+        (vulnerabilityFindingsSummary as Record<string, unknown> | null)?.severity_distribution ||
+        (summarySource as Record<string, unknown>)?.severity_distribution_raw ||
         (summarySource as Record<string, unknown>)?.severity_distribution ||
         (managementSummary as Record<string, unknown> | null)?.severity_distribution_raw ||
         (managementSummary as Record<string, unknown> | null)?.severity_distribution
@@ -5787,6 +5790,7 @@ function renderCombinedHtml(scan: ScanView): string {
           (summary as unknown as Record<string, unknown>).management_summary ||
           null)
       : null;
+  const vulnerabilityFindingsSummary = resolveVulnerabilityFindingsSummary(scan);
   const exportedAt = formatDisplayTimestamp(resolveReportGeneratedAt(scan, "combined"));
   const summaryFindingCount = Number(
     (managementSummary as Record<string, unknown> | null)?.deduplicated_vulnerabilities ||
@@ -5798,7 +5802,9 @@ function renderCombinedHtml(scan: ScanView): string {
   );
   const summarySeverityDistributionSource =
     reportRole === "Management"
-      ? (managementSummarySource as Record<string, unknown>)?.severity_distribution_raw ||
+      ? (vulnerabilityFindingsSummary as Record<string, unknown> | null)?.severity_distribution_raw ||
+        (vulnerabilityFindingsSummary as Record<string, unknown> | null)?.severity_distribution ||
+        (managementSummarySource as Record<string, unknown>)?.severity_distribution_raw ||
         (managementSummarySource as Record<string, unknown>)?.severity_distribution ||
         (managementSummary as Record<string, unknown> | null)?.severity_distribution_raw ||
         (managementSummary as Record<string, unknown> | null)?.severity_distribution
@@ -7242,6 +7248,15 @@ function normalizeSeverityDistribution(value: unknown): Record<string, number> {
     distribution[severity] += count;
   }
   return distribution;
+}
+
+function resolveVulnerabilityFindingsSummary(scan: ScanView): Record<string, unknown> | null {
+  const findingsReport = (scan.report as unknown as Record<string, unknown>).vulnerability_findings as Record<string, unknown> | undefined;
+  if (!findingsReport) {
+    return null;
+  }
+  const summary = findingsReport.summary;
+  return summary && typeof summary === "object" ? (summary as Record<string, unknown>) : null;
 }
 
 function buildSeverityDistribution(findings: VulnerabilityFinding[]): Record<string, number> {

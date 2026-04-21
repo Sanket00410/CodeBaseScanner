@@ -2189,6 +2189,7 @@ export default function App(): React.JSX.Element {
     }
     const summary = scan.report.executive_summary;
     const vulnSummary = scan.report.vulnerability_fixed_code_report.summary;
+    const vulnerabilityFindingsSummary = ((scan.report as unknown as Record<string, unknown>).vulnerability_findings as { summary?: Record<string, unknown> } | undefined)?.summary;
     const managementSummary = (summary as Record<string, unknown>).management_summary as Record<string, unknown> | undefined;
     const dashboardSummary = role === "Management" ? (managementSummary || summary) : summary;
     const dashboardVulnSummary = role === "Management" ? (managementSummary || vulnSummary) : vulnSummary;
@@ -2196,11 +2197,15 @@ export default function App(): React.JSX.Element {
     const dashboardVulnSummaryAny = dashboardVulnSummary as Record<string, any>;
     const summaryRecord = summary as unknown as Record<string, unknown>;
     const managementSummaryRecord = managementSummary as Record<string, unknown> | undefined;
+    const vulnerabilityFindingsSummaryRecord = vulnerabilityFindingsSummary || {};
     const executiveSeverityDistribution = normalizeSeverityDistribution(
       summaryRecord.severity_distribution_raw || summaryRecord.severity_distribution,
     );
     const managementSeverityDistribution = normalizeSeverityDistribution(
       managementSummaryRecord?.severity_distribution_raw || managementSummaryRecord?.severity_distribution,
+    );
+    const findingsSeverityDistributionFromSummary = normalizeSeverityDistribution(
+      vulnerabilityFindingsSummaryRecord.severity_distribution_raw || vulnerabilityFindingsSummaryRecord.severity_distribution,
     );
     const fallbackSeverityDistribution = normalizeSeverityDistribution(vulnSummary.severity_distribution);
     const findingsSeverityDistribution = aggregateSeverityDistribution(findings);
@@ -2212,6 +2217,8 @@ export default function App(): React.JSX.Element {
             ? executiveSeverityDistribution
             : severityTotal(managementSeverityDistribution) > 0
               ? managementSeverityDistribution
+              : severityTotal(findingsSeverityDistributionFromSummary) > 0
+                ? findingsSeverityDistributionFromSummary
               : severityTotal(fallbackSeverityDistribution) > 0
                 ? fallbackSeverityDistribution
                 : findingsSeverityDistribution)
@@ -2250,13 +2257,29 @@ export default function App(): React.JSX.Element {
               <MetricCard label="Files Scanned" value={String(summary.files_scanned)} />
               <MetricCard
                 label="Raw Findings"
-                value={String(role === "Management" ? positiveNumberOrFallback(dashboardSummaryAny.total_findings, positiveNumberOrFallback(vulnSummary.total_findings, summary.total_vulnerabilities)) : summary.total_vulnerabilities)}
+                value={String(
+                  role === "Management"
+                    ? positiveNumberOrFallback(
+                        dashboardSummaryAny.total_findings,
+                        positiveNumberOrFallback(
+                          vulnerabilityFindingsSummaryRecord.total,
+                          positiveNumberOrFallback(vulnerabilityFindingsSummaryRecord.raw_total, positiveNumberOrFallback(vulnSummary.total_findings, summary.total_vulnerabilities)),
+                        ),
+                      )
+                    : summary.total_vulnerabilities,
+                )}
               />
               <MetricCard
                 label="Deduplicated Findings"
                 value={String(
                   role === "Management"
-                    ? positiveNumberOrFallback(dashboardSummaryAny.deduplicated_vulnerabilities, positiveNumberOrFallback(dashboardSummaryAny.total_findings, vulnSummary.total_findings))
+                    ? positiveNumberOrFallback(
+                        dashboardSummaryAny.deduplicated_vulnerabilities,
+                        positiveNumberOrFallback(
+                          dashboardSummaryAny.total_findings,
+                          positiveNumberOrFallback(vulnerabilityFindingsSummaryRecord.total, vulnSummary.total_findings),
+                        ),
+                      )
                     : vulnSummary.total_findings,
                 )}
               />
@@ -2264,7 +2287,13 @@ export default function App(): React.JSX.Element {
                 label="Open Findings"
                 value={String(
                   role === "Management"
-                    ? positiveNumberOrFallback(dashboardSummaryAny.active_risk_findings, positiveNumberOrFallback(dashboardSummaryAny.total_findings, positiveNumberOrFallback(vulnSummary.total_findings, 0)))
+                    ? positiveNumberOrFallback(
+                        dashboardSummaryAny.active_risk_findings,
+                        positiveNumberOrFallback(
+                          dashboardSummaryAny.total_findings,
+                          positiveNumberOrFallback(vulnerabilityFindingsSummaryRecord.total, positiveNumberOrFallback(vulnSummary.total_findings, 0)),
+                        ),
+                      )
                     : vulnSummary.open_findings ?? vulnSummary.total_findings,
                 )}
               />
@@ -2272,7 +2301,13 @@ export default function App(): React.JSX.Element {
                 label="Reviewed Findings"
                 value={String(
                   role === "Management"
-                    ? positiveNumberOrFallback(dashboardSummaryAny.deduplicated_vulnerabilities, positiveNumberOrFallback(dashboardSummaryAny.total_findings, positiveNumberOrFallback(vulnSummary.total_findings, 0)))
+                    ? positiveNumberOrFallback(
+                        dashboardSummaryAny.deduplicated_vulnerabilities,
+                        positiveNumberOrFallback(
+                          dashboardSummaryAny.total_findings,
+                          positiveNumberOrFallback(vulnerabilityFindingsSummaryRecord.total, positiveNumberOrFallback(vulnSummary.total_findings, 0)),
+                        ),
+                      )
                     : vulnSummary.reviewed_findings || 0,
                 )}
               />
