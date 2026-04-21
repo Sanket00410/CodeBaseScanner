@@ -5828,11 +5828,11 @@ function renderCombinedHtml(scan: ScanView): string {
     { Critical: 0, High: 0, Medium: 0, Low: 0, Info: 0 },
   );
   const effectiveManagementSeverityDistribution =
-    reportRole === "Management" && Object.values(effectiveSummarySeverityDistribution).every((value) => Number(value || 0) <= 0) && managementSeverityBreakdown.length > 0
+    reportRole === "Management" && Object.values(managementSeverityFromGroups).some((value) => Number(value || 0) > 0)
       ? normalizeSeverityDistribution(managementSeverityFromGroups)
       : effectiveSummarySeverityDistribution;
   const managementSeverityGradientResolved =
-    reportRole === "Management" && managementSeverityBreakdown.length > 0
+    reportRole === "Management" && Object.values(managementSeverityFromGroups).some((value) => Number(value || 0) > 0)
       ? (() => {
           const bands = SEVERITY_ORDER.map((severity) => ({ severity, count: Number(effectiveManagementSeverityDistribution?.[severity] || 0) }));
           const total = bands.reduce((sum, band) => sum + band.count, 0);
@@ -5858,7 +5858,7 @@ function renderCombinedHtml(scan: ScanView): string {
                 })
                 .join(", ")
             : "";
-        })()
+          })()
       : "";
   const severityRowsSource = reportRole === "Management" ? effectiveManagementSeverityDistribution : effectiveSummarySeverityDistribution;
   const severityRows = SEVERITY_ORDER.map((severity) => {
@@ -6110,7 +6110,9 @@ function renderCombinedHtml(scan: ScanView): string {
     ? ((managementTopSource as Record<string, unknown>).top_owasp_categories as Array<{ owasp_category: string; count: number }>).slice(0, 6)
     : [];
   const managementSeverityLegendSource =
-    reportRole === "Management" ? effectiveManagementSeverityDistribution : effectiveSummarySeverityDistribution;
+    reportRole === "Management" && Object.values(managementSeverityFromGroups).some((value) => Number(value || 0) > 0)
+      ? effectiveManagementSeverityDistribution
+      : effectiveSummarySeverityDistribution;
   const managementChartSection = reportRole === "Management"
     ? `<section class="panel">
       <h2>Management Snapshot</h2>

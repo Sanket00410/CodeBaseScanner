@@ -2316,13 +2316,13 @@ export default function App(): React.JSX.Element {
             ? executiveSeverityDistribution
             : severityTotal(managementSeverityDistribution) > 0
               ? managementSeverityDistribution
-              : severityTotal(findingsSeverityDistributionFromSummary) > 0
+              : severityTotal(severityBreakdownSeverityDistribution) > 0
+                ? severityBreakdownSeverityDistribution
+                : severityTotal(findingsSeverityDistributionFromSummary) > 0
                 ? findingsSeverityDistributionFromSummary
                 : severityTotal(fallbackSeverityDistribution) > 0
                   ? fallbackSeverityDistribution
-                  : severityTotal(severityBreakdownSeverityDistribution) > 0
-                    ? severityBreakdownSeverityDistribution
-                    : findingsSeverityDistribution)
+                  : findingsSeverityDistribution)
         : (dashboardVulnSummaryAny.severity_distribution as Record<string, number> | undefined);
     const positiveNumberOrFallback = (primary: unknown, fallback: number) => {
       const numeric = Number(primary);
