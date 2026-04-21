@@ -2860,15 +2860,14 @@ function writeCombinedPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
       findings.length ||
       0,
   );
-  const summarySeverityDistribution =
-    (managementSummary as Record<string, unknown> | null)?.severity_distribution &&
-    Object.keys((managementSummary as Record<string, unknown> | null)!.severity_distribution as Record<string, unknown>).length > 0
-      ? ((managementSummary as Record<string, unknown> | null)!.severity_distribution as Record<string, number>)
-    : 
-    (summarySource as Record<string, unknown>)?.severity_distribution &&
-    Object.keys((summarySource as Record<string, unknown>).severity_distribution as Record<string, unknown>).length > 0
-      ? ((summarySource as Record<string, unknown>).severity_distribution as Record<string, number>)
-      : buildSeverityDistribution(findings);
+  const summarySeverityDistributionSource =
+    reportRole === "Management"
+      ? (summarySource as Record<string, unknown>)?.severity_distribution_raw ||
+        (summarySource as Record<string, unknown>)?.severity_distribution ||
+        (managementSummary as Record<string, unknown> | null)?.severity_distribution_raw ||
+        (managementSummary as Record<string, unknown> | null)?.severity_distribution
+      : (summary as Record<string, unknown>)?.severity_distribution_raw || (summary as Record<string, unknown>)?.severity_distribution;
+  const summarySeverityDistribution = normalizeSeverityDistribution(summarySeverityDistributionSource);
   const summarySeverityDistributionTotal = SEVERITY_ORDER.reduce((total, severity) => total + Number(summarySeverityDistribution?.[severity] || 0), 0);
   const effectiveSummarySeverityDistribution =
     reportRole === "Management" && summaryFindingCount > 0 && summarySeverityDistributionTotal <= 0
@@ -5797,15 +5796,14 @@ function renderCombinedHtml(scan: ScanView): string {
       findings.length ||
       0,
   );
-  const summarySeverityDistribution =
-    (managementSummary as Record<string, unknown> | null)?.severity_distribution &&
-    Object.keys((managementSummary as Record<string, unknown> | null)!.severity_distribution as Record<string, unknown>).length > 0
-      ? ((managementSummary as Record<string, unknown> | null)!.severity_distribution as Record<string, number>)
-      : 
-    (managementSummarySource as Record<string, unknown>)?.severity_distribution &&
-    Object.keys((managementSummarySource as Record<string, unknown>).severity_distribution as Record<string, unknown>).length > 0
-      ? ((managementSummarySource as Record<string, unknown>).severity_distribution as Record<string, number>)
-      : buildSeverityDistribution(findings);
+  const summarySeverityDistributionSource =
+    reportRole === "Management"
+      ? (managementSummarySource as Record<string, unknown>)?.severity_distribution_raw ||
+        (managementSummarySource as Record<string, unknown>)?.severity_distribution ||
+        (managementSummary as Record<string, unknown> | null)?.severity_distribution_raw ||
+        (managementSummary as Record<string, unknown> | null)?.severity_distribution
+      : (summary as Record<string, unknown>)?.severity_distribution_raw || (summary as Record<string, unknown>)?.severity_distribution;
+  const summarySeverityDistribution = normalizeSeverityDistribution(summarySeverityDistributionSource);
   const summarySeverityDistributionTotal = SEVERITY_ORDER.reduce((total, severity) => total + Number(summarySeverityDistribution?.[severity] || 0), 0);
   const effectiveSummarySeverityDistribution =
     reportRole === "Management" && summaryFindingCount > 0 && summarySeverityDistributionTotal <= 0
@@ -7216,12 +7214,34 @@ function normalizeSeverityLabel(value: unknown): "Critical" | "High" | "Medium" 
   let label = String(raw ?? "").trim().toLowerCase();
   label = label.replace(/severity[._-]?/g, "");
   label = label.replace(/[^a-z]+/g, " ").trim();
-  if (/critical|error/.test(label)) return "Critical";
-  if (/high/.test(label)) return "High";
-  if (/medium|warning/.test(label)) return "Medium";
-  if (/low|note/.test(label)) return "Low";
-  if (/info|informational/.test(label)) return "Info";
+  if (/\bcritical\b|\berror\b/.test(label)) return "Critical";
+  if (/\bhigh\b/.test(label)) return "High";
+  if (/\bmedium\b|\bwarning\b/.test(label)) return "Medium";
+  if (/\blow\b|\bnote\b/.test(label)) return "Low";
+  if (/\binfo\b|\binformational\b/.test(label)) return "Info";
   return "Info";
+}
+
+function normalizeSeverityDistribution(value: unknown): Record<string, number> {
+  const distribution: Record<string, number> = {
+    Critical: 0,
+    High: 0,
+    Medium: 0,
+    Low: 0,
+    Info: 0,
+  };
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return distribution;
+  }
+  for (const [key, rawCount] of Object.entries(value as Record<string, unknown>)) {
+    const severity = normalizeSeverityLabel(key);
+    const count = Number(rawCount);
+    if (!Number.isFinite(count) || count <= 0) {
+      continue;
+    }
+    distribution[severity] += count;
+  }
+  return distribution;
 }
 
 function buildSeverityDistribution(findings: VulnerabilityFinding[]): Record<string, number> {

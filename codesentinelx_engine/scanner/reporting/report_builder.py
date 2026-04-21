@@ -61,15 +61,15 @@ def _normalize_severity_label(raw: object) -> str:
     value = str(getattr(raw, "value", getattr(raw, "name", raw)) or "").strip().lower()
     value = value.replace("severity.", "").replace("severity_", "").replace("severity-", "")
     value = re.sub(r"[^a-z]+", " ", value).strip()
-    if re.search(r"critical|error", value):
+    if re.search(r"\bcritical\b|\berror\b", value):
         return "Critical"
-    if re.search(r"high", value):
+    if re.search(r"\bhigh\b", value):
         return "High"
-    if re.search(r"medium|warning", value):
+    if re.search(r"\bmedium\b|\bwarning\b", value):
         return "Medium"
-    if re.search(r"low|note", value):
+    if re.search(r"\blow\b|\bnote\b", value):
         return "Low"
-    if re.search(r"info|informational", value):
+    if re.search(r"\binfo\b|\binformational\b", value):
         return "Info"
     return "Info"
 
@@ -2637,6 +2637,7 @@ def build_report(scan_result: ScanResult) -> dict:
         "active_risk_findings": summary_distribution.get("Critical", 0) + summary_distribution.get("High", 0),
         "assessment_confidence": confidence,
         "severity_distribution": summary_distribution,
+        "severity_distribution_raw": distribution,
         "risk_score": risk_score,
         "risk_rating": risk_rating(risk_score),
         "top_vulnerability_types": _top_vulnerability_types(summary_findings),
@@ -2663,6 +2664,7 @@ def build_report(scan_result: ScanResult) -> dict:
         "deduplicated_vulnerabilities": len(summary_findings),
         "active_risk_findings": summary_distribution.get("Critical", 0) + summary_distribution.get("High", 0),
         "severity_distribution": summary_distribution,
+        "severity_distribution_raw": distribution,
         "top_vulnerability_types": _top_vulnerability_types(summary_findings),
         "top_owasp_categories": _top_owasp_categories(summary_findings),
         "affected_modules": _affected_modules(summary_findings),

@@ -502,6 +502,22 @@ function normalizeSeverityLabel(value: unknown): Severity {
   return "Info";
 }
 
+function normalizeSeverityDistribution(value: unknown): Record<Severity, number> {
+  const distribution: Record<Severity, number> = { Critical: 0, High: 0, Medium: 0, Low: 0, Info: 0 };
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return distribution;
+  }
+  for (const [key, rawCount] of Object.entries(value as Record<string, unknown>)) {
+    const severity = normalizeSeverityLabel(key);
+    const count = Number(rawCount);
+    if (!Number.isFinite(count) || count <= 0) {
+      continue;
+    }
+    distribution[severity] += count;
+  }
+  return distribution;
+}
+
 function aggregateSeverityDistribution(findings: VulnerabilityFinding[]): Record<Severity, number> {
   return findings.reduce<Record<Severity, number>>(
     (acc, finding) => {
@@ -2178,18 +2194,27 @@ export default function App(): React.JSX.Element {
     const dashboardVulnSummary = role === "Management" ? (managementSummary || vulnSummary) : vulnSummary;
     const dashboardSummaryAny = dashboardSummary as Record<string, any>;
     const dashboardVulnSummaryAny = dashboardVulnSummary as Record<string, any>;
-    const managementSeverityDistribution = managementSummary?.severity_distribution as Record<string, number> | undefined;
-    const fallbackSeverityDistribution = vulnSummary.severity_distribution as Record<string, number> | undefined;
+    const summaryRecord = summary as unknown as Record<string, unknown>;
+    const managementSummaryRecord = managementSummary as Record<string, unknown> | undefined;
+    const executiveSeverityDistribution = normalizeSeverityDistribution(
+      summaryRecord.severity_distribution_raw || summaryRecord.severity_distribution,
+    );
+    const managementSeverityDistribution = normalizeSeverityDistribution(
+      managementSummaryRecord?.severity_distribution_raw || managementSummaryRecord?.severity_distribution,
+    );
+    const fallbackSeverityDistribution = normalizeSeverityDistribution(vulnSummary.severity_distribution);
     const findingsSeverityDistribution = aggregateSeverityDistribution(findings);
-    const severityTotal = (distribution: Record<string, number> | undefined) =>
+    const severityTotal = (distribution: Record<Severity, number> | undefined) =>
       Object.values(distribution || {}).reduce((total, value) => total + Number(value || 0), 0);
     const dashboardSeverityDistribution =
       role === "Management"
-        ? (severityTotal(managementSeverityDistribution) > 0
-            ? managementSeverityDistribution
-            : severityTotal(fallbackSeverityDistribution) > 0
-              ? fallbackSeverityDistribution
-              : findingsSeverityDistribution)
+        ? (severityTotal(executiveSeverityDistribution) > 0
+            ? executiveSeverityDistribution
+            : severityTotal(managementSeverityDistribution) > 0
+              ? managementSeverityDistribution
+              : severityTotal(fallbackSeverityDistribution) > 0
+                ? fallbackSeverityDistribution
+                : findingsSeverityDistribution)
         : (dashboardVulnSummaryAny.severity_distribution as Record<string, number> | undefined);
     const positiveNumberOrFallback = (primary: unknown, fallback: number) => {
       const numeric = Number(primary);
