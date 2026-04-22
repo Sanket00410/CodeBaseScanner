@@ -8,9 +8,11 @@ const root = path.resolve(__dirname, "..");
 execFileSync("npx", ["tsc", "-p", "tsconfig.main.json"], { cwd: root, stdio: "inherit", shell: process.platform === "win32" });
 
 const { ScanStore } = require(path.join(root, "dist-main", "database", "store.js"));
+const { ExportService } = require(path.join(root, "dist-main", "backend", "exportService.js"));
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "csx-projection-"));
 const dbFile = path.join(tempRoot, "store.json");
+const exportDir = path.join(tempRoot, "exports");
 
 function finding(id, severity, title, file, line) {
   return {
@@ -154,6 +156,37 @@ function report() {
   assert.equal(auditor.role, "Auditor");
   assert.equal(auditor.report.vulnerability_fixed_code_report.findings[0].original_code, "");
   assert.equal(auditor.report.vulnerability_fixed_code_report.findings[0].patch_preview, "");
+
+  const rawStoredScan = store.getScanView("scan-1");
+  const exportService = new ExportService(exportDir);
+  const managementHtml = exportService.renderReportHtml(rawStoredScan, "combined", undefined, "Management");
+  assert.match(managementHtml, /Management Snapshot/);
+  assert.match(managementHtml, /Critical:\s*1/);
+  assert.doesNotMatch(managementHtml, /secret = true/);
+
+  const managementJsonPath = await exportService.exportReport(rawStoredScan, {
+    scanId: "scan-1",
+    role: "Management",
+    reportType: "combined",
+    format: "json",
+  });
+  assert.match(managementJsonPath, /Management[\\/]+Executive_Summary_Reports/);
+  const managementPayload = JSON.parse(fs.readFileSync(managementJsonPath, "utf-8"));
+  assert.equal(managementPayload.executive_summary.scan_role, "Management");
+  assert.equal(managementPayload.vulnerability_fixed_code_report.findings.length, 0);
+  assert.equal(managementPayload.executive_summary.severity_distribution.Critical, 1);
+
+  const developerJsonPath = await exportService.exportReport(rawStoredScan, {
+    scanId: "scan-1",
+    role: "Developer",
+    reportType: "fixes",
+    format: "json",
+  });
+  assert.match(developerJsonPath, /Developer[\\/]+Remediation_Reports/);
+  const developerPayload = JSON.parse(fs.readFileSync(developerJsonPath, "utf-8"));
+  assert.equal(developerPayload.executive_summary.scan_role, "Developer");
+  assert.equal(developerPayload.original_suggested_fix_report.findings.length, 2);
+  assert.equal(developerPayload.original_suggested_fix_report.findings[0].original_code, "secret = true");
 
   fs.rmSync(tempRoot, { recursive: true, force: true });
 })().catch((error) => {

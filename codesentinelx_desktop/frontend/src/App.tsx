@@ -314,12 +314,13 @@ const ROLE_EXPORT_PRESETS: Record<UserRole, RoleExportPreset> = {
     scopeLabel: "Remediation",
     scopeDetails: [
       "Fix-oriented export",
-      "HTML, PDF, Patch bundle",
+      "HTML, PDF, JSON, Patch bundle",
       "Backend enforces remediation scope",
     ],
     formats: [
       { format: "html", label: "HTML", helper: "Open the fixes report in a browser." },
       { format: "pdf", label: "PDF", helper: "Generate a shareable remediation PDF." },
+      { format: "json", label: "JSON", helper: "Export remediation details for downstream tooling." },
       { format: "patch", label: "Patch", helper: "Download patch previews only." },
     ],
   },

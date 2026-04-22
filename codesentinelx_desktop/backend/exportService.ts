@@ -755,7 +755,7 @@ const ROLE_EXPORT_PROFILES: Record<ReportRole, RoleExportProfile> = {
   },
   Developer: {
     reportType: "fixes",
-    formats: new Set<ExportRequest["format"]>(["html", "pdf", "patch"]),
+    formats: new Set<ExportRequest["format"]>(["html", "pdf", "json", "patch"]),
     label: "Remediation Export",
   },
   Auditor: {
@@ -901,6 +901,10 @@ function resolveAllowedSections(scan: ScanView): Set<string> {
 
 function reportSectionAllowed(allowedSections: Set<string>, section: string): boolean {
   return allowedSections.has("all") || allowedSections.has(String(section || "").trim().toLowerCase());
+}
+
+function projectForRequestedRole(scan: ScanView, role?: ExportRequest["role"]): ScanView {
+  return projectScanView(scan, normalizeReportRole(role ?? resolveReportRole(scan)) as ReportRole);
 }
 
 function resolveReportGlobeTexturePath(): string | null {
@@ -1497,13 +1501,13 @@ export class ExportService {
     reportStyle?: ExportRequest["reportStyle"],
     role?: ExportRequest["role"],
   ): string {
-    const projectedScan = projectScanView(scan, normalizeReportRole(role ?? resolveReportRole(scan)) as ReportRole);
+    const projectedScan = projectForRequestedRole(scan, role);
     assertPreviewAllowed(projectedScan, reportType, role);
     return this.getCachedHtml(projectedScan, reportType, reportStyle, role);
   }
 
   async exportReport(scan: ScanView, request: ExportRequest): Promise<string> {
-    const projectedScan = projectScanView(scan, normalizeReportRole(request.role ?? resolveReportRole(scan)) as ReportRole);
+    const projectedScan = projectForRequestedRole(scan, request.role);
     const profile = assertExportAllowed(projectedScan, request);
     const destination = this.resolveOutputPath(projectedScan, request.reportType, request.format, request.reportStyle, request.role);
 
