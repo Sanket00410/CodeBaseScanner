@@ -211,6 +211,8 @@ function report() {
   });
   assert.match(managementJsonPath, /Management[\\/]+Executive_Summary_Reports/);
   const managementPayload = JSON.parse(fs.readFileSync(managementJsonPath, "utf-8"));
+  assert.equal(managementPayload.projection_metadata.role, "Management");
+  assert.match(managementPayload.projection_metadata.redaction_policy, /hides raw finding rows/);
   assert.equal(managementPayload.executive_summary.scan_role, "Management");
   assert.equal(managementPayload.vulnerability_fixed_code_report.findings.length, 0);
   assert.equal(managementPayload.executive_summary.severity_distribution.Critical, 1);
@@ -223,9 +225,21 @@ function report() {
   });
   assert.match(developerJsonPath, /Developer[\\/]+Remediation_Reports/);
   const developerPayload = JSON.parse(fs.readFileSync(developerJsonPath, "utf-8"));
+  assert.equal(developerPayload.projection_metadata.role, "Developer");
+  assert.match(developerPayload.projection_metadata.inclusion_policy, /fix-oriented/);
   assert.equal(developerPayload.executive_summary.scan_role, "Developer");
   assert.equal(developerPayload.original_suggested_fix_report.findings.length, 2);
   assert.equal(developerPayload.original_suggested_fix_report.findings[0].original_code, "secret = true");
+
+  const auditorJsonPath = await exportService.exportReport(rawStoredScan, {
+    scanId: "scan-1",
+    role: "Auditor",
+    reportType: "existing",
+    format: "json",
+  });
+  const auditorPayload = JSON.parse(fs.readFileSync(auditorJsonPath, "utf-8"));
+  assert.equal(auditorPayload.projection_metadata.role, "Auditor");
+  assert.match(auditorPayload.projection_metadata.redaction_policy, /redacts source code/);
 
   fs.rmSync(tempRoot, { recursive: true, force: true });
 })().catch((error) => {

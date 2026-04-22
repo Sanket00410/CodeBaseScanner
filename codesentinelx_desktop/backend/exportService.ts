@@ -1569,9 +1569,11 @@ export class ExportService {
   }
 
   private selectPayload(scan: ScanView, reportType: ExportRequest["reportType"]): unknown {
+    const projectionMetadata = scan.projection || (scan.report.role_aware_report?.metadata as Record<string, unknown> | undefined) || null;
     if (reportType === "existing") {
       return {
         scanner: scan.report.scanner,
+        projection_metadata: projectionMetadata,
         executive_summary: scan.report.executive_summary,
         existing_implementation_report: scan.report.existing_implementation_report,
       };
@@ -1579,6 +1581,7 @@ export class ExportService {
     if (reportType === "vulnerability") {
       return {
         scanner: scan.report.scanner,
+        projection_metadata: projectionMetadata,
         executive_summary: scan.report.executive_summary,
         vulnerability_fixed_code_report: scan.report.vulnerability_fixed_code_report,
         false_positive_report: scan.report.false_positive_report || scan.report.vulnerability_fixed_code_report.false_positive_report,
@@ -1588,6 +1591,7 @@ export class ExportService {
     if (reportType === "fixes") {
       return {
         scanner: scan.report.scanner,
+        projection_metadata: projectionMetadata,
         executive_summary: scan.report.executive_summary,
         original_suggested_fix_report: {
           title: "CodeSentinelX Original and Suggested Fix Report",
@@ -1634,6 +1638,7 @@ export class ExportService {
       const findings = sortedFindings(scan.report.vulnerability_fixed_code_report.findings || []);
       return {
         scanner: scan.report.scanner,
+        projection_metadata: projectionMetadata,
         executive_summary: scan.report.executive_summary,
         finding_details_report: {
           title: "CodeSentinelX Finding Details Report",
@@ -1654,7 +1659,10 @@ export class ExportService {
         },
       };
     }
-    return scan.report;
+    return {
+      projection_metadata: projectionMetadata,
+      ...scan.report,
+    };
   }
 
   private toCsv(scan: ScanView, reportType: ExportRequest["reportType"]): string {
