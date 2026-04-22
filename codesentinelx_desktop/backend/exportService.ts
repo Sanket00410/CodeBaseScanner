@@ -3166,6 +3166,23 @@ function writePdfMetricStrip(
   doc.fillColor("#dce9f7").font("Helvetica");
 }
 
+function renderProjectionAuditSection(scan: ScanView): string {
+  const projectionMetadata = scan.projection || {
+    visibility: "security",
+    projection_reason: "Projection metadata unavailable for this legacy report view.",
+    inclusion_policy: "Report uses the loaded scan view.",
+    redaction_policy: "Report uses the loaded scan view.",
+  };
+  return `<section class="section projection-audit-section">
+    <div class="callout">
+      <strong>Role Projection:</strong> ${escapeHtml(String(projectionMetadata.visibility || ""))}<br>
+      <strong>Source:</strong> ${escapeHtml(String(projectionMetadata.projection_reason || ""))}<br>
+      <strong>Included:</strong> ${escapeHtml(String(projectionMetadata.inclusion_policy || ""))}<br>
+      <strong>Redaction:</strong> ${escapeHtml(String(projectionMetadata.redaction_policy || ""))}
+    </div>
+  </section>`;
+}
+
 function renderExistingHtml(scan: ScanView): string {
   const report = scan.report.existing_implementation_report;
   const profileCompliance = report.profile_compliance || scan.report.profile_compliance;
@@ -3423,6 +3440,8 @@ function renderExistingHtml(scan: ScanView): string {
       </div>
       <div class="meta" style="margin-top:10px">${profileHeader}</div>
     </section>
+
+    ${renderProjectionAuditSection(scan)}
 
     <section class="section">
       <div class="section-grid">
@@ -4303,6 +4322,8 @@ function renderVulnerabilityHtml(scan: ScanView): string {
     <div class="callout" style="margin-top:14px">Board-facing release gating, engineering triage, and finding-level evidence are kept in one export. Use the alert drill-down sections below to move from aggregate risk to exact code locations.</div>
     ${heroCards}
   </section>
+
+  ${renderProjectionAuditSection(scan)}
 
   ${hasSeveritySummaryData ? `<section class="panel">
     <div class="layout">
@@ -5456,6 +5477,8 @@ function renderFixesHtml(scan: ScanView): string {
       </div>
     </section>
 
+    ${renderProjectionAuditSection(scan)}
+
     <section class="section">
       <div class="section-grid">
         <div class="stack">
@@ -5748,6 +5771,7 @@ function renderFindingDetailsHtml(scan: ScanView): string {
       <p class="meta"><strong>Generated:</strong> ${escapeHtml(exportedAt)}</p>
       <p class="meta"><strong>Total Findings:</strong> ${findings.length}</p>
     </section>
+    ${renderProjectionAuditSection(scan)}
     ${hasRows ? `<section class="section">
       <h2>Issue Details</h2>
       <div class="table-frame table-scroll">
@@ -6047,20 +6071,7 @@ function renderCombinedHtml(scan: ScanView): string {
     </div>
   </details>`
       : "";
-  const projectionMetadata = scan.projection || {
-    visibility: "security",
-    projection_reason: "Projection metadata unavailable for this legacy report view.",
-    inclusion_policy: "Report uses the loaded scan view.",
-    redaction_policy: "Report uses the loaded scan view.",
-  };
-  const projectionAuditSection = `<section class="section">
-    <div class="callout">
-      <strong>Role Projection:</strong> ${escapeHtml(String(projectionMetadata.visibility || ""))}<br>
-      <strong>Source:</strong> ${escapeHtml(String(projectionMetadata.projection_reason || ""))}<br>
-      <strong>Included:</strong> ${escapeHtml(String(projectionMetadata.inclusion_policy || ""))}<br>
-      <strong>Redaction:</strong> ${escapeHtml(String(projectionMetadata.redaction_policy || ""))}
-    </div>
-  </section>`;
+  const projectionAuditSection = renderProjectionAuditSection(scan);
   const cards = renderStatGrid([
     {
       label: "Total Issues",

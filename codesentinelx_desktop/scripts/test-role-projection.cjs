@@ -184,6 +184,18 @@ function report() {
   assert.match(adminHtml, /Admin projection includes the complete canonical scan/);
   assert.match(adminHtml, /Top Prioritized Issues/);
 
+  const securityHtml = exportService.renderReportHtml(rawStoredScan, "vulnerability", undefined, "Security Analyst");
+  assert.match(securityHtml, /Role Projection/);
+  assert.match(securityHtml, /Security Analyst projection includes broad security triage/);
+
+  const developerHtml = exportService.renderReportHtml(rawStoredScan, "fixes", undefined, "Developer");
+  assert.match(developerHtml, /Role Projection/);
+  assert.match(developerHtml, /Developer projection includes fix-oriented issue detail/);
+
+  const auditorHtml = exportService.renderReportHtml(rawStoredScan, "existing", undefined, "Auditor");
+  assert.match(auditorHtml, /Role Projection/);
+  assert.match(auditorHtml, /Auditor projection includes traceable assurance/);
+
   const managementHtml = exportService.renderReportHtml(rawStoredScan, "combined", undefined, "Management");
   assert.match(managementHtml, /Management Snapshot/);
   assert.match(managementHtml, /Role Projection/);
