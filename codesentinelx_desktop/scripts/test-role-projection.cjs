@@ -188,6 +188,28 @@ function report() {
   assert.match(securityHtml, /Role Projection/);
   assert.match(securityHtml, /Security Analyst projection includes broad security triage/);
 
+  const securityCsvPath = await exportService.exportReport(rawStoredScan, {
+    scanId: "scan-1",
+    role: "Security Analyst",
+    reportType: "vulnerability",
+    format: "csv",
+  });
+  const securityCsv = fs.readFileSync(securityCsvPath, "utf-8");
+  assert.match(securityCsv.split("\n")[0], /ProjectionRole,ProjectionVisibility,ProjectionSourceScan,ScannerInvoked/);
+  assert.match(securityCsv, /"Security Analyst","security","scan-1","false"/);
+
+  const securitySarifPath = await exportService.exportReport(rawStoredScan, {
+    scanId: "scan-1",
+    role: "Security Analyst",
+    reportType: "vulnerability",
+    format: "sarif",
+  });
+  const securitySarif = JSON.parse(fs.readFileSync(securitySarifPath, "utf-8"));
+  assert.equal(securitySarif.runs[0].properties.projectionRole, "Security Analyst");
+  assert.equal(securitySarif.runs[0].properties.projectionVisibility, "security");
+  assert.equal(securitySarif.runs[0].properties.projectionSourceScan, "scan-1");
+  assert.equal(securitySarif.runs[0].properties.scannerInvoked, false);
+
   const developerHtml = exportService.renderReportHtml(rawStoredScan, "fixes", undefined, "Developer");
   assert.match(developerHtml, /Role Projection/);
   assert.match(developerHtml, /Developer projection includes fix-oriented issue detail/);

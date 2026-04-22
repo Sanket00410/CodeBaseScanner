@@ -1666,19 +1666,24 @@ export class ExportService {
   }
 
   private toCsv(scan: ScanView, reportType: ExportRequest["reportType"]): string {
+    const projectionHeaders = ["ProjectionRole", "ProjectionVisibility", "ProjectionSourceScan", "ScannerInvoked"];
+    const projectionFields = this.projectionCsvFields(scan);
     if (reportType === "existing") {
-      const header = "Control,Category,Coverage,Standards\n";
+      const header = [...projectionHeaders, "Control", "Category", "Coverage", "Standards"].join(",") + "\n";
       const rows = scan.report.existing_implementation_report.controls.map((item) =>
-        csvLine([item.name, item.category, item.coverage_level, item.standard_mappings.join(" | ")]),
+        csvLine([...projectionFields, item.name, item.category, item.coverage_level, item.standard_mappings.join(" | ")]),
       );
       return `${header}${rows.join("\n")}\n`;
     }
 
     if (reportType === "fixes") {
       const findings = sortedFindings(scan.report.vulnerability_fixed_code_report.findings || []);
-      const header = "Severity,CVSS,Issue,File,Line,CWE,OWASP,OriginalCode,SuggestedFix,PatchPreview\n";
+      const header =
+        [...projectionHeaders, "Severity", "CVSS", "Issue", "File", "Line", "CWE", "OWASP", "OriginalCode", "SuggestedFix", "PatchPreview"].join(",") +
+        "\n";
       const rows = findings.map((item) =>
         csvLine([
+          ...projectionFields,
           item.severity,
           String(item.cvss_score || 0),
           normalizedFindingTitle(item),
@@ -1696,9 +1701,10 @@ export class ExportService {
 
     if (reportType === "finding_details") {
       const findings = sortedFindings(scan.report.vulnerability_fixed_code_report.findings || []);
-      const header = "FindingDetails,Severity,Location,IssueDescription,Remediation\n";
+      const header = [...projectionHeaders, "FindingDetails", "Severity", "Location", "IssueDescription", "Remediation"].join(",") + "\n";
       const rows = findings.map((item) =>
         csvLine([
+          ...projectionFields,
           normalizedFindingTitle(item),
           item.severity,
           `${normalizePath(item.file_path)}:${String(item.line_number || 1)}`,
@@ -1710,9 +1716,11 @@ export class ExportService {
     }
 
     const findings = sortedFindings(scan.report.vulnerability_fixed_code_report.findings || []);
-    const header = "Severity,CVSS,Issue,CWE,OWASP,File,Folder,Line,Status,Recommendation\n";
+    const header =
+      [...projectionHeaders, "Severity", "CVSS", "Issue", "CWE", "OWASP", "File", "Folder", "Line", "Status", "Recommendation"].join(",") + "\n";
     const rows = findings.map((item) =>
       csvLine([
+        ...projectionFields,
         item.severity,
         String(item.cvss_score || 0),
         normalizedFindingTitle(item),
@@ -1726,6 +1734,16 @@ export class ExportService {
       ]),
     );
     return `${header}${rows.join("\n")}\n`;
+  }
+
+  private projectionCsvFields(scan: ScanView): string[] {
+    const projection = scan.projection;
+    return [
+      projection?.role || scan.role || "",
+      projection?.visibility || "",
+      projection?.source_scan_id || scan.scanId || "",
+      projection?.scanner_invoked === false ? "false" : "",
+    ];
   }
 
   private toPatch(scan: ScanView): string {
@@ -1800,6 +1818,7 @@ export class ExportService {
     const findings = sortedFindings(scan.report.vulnerability_fixed_code_report.findings || []);
     const rules = new Map<string, Record<string, unknown>>();
     const results: Array<Record<string, unknown>> = [];
+    const projection = scan.projection;
 
     for (const finding of findings) {
       const ruleId = finding.rule_id || "CODESENTINELX-RULE";
@@ -1835,6 +1854,15 @@ export class ExportService {
       $schema: "https://json.schemastore.org/sarif-2.1.0.json",
       runs: [
         {
+          properties: {
+            projectionRole: projection?.role || scan.role,
+            projectionVisibility: projection?.visibility || "",
+            projectionSourceScan: projection?.source_scan_id || scan.scanId,
+            projectionReason: projection?.projection_reason || "",
+            inclusionPolicy: projection?.inclusion_policy || "",
+            redactionPolicy: projection?.redaction_policy || "",
+            scannerInvoked: projection?.scanner_invoked === false ? false : null,
+          },
           tool: {
             driver: {
               name: scan.report.scanner.name,
