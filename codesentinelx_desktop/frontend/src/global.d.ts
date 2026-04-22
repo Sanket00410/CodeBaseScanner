@@ -40,7 +40,7 @@ declare global {
       getReportHistory: () => Promise<ReportHistoryItem[]>;
       deleteReportHistory: (payload?: { paths?: string[]; all?: boolean }) => Promise<{ deleted: number; failed: number }>;
       getPortfolioSummary: () => Promise<PortfolioSummary>;
-      getScanById: (scanId: string) => Promise<ScanView | null>;
+      getScanById: (scanId: string, role?: UserRole) => Promise<ScanView | null>;
       markReviewed: (payload: { scanId: string; findingId: string; actor: string; role: UserRole }) => Promise<ScanView | null>;
       generatePatch: (payload: { scanId: string; findingId: string }) => Promise<string | null>;
       exportReport: (request: {

@@ -45,8 +45,8 @@ export class PythonScannerBridge {
     await this.setControlState(controlFile, "running");
 
     const normalizedTarget = normalizeTargetInput(request.projectPath);
-    const scanPreset = resolveRoleScanPreset(request.role);
-    const scanEnv = buildScanEnvironment(this.scannerRoot, controlFile, scanPreset, request.role, request.scmContext);
+    const scanPreset = request.scanPreset || "standard";
+    const scanEnv = buildScanEnvironment(this.scannerRoot, controlFile, scanPreset, "Admin", request.scmContext);
 
     const args = [
       "-m",

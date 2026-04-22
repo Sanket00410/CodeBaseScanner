@@ -3,14 +3,18 @@ import path from "node:path";
 
 import { randomUUID } from "node:crypto";
 
-import { toHistoryItem, toScanView } from "../backend/reportAdapter";
+import { toHistoryItem, toProjectedScanView, toScanView } from "../backend/reportAdapter";
+import { buildCanonicalScanObject, normalizeUserRole } from "../backend/roleProjection";
 import {
   AuditEntry,
+  CanonicalScanObject,
   EnterpriseAssuranceSummary,
   FalsePositiveReport,
   FindingReviewState,
   PortfolioSummary,
+  RoleProjectionMetadata,
   RoleAwareReport,
+  ScanPreset,
   ScanHistoryItem,
   ScanRecord,
   ScanView,
@@ -90,10 +94,13 @@ export class ScanStore {
     return buildPortfolioSummary(this.state.scans);
   }
 
-  getScanView(scanId: string): ScanView | null {
+  getScanView(scanId: string, role?: UserRole): ScanView | null {
     const record = this.state.scans.find((item) => item.scanId === scanId);
     if (!record) {
       return null;
+    }
+    if (role) {
+      return toProjectedScanView(record, normalizeRole(role));
     }
     return toScanView(record);
   }
@@ -209,6 +216,7 @@ export class ScanStore {
         );
         latest.findingStates = compactFindingStates(latest.findingStates, latest.report.vulnerability_fixed_code_report.findings);
         syncReportSummary(latest.report);
+        refreshCanonicalScan(latest);
         changed = true;
       } else if (latest.report.vulnerability_fixed_code_report.auto_fix_recommendations.length > MAX_AUTOFIX_RECOMMENDATIONS_AGGRESSIVE) {
         latest.report.vulnerability_fixed_code_report.auto_fix_recommendations = latest.report.vulnerability_fixed_code_report.auto_fix_recommendations.slice(
@@ -224,6 +232,7 @@ export class ScanStore {
         );
         latest.findingStates = compactFindingStates(latest.findingStates, latest.report.vulnerability_fixed_code_report.findings);
         syncReportSummary(latest.report);
+        refreshCanonicalScan(latest);
         changed = true;
       }
     }
@@ -249,6 +258,7 @@ export class ScanStore {
       latest.report.vulnerability_fixed_code_report.auto_fix_recommendations = [];
       latest.findingStates = compactFindingStates(latest.findingStates, latest.report.vulnerability_fixed_code_report.findings);
       syncReportSummary(latest.report);
+      refreshCanonicalScan(latest);
       this.state.scans = [latest];
     } else {
       this.state.scans = [];
@@ -278,14 +288,31 @@ function compactScanRecord(input: Partial<ScanRecord> | LooseRecord): ScanRecord
   const raw = asRecord(input);
   const report = compactReport(raw.report);
   const findingStates = compactFindingStates(raw.findingStates, report.vulnerability_fixed_code_report.findings);
+  const scanId = asString(raw.scanId, randomUUID());
+  const projectPath = asString(raw.projectPath, "unknown");
+  const role = normalizeRole(raw.role);
+  const startedAt = normalizeIso(raw.startedAt);
+  const completedAt = normalizeIso(raw.completedAt);
+  const scanPreset = normalizeScanPreset(report.executive_summary.scan_preset);
+  const canonicalScan = normalizeCanonicalScan(raw.canonicalScan, {
+    scanId,
+    projectPath,
+    requestedRole: role,
+    scanPreset,
+    startedAt,
+    completedAt,
+    report,
+  });
 
   return {
-    scanId: asString(raw.scanId, randomUUID()),
-    projectPath: asString(raw.projectPath, "unknown"),
+    scanId,
+    projectPath,
     requestedBy: truncateText(asString(raw.requestedBy, "local-user"), 180),
-    role: normalizeRole(raw.role),
-    startedAt: normalizeIso(raw.startedAt),
-    completedAt: normalizeIso(raw.completedAt),
+    role,
+    startedAt,
+    completedAt,
+    canonicalScan,
+    projectionCache: normalizeProjectionCache(raw.projectionCache),
     report,
     findingStates,
   };
@@ -753,8 +780,88 @@ function buildFindingIdentity(finding: VulnerabilityFinding): string {
 }
 
 function normalizeRole(value: unknown): UserRole {
-  const candidate = asString(value, "Security Analyst") as UserRole;
-  return USER_ROLE_SET.has(candidate) ? candidate : "Security Analyst";
+  return normalizeUserRole(value);
+}
+
+function normalizeScanPreset(value: unknown): ScanPreset {
+  const candidate = asString(value, "standard").toLowerCase();
+  if (candidate === "fast" || candidate === "standard" || candidate === "deep") {
+    return candidate;
+  }
+  return "standard";
+}
+
+function normalizeCanonicalScan(
+  input: unknown,
+  fallback: {
+    scanId: string;
+    projectPath: string;
+    requestedRole: UserRole;
+    scanPreset: ScanPreset;
+    startedAt: string;
+    completedAt: string;
+    report: UniversalScanReport;
+  },
+): CanonicalScanObject {
+  const raw = asRecord(input);
+  if (raw.schema_version === "codesentinelx.canonical_scan.v1") {
+    const canonical = sanitizeUnknownValue(raw, 6) as CanonicalScanObject;
+    canonical.scan_id = asString(canonical.scan_id, fallback.scanId);
+    canonical.target_path = asString(canonical.target_path, fallback.projectPath);
+    canonical.target_type =
+      canonical.target_type === "file" || canonical.target_type === "folder" || canonical.target_type === "unknown"
+        ? canonical.target_type
+        : "unknown";
+    canonical.requested_role = normalizeRole(canonical.requested_role);
+    canonical.execution_role = normalizeRole(canonical.execution_role || "Admin");
+    canonical.scan_preset = normalizeScanPreset(canonical.scan_preset);
+    canonical.started_at = normalizeIso(canonical.started_at || fallback.startedAt);
+    canonical.completed_at = normalizeIso(canonical.completed_at || fallback.completedAt);
+    canonical.severity_distribution = normalizeSeverityDistribution(canonical.severity_distribution);
+    return canonical;
+  }
+  return buildCanonicalScanObject(fallback);
+}
+
+function normalizeProjectionCache(input: unknown): Partial<Record<UserRole, RoleProjectionMetadata>> {
+  const raw = asRecord(input);
+  const cache: Partial<Record<UserRole, RoleProjectionMetadata>> = {};
+  for (const role of USER_ROLE_SET) {
+    const entry = asRecord(raw[role]);
+    if (!Object.keys(entry).length) {
+      continue;
+    }
+    cache[role] = {
+      role,
+      source_scan_id: asString(entry.source_scan_id, ""),
+      source_schema_version: "codesentinelx.canonical_scan.v1",
+      generated_at: normalizeIso(entry.generated_at),
+      visibility:
+        entry.visibility === "full" ||
+        entry.visibility === "security" ||
+        entry.visibility === "developer" ||
+        entry.visibility === "redacted" ||
+        entry.visibility === "summary"
+          ? entry.visibility
+          : "security",
+      allowed_sections: asArray(entry.allowed_sections).map((item) => asString(item)).filter(Boolean),
+      redacted_fields: asArray(entry.redacted_fields).map((item) => asString(item)).filter(Boolean),
+      scanner_invoked: false,
+    };
+  }
+  return cache;
+}
+
+function refreshCanonicalScan(record: ScanRecord): void {
+  record.canonicalScan = buildCanonicalScanObject({
+    scanId: record.scanId,
+    projectPath: record.projectPath,
+    requestedRole: record.role,
+    scanPreset: normalizeScanPreset(record.report.executive_summary.scan_preset),
+    startedAt: record.startedAt,
+    completedAt: record.completedAt,
+    report: record.report,
+  });
 }
 
 function normalizeSeverity(value: unknown): Severity {

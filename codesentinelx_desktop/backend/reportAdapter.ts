@@ -6,6 +6,7 @@ import {
   UniversalScanReport,
   VulnerabilityFinding,
 } from "./types";
+import { projectScanView } from "./roleProjection";
 
 export function findingIdentity(finding: VulnerabilityFinding): string {
   if (finding.finding_uid && finding.finding_uid.trim().length > 0) {
@@ -78,8 +79,13 @@ export function toScanView(record: ScanRecord): ScanView {
     role: record.role,
     startedAt: record.startedAt,
     completedAt: record.completedAt,
+    canonicalScan: record.canonicalScan,
     report: applyFindingState(record.report, record.findingStates),
   };
+}
+
+export function toProjectedScanView(record: ScanRecord, role: ScanRecord["role"]): ScanView {
+  return projectScanView(toScanView(record), role);
 }
 
 export function toHistoryItem(record: ScanRecord): ScanHistoryItem {

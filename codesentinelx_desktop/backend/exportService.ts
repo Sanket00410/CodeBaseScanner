@@ -16,6 +16,7 @@ import {
   VulnerabilityFinding,
   VulnerabilityFixedCodeReport,
 } from "./types";
+import { projectScanView } from "./roleProjection";
 
 interface FileAggregate {
   file: string;
@@ -841,9 +842,6 @@ function resolveReportRole(scan: ScanView): string {
 function resolveExportRole(scan: ScanView, requestedRole?: ExportRequest["role"]): ReportRole {
   const scanRole = normalizeReportRole(resolveReportRole(scan)) as ReportRole;
   const selectedRole = normalizeReportRole(requestedRole ?? scanRole) as ReportRole;
-  if (selectedRole !== scanRole) {
-    throw new Error(`Export role mismatch: scan role is ${scanRole}, requested export role is ${selectedRole}.`);
-  }
   return selectedRole;
 }
 
@@ -856,12 +854,12 @@ function assertExportAllowed(scan: ScanView, request: ExportRequest): RoleExport
   const profile = resolveExportProfile(scan, request.role);
   if (profile.reportType !== request.reportType) {
     throw new Error(
-      `Export report type ${request.reportType} is not allowed for role ${resolveReportRole(scan)}. Allowed export preset: ${profile.label} (${profile.reportType}).`,
+      `Export report type ${request.reportType} is not allowed for role ${resolveExportRole(scan, request.role)}. Allowed export preset: ${profile.label} (${profile.reportType}).`,
     );
   }
   if (!profile.formats.has(request.format)) {
     throw new Error(
-      `Export format ${request.format} is not allowed for role ${resolveReportRole(scan)} and export preset ${profile.label}.`,
+      `Export format ${request.format} is not allowed for role ${resolveExportRole(scan, request.role)} and export preset ${profile.label}.`,
     );
   }
   return profile;
@@ -875,7 +873,7 @@ function assertPreviewAllowed(
   const profile = resolveExportProfile(scan, requestedRole);
   if (profile.reportType !== reportType) {
     throw new Error(
-      `Preview report type ${reportType} is not allowed for role ${resolveReportRole(scan)}. Allowed export preset: ${profile.label} (${profile.reportType}).`,
+      `Preview report type ${reportType} is not allowed for role ${resolveExportRole(scan, requestedRole)}. Allowed export preset: ${profile.label} (${profile.reportType}).`,
     );
   }
   return profile;
@@ -1499,43 +1497,45 @@ export class ExportService {
     reportStyle?: ExportRequest["reportStyle"],
     role?: ExportRequest["role"],
   ): string {
-    assertPreviewAllowed(scan, reportType, role);
-    return this.getCachedHtml(scan, reportType, reportStyle, role);
+    const projectedScan = projectScanView(scan, normalizeReportRole(role ?? resolveReportRole(scan)) as ReportRole);
+    assertPreviewAllowed(projectedScan, reportType, role);
+    return this.getCachedHtml(projectedScan, reportType, reportStyle, role);
   }
 
   async exportReport(scan: ScanView, request: ExportRequest): Promise<string> {
-    const profile = assertExportAllowed(scan, request);
-    const destination = this.resolveOutputPath(scan, request.reportType, request.format, request.reportStyle, request.role);
+    const projectedScan = projectScanView(scan, normalizeReportRole(request.role ?? resolveReportRole(scan)) as ReportRole);
+    const profile = assertExportAllowed(projectedScan, request);
+    const destination = this.resolveOutputPath(projectedScan, request.reportType, request.format, request.reportStyle, request.role);
 
     if (request.format === "json") {
-      await fs.writeFile(destination, JSON.stringify(this.selectPayload(scan, request.reportType), null, 2), "utf-8");
+      await fs.writeFile(destination, JSON.stringify(this.selectPayload(projectedScan, request.reportType), null, 2), "utf-8");
       return destination;
     }
     if (request.format === "xml") {
-      await fs.writeFile(destination, this.toXml(scan, request.reportType), "utf-8");
+      await fs.writeFile(destination, this.toXml(projectedScan, request.reportType), "utf-8");
       return destination;
     }
     if (request.format === "csv") {
-      await fs.writeFile(destination, this.toCsv(scan, request.reportType), "utf-8");
+      await fs.writeFile(destination, this.toCsv(projectedScan, request.reportType), "utf-8");
       return destination;
     }
     if (request.format === "patch") {
-      await fs.writeFile(destination, this.toPatch(scan), "utf-8");
+      await fs.writeFile(destination, this.toPatch(projectedScan), "utf-8");
       return destination;
     }
     if (request.format === "html") {
-      await fs.writeFile(destination, this.getCachedHtml(scan, request.reportType, request.reportStyle, request.role), "utf-8");
+      await fs.writeFile(destination, this.getCachedHtml(projectedScan, request.reportType, request.reportStyle, request.role), "utf-8");
       return destination;
     }
     if (request.format === "sarif") {
       if (request.reportType === "existing" || request.reportType === "fixes" || request.reportType === "finding_details") {
         throw new Error("SARIF export is available only for vulnerability or combined reports.");
       }
-      await fs.writeFile(destination, JSON.stringify(this.toSarif(scan), null, 2), "utf-8");
+      await fs.writeFile(destination, JSON.stringify(this.toSarif(projectedScan), null, 2), "utf-8");
       return destination;
     }
     if (request.format === "pdf") {
-      await this.writePdf(scan, destination, profile.reportType);
+      await this.writePdf(projectedScan, destination, profile.reportType);
       return destination;
     }
     throw new Error(`Unsupported export format: ${request.format}`);

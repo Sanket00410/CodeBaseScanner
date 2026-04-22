@@ -150,14 +150,6 @@ const SCAN_PRESETS: Array<{ key: ScanPreset; label: string; helper: string }> = 
   { key: "deep", label: "Deep", helper: "Maximum depth. Full file budget and uncapped active PoC checks." },
 ];
 
-const ROLE_SCAN_PRESETS: Record<UserRole, ScanPreset> = {
-  Admin: "deep",
-  "Security Analyst": "standard",
-  Developer: "fast",
-  Auditor: "fast",
-  Management: "fast",
-};
-
 const TOOL_PROFILE_META: Record<ToolScanProfile, { label: string; icon: string; helper: string }> = {
   codebase: {
     label: "Codebase Tools",
@@ -725,28 +717,6 @@ function roleDrilldownSummary(role: UserRole): string {
   return `${item.purpose} ${item.drillDownUse}`;
 }
 
-function normalizeRoleLabel(value: string | undefined): UserRole {
-  const label = String(value || "").trim().toLowerCase();
-  switch (label) {
-    case "admin":
-    case "administrator":
-      return "Admin";
-    case "security analyst":
-    case "securityanalyst":
-      return "Security Analyst";
-    case "developer":
-      return "Developer";
-    case "auditor":
-      return "Auditor";
-    case "management":
-    case "manager":
-    case "board":
-      return "Management";
-    default:
-      return "Security Analyst";
-  }
-}
-
 function enterpriseStatusClass(status: string | undefined): string {
   if (status === "ready") {
     return "enterprise-ready";
@@ -887,31 +857,17 @@ export default function App(): React.JSX.Element {
   const [activeWindowMenu, setActiveWindowMenu] = useState<WindowMenuKey | null>(null);
   const roleCaps = useMemo(() => ROLE_CAPABILITIES[role], [role]);
   const selectedRoleExport = useMemo(() => ROLE_EXPORT_PRESETS[role], [role]);
-  const roleScanPreset = useMemo(() => ROLE_SCAN_PRESETS[role], [role]);
   const toolAuthEnabled = Boolean(toolAuthConfig?.enabled);
   const toolSessionValid = !toolAuthEnabled || Boolean(toolAuthToken);
   const toolAuthOtpRequired = Boolean(toolAuthConfig?.otpRequired);
   const toolAuthTotpOnly = toolAuthConfig?.authMode === "totp_only";
   const canOpenOwnerLogin = role === "Admin" || role === "Security Analyst";
   const isToolManagerVisible = !toolAuthEnabled || toolSessionValid;
-  const scanRole = useMemo(
-    () =>
-      normalizeRoleLabel(
-        scan?.report.executive_summary.scan_role ||
-          scan?.report.vulnerability_fixed_code_report.scan_role ||
-          role,
-      ),
-    [role, scan],
-  );
-  const roleMatchesScan = !scan || scanRole === role;
+  const roleMatchesScan = true;
   const visibleTabs = useMemo(
     () => TABS.filter((item) => item.key !== "tools" || isToolManagerVisible),
     [isToolManagerVisible],
   );
-
-  useEffect(() => {
-    setScanPreset(roleScanPreset);
-  }, [roleScanPreset]);
 
   const findings = useMemo(() => {
     if (!scan) {
@@ -1217,7 +1173,7 @@ export default function App(): React.JSX.Element {
       if (payload.status === "completed") {
         setLastCompletedScanId(payload.scanId);
         window.codeSentinelX
-          .getScanById(payload.scanId)
+          .getScanById(payload.scanId, role)
           .then((result) => {
             if (result) {
               setScan((current) => {
@@ -1299,10 +1255,24 @@ export default function App(): React.JSX.Element {
       return;
     }
     window.codeSentinelX
-      .getScanById(olderBaseline.scanId)
+      .getScanById(olderBaseline.scanId, role)
       .then((value) => setBaselineScan(value))
       .catch(() => setBaselineScan(null));
-  }, [scan, history]);
+  }, [scan, history, role]);
+
+  useEffect(() => {
+    if (!scan?.scanId) {
+      return;
+    }
+    window.codeSentinelX
+      .getScanById(scan.scanId, role)
+      .then((projected) => {
+        if (projected) {
+          setScan((current) => (current?.scanId === projected.scanId ? projected : current));
+        }
+      })
+      .catch(() => undefined);
+  }, [role, scan?.scanId]);
 
   useEffect(() => {
     if (selectedFinding && selectedFinding.finding_uid !== selectedFindingId) {
@@ -1556,7 +1526,7 @@ export default function App(): React.JSX.Element {
       return;
     }
     const roleForScan = role;
-    const presetForScan = roleScanPreset;
+    const presetForScan = scanPreset;
     setScanStatus("running");
     setProgress(0);
     setLastProgressUpdateTs(Date.now());
@@ -1581,7 +1551,7 @@ export default function App(): React.JSX.Element {
       });
       let loadedResult = result;
       try {
-        const fromStore = await window.codeSentinelX.getScanById(result.scanId);
+        const fromStore = await window.codeSentinelX.getScanById(result.scanId, role);
         if (fromStore) {
           loadedResult = fromStore;
         }
@@ -1729,7 +1699,7 @@ export default function App(): React.JSX.Element {
   };
 
   const openScan = async (scanId: string): Promise<void> => {
-    const result = await window.codeSentinelX.getScanById(scanId);
+    const result = await window.codeSentinelX.getScanById(scanId, role);
     if (!result) {
       setStatusText(`Scan ${scanId} not found.`);
       return;
@@ -1805,10 +1775,6 @@ export default function App(): React.JSX.Element {
       setStatusText("No scan loaded for export.");
       return;
     }
-    if (!roleMatchesScan) {
-      setStatusText(`Role mismatch: scan role is ${scanRole}, but the selected export role is ${role}. Rerun the scan for this role first.`);
-      return;
-    }
     setIsExporting(true);
     const reportType = selectedRoleExport.reportType;
     const styleLabel = reportType === "vulnerability" ? ` (${vulnerabilityReportStyle})` : "";
@@ -1833,10 +1799,6 @@ export default function App(): React.JSX.Element {
   const previewReport = async (): Promise<void> => {
     if (!scan) {
       setStatusText("Run a scan before previewing reports.");
-      return;
-    }
-    if (!roleMatchesScan) {
-      setStatusText(`Role mismatch: scan role is ${scanRole}, but the selected export role is ${role}. Rerun the scan for this role first.`);
       return;
     }
     setIsPreviewLoading(true);
@@ -4159,9 +4121,9 @@ export default function App(): React.JSX.Element {
               ))}
             </ul>
 
-            {!roleMatchesScan && (
-              <p className="status-warning">
-                Selected role does not match the loaded scan role ({scanRole}). Rerun the scan with the selected role before exporting.
+            {scan && (
+              <p className="status-success">
+                One canonical scan is loaded. Switching roles changes this projection only and does not rerun analyzers.
               </p>
             )}
 
@@ -4195,7 +4157,7 @@ export default function App(): React.JSX.Element {
                   className="role-export-action"
                   title={item.helper}
                   onClick={() => exportReport(item.format)}
-                  disabled={!scan || isExporting || !roleMatchesScan}
+                  disabled={!scan || isExporting}
                 >
                   <span>{item.label}</span>
                   <small>{item.helper}</small>
@@ -4204,7 +4166,7 @@ export default function App(): React.JSX.Element {
             </div>
 
             <div className="button-row role-export-footer">
-              <button type="button" onClick={() => previewReport()} disabled={!scan || !roleMatchesScan || isPreviewLoading}>
+              <button type="button" onClick={() => previewReport()} disabled={!scan || isPreviewLoading}>
                 {selectedRoleExport.previewLabel}
               </button>
               <button type="button" onClick={openLastExport} disabled={!lastExport}>
@@ -4238,8 +4200,8 @@ export default function App(): React.JSX.Element {
             </button>
             <select
               value={scanPreset}
-              aria-label="Role-controlled scan preset"
-              title={`Role-controlled preset: ${SCAN_PRESETS.find((item) => item.key === roleScanPreset)?.helper || "Scan preset"}`}
+              aria-label="Canonical scan preset"
+              title={`Canonical one-scan preset: ${SCAN_PRESETS.find((item) => item.key === scanPreset)?.helper || "Scan preset"}`}
               disabled
             >
               {SCAN_PRESETS.map((item) => (
@@ -4328,13 +4290,13 @@ export default function App(): React.JSX.Element {
           )}
           <p className="target-mode">Mode: Codebase Secure Analysis</p>
           <p className="role-hint">
-            Scan preset ({roleScanPreset}): {SCAN_PRESETS.find((item) => item.key === roleScanPreset)?.helper}
+            Scan preset ({scanPreset}): {SCAN_PRESETS.find((item) => item.key === scanPreset)?.helper}
           </p>
           <p className="role-hint">
             Role Drill-Down ({role}): {roleDrilldownSummary(role)}
           </p>
           <p className="role-hint">
-            This role will scan: {ROLE_SCAN_SCOPE[role].join(", ")}. Export scope stays locked to the same role.
+            This role will show: {ROLE_SCAN_SCOPE[role].join(", ")}. Scan execution runs once, then export scope is projected for this role.
           </p>
           <p className="role-hint">Severity policy: {ROLE_SEVERITY_POLICY[role]}</p>
           <p className="role-hint">

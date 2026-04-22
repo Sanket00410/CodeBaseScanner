@@ -574,6 +574,17 @@ export interface ScanView {
   role: UserRole;
   startedAt: string;
   completedAt: string;
+  canonicalScan?: Record<string, unknown>;
+  projection?: {
+    role: UserRole;
+    source_scan_id: string;
+    source_schema_version: string;
+    generated_at: string;
+    visibility: string;
+    allowed_sections: string[];
+    redacted_fields: string[];
+    scanner_invoked: false;
+  };
   report: UniversalScanReport;
 }
 

@@ -1,0 +1,333 @@
+import {
+  CanonicalScanObject,
+  RoleProjectionMetadata,
+  ScanPreset,
+  ScanView,
+  Severity,
+  ToolchainStatusEntry,
+  UserRole,
+  UniversalScanReport,
+  VulnerabilityFinding,
+} from "./types";
+
+const SEVERITIES: Severity[] = ["Critical", "High", "Medium", "Low", "Info"];
+
+const ROLE_SECTION_RULES: Record<UserRole, { visibility: RoleProjectionMetadata["visibility"]; sections: string[]; redacted: string[] }> = {
+  Admin: {
+    visibility: "full",
+    sections: ["all"],
+    redacted: [],
+  },
+  "Security Analyst": {
+    visibility: "security",
+    sections: ["ciso_security_view", "risk_story_mode", "advanced_features", "enterprise_assurance", "false_positive_report", "data_quality", "tool_evidence"],
+    redacted: [],
+  },
+  Developer: {
+    visibility: "developer",
+    sections: ["developer_devops_view", "risk_story_mode", "advanced_features", "fix_verification", "active_poc", "deterministic_replay"],
+    redacted: [],
+  },
+  Auditor: {
+    visibility: "redacted",
+    sections: ["enterprise_assurance", "false_positive_report", "data_quality", "deterministic_replay", "report_integrity_chain"],
+    redacted: ["original_code", "fixed_code", "patch_preview", "proof_of_concept", "active_poc.output", "fix_verification.outputs"],
+  },
+  Management: {
+    visibility: "summary",
+    sections: ["cto_board_view", "risk_story_mode", "enterprise_assurance", "management_summary", "severity_breakdown_groups"],
+    redacted: ["findings", "raw_evidence", "source_code", "proof_of_concept", "tool_stdout", "tool_stderr"],
+  },
+};
+
+export function normalizeUserRole(value: unknown): UserRole {
+  const label = String(value || "").trim().toLowerCase();
+  switch (label) {
+    case "admin":
+    case "administrator":
+      return "Admin";
+    case "developer":
+      return "Developer";
+    case "auditor":
+      return "Auditor";
+    case "management":
+    case "manager":
+    case "board":
+      return "Management";
+    case "security analyst":
+    case "securityanalyst":
+    default:
+      return "Security Analyst";
+  }
+}
+
+export function inferTargetType(targetPath: string): CanonicalScanObject["target_type"] {
+  if (!targetPath || targetPath === "unknown") {
+    return "unknown";
+  }
+  return /\.[a-z0-9]{1,12}$/i.test(targetPath) ? "file" : "folder";
+}
+
+export function buildCanonicalScanObject(input: {
+  scanId: string;
+  projectPath: string;
+  requestedRole: UserRole;
+  scanPreset: ScanPreset;
+  startedAt: string;
+  completedAt: string;
+  report: UniversalScanReport;
+}): CanonicalScanObject {
+  const report = input.report;
+  const vulnerability = report.vulnerability_fixed_code_report;
+  const summary = vulnerability.summary;
+  const executive = report.executive_summary;
+  const findings = cloneStructured(vulnerability.findings || []);
+  const severityDistribution = normalizeSeverityDistribution(
+    summary.severity_distribution,
+    normalizeSeverityDistribution(executive.severity_distribution, summarizeSeverity(findings)),
+  );
+
+  return {
+    schema_version: "codesentinelx.canonical_scan.v1",
+    scan_id: input.scanId,
+    target_path: input.projectPath,
+    target_type: inferTargetType(input.projectPath),
+    requested_role: normalizeUserRole(input.requestedRole),
+    execution_role: "Admin",
+    scan_preset: input.scanPreset,
+    started_at: input.startedAt,
+    completed_at: input.completedAt,
+    tool_execution_status: cloneStructured(vulnerability.toolchain_status || {}) as Record<string, ToolchainStatusEntry>,
+    raw_findings: findings,
+    deduplicated_findings: findings,
+    severity_distribution: severityDistribution,
+    cwe_owasp_cve_data: buildTaxonomyCounts(findings),
+    evidence: {
+      toolchain_execution: summary.toolchain_execution,
+      deterministic_replay: summary.deterministic_replay || vulnerability.deterministic_replay,
+      report_integrity_chain: summary.report_integrity_chain || vulnerability.report_integrity_chain,
+    },
+    verification: {
+      active_poc: summary.active_poc,
+      fix_verification: summary.fix_verification,
+    },
+    summary_metrics: {
+      total_findings: Number(summary.total_findings || findings.length || 0),
+      raw_findings_total: Number(summary.raw_findings_total || findings.length || 0),
+      deduplicated_findings: Number(summary.total_findings || findings.length || 0),
+      duplicate_findings_removed: Number(summary.duplicate_findings_removed || 0),
+      open_findings: Number(summary.open_findings || 0),
+      reviewed_findings: Number(summary.reviewed_findings || 0),
+      files_scanned: Number(executive.files_scanned || 0),
+      files_impacted: Number(summary.files_impacted || executive.total_files_impacted || 0),
+      severity_distribution: severityDistribution,
+      risk_score: Number(summary.risk_score || executive.risk_score || 0),
+      risk_rating: String(summary.risk_rating || executive.risk_rating || "Unknown"),
+      top_vulnerability_types: cloneStructured(summary.top_vulnerability_types || executive.top_vulnerability_types || []),
+      top_owasp_categories: cloneStructured(summary.top_owasp_categories || executive.top_owasp_categories || []),
+      affected_modules: cloneStructured(summary.affected_modules || executive.affected_modules || []),
+    },
+  };
+}
+
+export function projectScanView(scan: ScanView, requestedRole?: UserRole): ScanView {
+  const role = normalizeUserRole(requestedRole || scan.role || scan.report.executive_summary.scan_role);
+  const canonical =
+    scan.canonicalScan ||
+    buildCanonicalScanObject({
+      scanId: scan.scanId,
+      projectPath: scan.projectPath,
+      requestedRole: scan.role,
+      scanPreset: scan.report.executive_summary.scan_preset || "standard",
+      startedAt: scan.startedAt,
+      completedAt: scan.completedAt,
+      report: scan.report,
+    });
+  const projection = buildProjectionMetadata(canonical, role);
+  const report = projectReport(scan.report, canonical, projection);
+
+  return {
+    ...scan,
+    role,
+    canonicalScan: canonical,
+    projection,
+    report,
+  };
+}
+
+function projectReport(report: UniversalScanReport, canonical: CanonicalScanObject, projection: RoleProjectionMetadata): UniversalScanReport {
+  const projected = cloneStructured(report);
+  const role = projection.role;
+  const summary = projected.vulnerability_fixed_code_report.summary;
+  const executive = projected.executive_summary;
+  const roleAware = {
+    ...(projected.role_aware_report || projected.vulnerability_fixed_code_report.role_aware_report || {}),
+    metadata: {
+      ...((projected.role_aware_report || projected.vulnerability_fixed_code_report.role_aware_report || {}).metadata || {}),
+      scan_role: role,
+      projection_role: role,
+      canonical_scan_id: canonical.scan_id,
+      canonical_schema_version: canonical.schema_version,
+      allowed_sections: projection.allowed_sections,
+      redacted_fields: projection.redacted_fields,
+      scanner_invoked: false,
+      projection_generated_at: projection.generated_at,
+    },
+  };
+
+  projected.role_aware_report = roleAware;
+  projected.vulnerability_fixed_code_report.role_aware_report = roleAware;
+  projected.executive_summary.scan_role = role;
+  projected.vulnerability_fixed_code_report.scan_role = role;
+  projected.executive_summary.severity_distribution = { ...canonical.severity_distribution };
+  summary.severity_distribution = { ...canonical.severity_distribution };
+  projected.executive_summary.total_vulnerabilities = canonical.summary_metrics.total_findings;
+  projected.executive_summary.deduplicated_vulnerabilities = canonical.summary_metrics.deduplicated_findings;
+  projected.executive_summary.duplicate_findings_removed = canonical.summary_metrics.duplicate_findings_removed;
+  summary.total_findings = canonical.summary_metrics.deduplicated_findings;
+  summary.raw_findings_total = canonical.summary_metrics.raw_findings_total;
+  summary.duplicate_findings_removed = canonical.summary_metrics.duplicate_findings_removed;
+  summary.risk_score = canonical.summary_metrics.risk_score;
+  summary.risk_rating = canonical.summary_metrics.risk_rating;
+
+  if (role === "Management") {
+    applyManagementProjection(projected, canonical);
+  } else if (role === "Auditor") {
+    projected.vulnerability_fixed_code_report.findings = projected.vulnerability_fixed_code_report.findings.map(redactFindingForAudit);
+  }
+
+  return projected;
+}
+
+function buildProjectionMetadata(canonical: CanonicalScanObject, role: UserRole): RoleProjectionMetadata {
+  const rules = ROLE_SECTION_RULES[role] || ROLE_SECTION_RULES["Security Analyst"];
+  return {
+    role,
+    source_scan_id: canonical.scan_id,
+    source_schema_version: canonical.schema_version,
+    generated_at: new Date().toISOString(),
+    visibility: rules.visibility,
+    allowed_sections: rules.sections,
+    redacted_fields: rules.redacted,
+    scanner_invoked: false,
+  };
+}
+
+function applyManagementProjection(report: UniversalScanReport, canonical: CanonicalScanObject): void {
+  const executive = report.executive_summary;
+  const summary = report.vulnerability_fixed_code_report.summary;
+  const existingManagement = (executive.management_summary || {}) as NonNullable<typeof executive.management_summary>;
+  const managementSeverity = normalizeSeverityDistribution(
+    existingManagement.severity_distribution_raw || existingManagement.severity_distribution,
+    canonical.severity_distribution,
+  );
+
+  executive.management_summary = {
+    ...existingManagement,
+    total_findings: canonical.summary_metrics.total_findings,
+    deduplicated_vulnerabilities: canonical.summary_metrics.deduplicated_findings,
+    active_risk_findings: (managementSeverity.Critical || 0) + (managementSeverity.High || 0),
+    severity_distribution: managementSeverity,
+    severity_distribution_raw: managementSeverity,
+    top_vulnerability_types: existingManagement.top_vulnerability_types || canonical.summary_metrics.top_vulnerability_types,
+    top_owasp_categories: existingManagement.top_owasp_categories || canonical.summary_metrics.top_owasp_categories,
+    affected_modules: existingManagement.affected_modules || canonical.summary_metrics.affected_modules,
+    severity_breakdown_groups: existingManagement.severity_breakdown_groups || [],
+    risk_score: canonical.summary_metrics.risk_score,
+    risk_rating: canonical.summary_metrics.risk_rating,
+  };
+  executive.severity_distribution = managementSeverity;
+  executive.total_vulnerabilities = canonical.summary_metrics.total_findings;
+  executive.deduplicated_vulnerabilities = canonical.summary_metrics.deduplicated_findings;
+  summary.severity_distribution = managementSeverity;
+  summary.total_findings = canonical.summary_metrics.deduplicated_findings;
+  summary.open_findings = 0;
+  summary.reviewed_findings = canonical.summary_metrics.deduplicated_findings;
+  report.vulnerability_fixed_code_report.findings = [];
+  report.vulnerability_fixed_code_report.auto_fix_recommendations = [];
+}
+
+function redactFindingForAudit(finding: VulnerabilityFinding): VulnerabilityFinding {
+  return {
+    ...finding,
+    original_code: "",
+    fixed_code: "",
+    ai_suggested_fix: undefined,
+    patch_preview: "",
+    proof_of_concept: undefined,
+    proof_of_concept_template: undefined,
+    active_poc: finding.active_poc
+      ? {
+          ...finding.active_poc,
+          command: finding.active_poc.command ? "[redacted]" : undefined,
+          output: finding.active_poc.output ? "[redacted]" : undefined,
+        }
+      : undefined,
+    fix_verification: finding.fix_verification
+      ? {
+          ...finding.fix_verification,
+          post_fix_execution: finding.fix_verification.post_fix_execution
+            ? { ...finding.fix_verification.post_fix_execution, command: "[redacted]", output: "[redacted]" }
+            : undefined,
+          build_verification: finding.fix_verification.build_verification
+            ? { ...finding.fix_verification.build_verification, command: "[redacted]", output: "[redacted]" }
+            : undefined,
+          test_verification: finding.fix_verification.test_verification
+            ? { ...finding.fix_verification.test_verification, command: "[redacted]", output: "[redacted]" }
+            : undefined,
+        }
+      : undefined,
+  };
+}
+
+function buildTaxonomyCounts(findings: VulnerabilityFinding[]): CanonicalScanObject["cwe_owasp_cve_data"] {
+  const cwe: Record<string, number> = {};
+  const owasp: Record<string, number> = {};
+  const cve: Record<string, number> = {};
+  const advisory: Record<string, number> = {};
+  for (const finding of findings) {
+    increment(cwe, finding.cwe_id);
+    increment(owasp, finding.owasp_mapping);
+    for (const item of finding.cve_ids || []) {
+      increment(cve, item);
+    }
+    for (const item of finding.advisory_ids || []) {
+      increment(advisory, item);
+    }
+  }
+  return { cwe, owasp, cve, advisory };
+}
+
+function summarizeSeverity(findings: VulnerabilityFinding[]): Record<string, number> {
+  const summary = emptySeverityDistribution();
+  for (const finding of findings) {
+    const severity = SEVERITIES.includes(finding.severity) ? finding.severity : "Info";
+    summary[severity] += 1;
+  }
+  return summary;
+}
+
+function normalizeSeverityDistribution(input: unknown, fallback?: Record<string, number>): Record<string, number> {
+  const result = emptySeverityDistribution();
+  const source = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : fallback || {};
+  for (const severity of SEVERITIES) {
+    result[severity] = Number(source?.[severity] || fallback?.[severity] || 0);
+  }
+  return result;
+}
+
+function emptySeverityDistribution(): Record<string, number> {
+  return { Critical: 0, High: 0, Medium: 0, Low: 0, Info: 0 };
+}
+
+function increment(target: Record<string, number>, key: unknown): void {
+  const normalized = String(key || "").trim();
+  if (!normalized || normalized === "N/A") {
+    return;
+  }
+  target[normalized] = (target[normalized] || 0) + 1;
+}
+
+function cloneStructured<T>(payload: T): T {
+  return JSON.parse(JSON.stringify(payload)) as T;
+}

@@ -42,6 +42,66 @@ export interface ExportRequest {
   reportStyle?: "classic" | "modern";
 }
 
+export interface CanonicalScanSummary {
+  total_findings: number;
+  raw_findings_total: number;
+  deduplicated_findings: number;
+  duplicate_findings_removed: number;
+  open_findings: number;
+  reviewed_findings: number;
+  files_scanned: number;
+  files_impacted: number;
+  severity_distribution: Record<string, number>;
+  risk_score: number;
+  risk_rating: string;
+  top_vulnerability_types: Array<{ type: string; count: number }>;
+  top_owasp_categories: Array<{ owasp_category: string; count: number }>;
+  affected_modules: Array<{ module: string; count: number; critical: number; high: number }>;
+}
+
+export interface CanonicalScanObject {
+  schema_version: "codesentinelx.canonical_scan.v1";
+  scan_id: string;
+  target_path: string;
+  target_type: "file" | "folder" | "unknown";
+  requested_role: UserRole;
+  execution_role: UserRole;
+  scan_preset: ScanPreset;
+  started_at: string;
+  completed_at: string;
+  tool_execution_status: Record<string, ToolchainStatusEntry>;
+  raw_findings: VulnerabilityFinding[];
+  deduplicated_findings: VulnerabilityFinding[];
+  severity_distribution: Record<string, number>;
+  cwe_owasp_cve_data: {
+    cwe: Record<string, number>;
+    owasp: Record<string, number>;
+    cve: Record<string, number>;
+    advisory: Record<string, number>;
+  };
+  evidence: {
+    toolchain_execution?: ToolchainExecutionSummary;
+    deterministic_replay?: DeterministicReplaySummary;
+    report_integrity_chain?: ReportIntegrityChain;
+  };
+  verification: {
+    active_poc?: VulnerabilityFixedCodeReport["summary"]["active_poc"];
+    fix_verification?: VulnerabilityFixedCodeReport["summary"]["fix_verification"];
+  };
+  summary_metrics: CanonicalScanSummary;
+}
+
+export interface RoleProjectionMetadata {
+  role: UserRole;
+  source_scan_id: string;
+  source_schema_version: CanonicalScanObject["schema_version"];
+  generated_at: string;
+  visibility: "full" | "security" | "developer" | "redacted" | "summary";
+  allowed_sections: string[];
+  redacted_fields: string[];
+  scanner_invoked: false;
+}
+
 export interface ExistingControl {
   control_id: string;
   name: string;
@@ -626,6 +686,8 @@ export interface ScanRecord {
   role: UserRole;
   startedAt: string;
   completedAt: string;
+  canonicalScan?: CanonicalScanObject;
+  projectionCache?: Partial<Record<UserRole, RoleProjectionMetadata>>;
   report: UniversalScanReport;
   findingStates: Record<string, FindingReviewState>;
 }
@@ -671,6 +733,8 @@ export interface ScanView {
   role: UserRole;
   startedAt: string;
   completedAt: string;
+  canonicalScan?: CanonicalScanObject;
+  projection?: RoleProjectionMetadata;
   report: UniversalScanReport;
 }
 
