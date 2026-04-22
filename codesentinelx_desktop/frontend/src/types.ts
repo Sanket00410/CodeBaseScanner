@@ -581,6 +581,9 @@ export interface ScanView {
     source_schema_version: string;
     generated_at: string;
     visibility: string;
+    projection_reason: string;
+    inclusion_policy: string;
+    redaction_policy: string;
     allowed_sections: string[];
     redacted_fields: string[];
     scanner_invoked: false;

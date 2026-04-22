@@ -143,17 +143,37 @@ function report() {
   const management = store.getScanView("scan-1", "Management");
   assert.equal(management.role, "Management");
   assert.equal(management.projection.scanner_invoked, false);
+  assert.match(management.projection.projection_reason, /canonical scan scan-1/);
+  assert.match(management.projection.inclusion_policy, /executive counts/);
+  assert.match(management.projection.redaction_policy, /hides raw finding rows/);
+  assert.equal(management.report.role_aware_report.metadata.scanner_invoked, false);
+  assert.match(management.report.role_aware_report.metadata.inclusion_policy, /executive counts/);
   assert.equal(management.report.vulnerability_fixed_code_report.findings.length, 0);
   assert.equal(management.report.executive_summary.severity_distribution.Critical, 1);
   assert.equal(management.report.executive_summary.severity_distribution.High, 1);
 
+  const admin = store.getScanView("scan-1", "Admin");
+  assert.equal(admin.role, "Admin");
+  assert.equal(admin.projection.visibility, "full");
+  assert.deepEqual(admin.projection.allowed_sections, ["all"]);
+  assert.equal(admin.report.vulnerability_fixed_code_report.findings.length, 2);
+
+  const securityAnalyst = store.getScanView("scan-1", "Security Analyst");
+  assert.equal(securityAnalyst.role, "Security Analyst");
+  assert.equal(securityAnalyst.projection.visibility, "security");
+  assert.equal(securityAnalyst.report.vulnerability_fixed_code_report.findings.length, 2);
+
   const developer = store.getScanView("scan-1", "Developer");
   assert.equal(developer.role, "Developer");
+  assert.equal(developer.projection.visibility, "developer");
+  assert.match(developer.projection.inclusion_policy, /fix-oriented/);
   assert.equal(developer.report.vulnerability_fixed_code_report.findings.length, 2);
   assert.equal(developer.report.executive_summary.severity_distribution.Critical, 1);
 
   const auditor = store.getScanView("scan-1", "Auditor");
   assert.equal(auditor.role, "Auditor");
+  assert.equal(auditor.projection.visibility, "redacted");
+  assert.match(auditor.projection.redaction_policy, /redacts source code/);
   assert.equal(auditor.report.vulnerability_fixed_code_report.findings[0].original_code, "");
   assert.equal(auditor.report.vulnerability_fixed_code_report.findings[0].patch_preview, "");
 

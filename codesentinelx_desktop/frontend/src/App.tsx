@@ -4141,9 +4141,24 @@ export default function App(): React.JSX.Element {
             </ul>
 
             {scan && (
-              <p className="status-success">
-                One canonical scan is loaded. Switching roles changes this projection only and does not rerun analyzers.
-              </p>
+              <div className="projection-audit-card">
+                <p className="status-success">
+                  One canonical scan is loaded. Switching roles changes this projection only and does not rerun analyzers.
+                </p>
+                {scan.projection && (
+                  <>
+                    <p>
+                      <strong>Projection:</strong> {scan.projection.visibility} | {scan.projection.projection_reason}
+                    </p>
+                    <p>
+                      <strong>Included:</strong> {scan.projection.inclusion_policy}
+                    </p>
+                    <p>
+                      <strong>Redaction:</strong> {scan.projection.redaction_policy}
+                    </p>
+                  </>
+                )}
+              </div>
             )}
 
             {selectedRoleExport.reportType === "vulnerability" && (

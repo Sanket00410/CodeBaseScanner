@@ -12,31 +12,50 @@ import {
 
 const SEVERITIES: Severity[] = ["Critical", "High", "Medium", "Low", "Info"];
 
-const ROLE_SECTION_RULES: Record<UserRole, { visibility: RoleProjectionMetadata["visibility"]; sections: string[]; redacted: string[] }> = {
+const ROLE_SECTION_RULES: Record<
+  UserRole,
+  {
+    visibility: RoleProjectionMetadata["visibility"];
+    sections: string[];
+    redacted: string[];
+    inclusionPolicy: string;
+    redactionPolicy: string;
+  }
+> = {
   Admin: {
     visibility: "full",
     sections: ["all"],
     redacted: [],
+    inclusionPolicy: "Admin projection includes the complete canonical scan for full-scope operational review.",
+    redactionPolicy: "No presentation redaction is applied for Admin.",
   },
   "Security Analyst": {
     visibility: "security",
     sections: ["ciso_security_view", "risk_story_mode", "advanced_features", "enterprise_assurance", "false_positive_report", "data_quality", "tool_evidence"],
     redacted: [],
+    inclusionPolicy: "Security Analyst projection includes broad security triage, evidence, prioritization, and validation context from the canonical scan.",
+    redactionPolicy: "No presentation redaction is applied for Security Analyst.",
   },
   Developer: {
     visibility: "developer",
     sections: ["developer_devops_view", "risk_story_mode", "advanced_features", "fix_verification", "active_poc", "deterministic_replay"],
     redacted: [],
+    inclusionPolicy: "Developer projection includes fix-oriented issue detail, file/line evidence, verification context, and remediation guidance from the canonical scan.",
+    redactionPolicy: "No presentation redaction is applied for Developer remediation scope.",
   },
   Auditor: {
     visibility: "redacted",
     sections: ["enterprise_assurance", "false_positive_report", "data_quality", "deterministic_replay", "report_integrity_chain"],
     redacted: ["original_code", "fixed_code", "patch_preview", "proof_of_concept", "active_poc.output", "fix_verification.outputs"],
+    inclusionPolicy: "Auditor projection includes traceable assurance, control, data-quality, replay, and integrity evidence from the canonical scan.",
+    redactionPolicy: "Auditor projection redacts source code, patch content, proof-of-concept material, and command outputs while preserving traceability.",
   },
   Management: {
     visibility: "summary",
     sections: ["cto_board_view", "risk_story_mode", "enterprise_assurance", "management_summary", "severity_breakdown_groups"],
     redacted: ["findings", "raw_evidence", "source_code", "proof_of_concept", "tool_stdout", "tool_stderr"],
+    inclusionPolicy: "Management projection includes executive counts, severity distribution, top issue types, OWASP categories, modules, and risk charts from the canonical scan.",
+    redactionPolicy: "Management projection hides raw finding rows and technical evidence while preserving aggregate risk and drill-down group counts.",
   },
 };
 
@@ -170,6 +189,9 @@ function projectReport(report: UniversalScanReport, canonical: CanonicalScanObje
       canonical_schema_version: canonical.schema_version,
       allowed_sections: projection.allowed_sections,
       redacted_fields: projection.redacted_fields,
+      projection_reason: projection.projection_reason,
+      inclusion_policy: projection.inclusion_policy,
+      redaction_policy: projection.redaction_policy,
       scanner_invoked: false,
       projection_generated_at: projection.generated_at,
     },
@@ -207,6 +229,9 @@ function buildProjectionMetadata(canonical: CanonicalScanObject, role: UserRole)
     source_schema_version: canonical.schema_version,
     generated_at: new Date().toISOString(),
     visibility: rules.visibility,
+    projection_reason: `Role projection derived from canonical scan ${canonical.scan_id}; scanner was not invoked.`,
+    inclusion_policy: rules.inclusionPolicy,
+    redaction_policy: rules.redactionPolicy,
     allowed_sections: rules.sections,
     redacted_fields: rules.redacted,
     scanner_invoked: false,

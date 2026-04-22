@@ -97,6 +97,9 @@ export interface RoleProjectionMetadata {
   source_schema_version: CanonicalScanObject["schema_version"];
   generated_at: string;
   visibility: "full" | "security" | "developer" | "redacted" | "summary";
+  projection_reason: string;
+  inclusion_policy: string;
+  redaction_policy: string;
   allowed_sections: string[];
   redacted_fields: string[];
   scanner_invoked: false;

@@ -1518,6 +1518,26 @@ select optgroup {
   font-size: 12px;
 }
 
+.projection-audit-card {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid rgba(141, 235, 192, 0.24);
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(24, 92, 70, 0.18), rgba(9, 22, 37, 0.62));
+}
+
+.projection-audit-card p {
+  margin: 0;
+  color: #c9e2f4;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.projection-audit-card strong {
+  color: #e8f7ff;
+}
+
 .role-export-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

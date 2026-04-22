@@ -844,6 +844,9 @@ function normalizeProjectionCache(input: unknown): Partial<Record<UserRole, Role
         entry.visibility === "summary"
           ? entry.visibility
           : "security",
+      projection_reason: asString(entry.projection_reason, `Role projection derived from canonical scan ${asString(entry.source_scan_id, "")}; scanner was not invoked.`),
+      inclusion_policy: asString(entry.inclusion_policy, "Projection includes fields permitted by the selected role policy."),
+      redaction_policy: asString(entry.redaction_policy, "Projection redaction is controlled by the selected role policy."),
       allowed_sections: asArray(entry.allowed_sections).map((item) => asString(item)).filter(Boolean),
       redacted_fields: asArray(entry.redacted_fields).map((item) => asString(item)).filter(Boolean),
       scanner_invoked: false,
