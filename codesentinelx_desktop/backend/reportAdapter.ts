@@ -99,6 +99,8 @@ export function toHistoryItem(record: ScanRecord): ScanHistoryItem {
     projectPath: record.projectPath,
     startedAt: record.startedAt,
     completedAt: record.completedAt,
+    canonicalScanAvailable: Boolean(record.canonicalScan),
+    roleViewsAvailable: ["Admin", "Security Analyst", "Developer", "Auditor", "Management"],
     risk: record.report.executive_summary.risk_rating,
     riskScore: record.report.executive_summary.risk_score,
     totalFindings: summary.total_findings,

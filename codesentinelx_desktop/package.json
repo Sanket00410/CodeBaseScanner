@@ -14,7 +14,8 @@
     "build": "npm run build:renderer && npm run build:main && electron-builder",
     "build:renderer": "vite build --config frontend/vite.config.ts",
     "build:main": "node scripts/clean-dir.cjs dist-main && tsc -p tsconfig.main.json",
-    "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p frontend/tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p frontend/tsconfig.json --noEmit",
+    "test:projection": "node scripts/test-role-projection.cjs"
   },
   "dependencies": {
     "electron-log": "^5.2.4",

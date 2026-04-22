@@ -1698,8 +1698,8 @@ export default function App(): React.JSX.Element {
     }
   };
 
-  const openScan = async (scanId: string): Promise<void> => {
-    const result = await window.codeSentinelX.getScanById(scanId, role);
+  const openScan = async (scanId: string, projectionRole: UserRole = role): Promise<void> => {
+    const result = await window.codeSentinelX.getScanById(scanId, projectionRole);
     if (!result) {
       setStatusText(`Scan ${scanId} not found.`);
       return;
@@ -3396,6 +3396,7 @@ export default function App(): React.JSX.Element {
                     <th>Reviewed</th>
                     <th>Suppressed</th>
                     <th>Top Module</th>
+                    <th>Role Views</th>
                     <th>Action</th>
                   </tr>
                 </thead>
@@ -3410,6 +3411,23 @@ export default function App(): React.JSX.Element {
                       <td>{item.suppressedCount || 0}</td>
                       <td>{item.topModule || "-"}</td>
                       <td>
+                        <div className="role-chip-row" title="One stored scan can be opened as any role projection without rescanning.">
+                          {(item.roleViewsAvailable || ROLES).map((availableRole) => (
+                            <button
+                              key={`${item.scanId}-${availableRole}`}
+                              type="button"
+                              className={availableRole === role ? "role-chip active" : "role-chip"}
+                              onClick={() => {
+                                setRole(availableRole);
+                                void openScan(item.scanId, availableRole);
+                              }}
+                            >
+                              {availableRole}
+                            </button>
+                          ))}
+                        </div>
+                      </td>
+                      <td>
                         <button type="button" onClick={() => openScan(item.scanId)}>
                           Open
                         </button>
@@ -3418,7 +3436,7 @@ export default function App(): React.JSX.Element {
                   ))}
                   {history.length === 0 && (
                     <tr>
-                      <td colSpan={8}>No scan history yet.</td>
+                      <td colSpan={9}>No scan history yet.</td>
                     </tr>
                   )}
                 </tbody>
@@ -4202,7 +4220,8 @@ export default function App(): React.JSX.Element {
               value={scanPreset}
               aria-label="Canonical scan preset"
               title={`Canonical one-scan preset: ${SCAN_PRESETS.find((item) => item.key === scanPreset)?.helper || "Scan preset"}`}
-              disabled
+              onChange={(event) => setScanPreset(event.target.value as ScanPreset)}
+              disabled={isScanning}
             >
               {SCAN_PRESETS.map((item) => (
                 <option key={item.key} value={item.key}>

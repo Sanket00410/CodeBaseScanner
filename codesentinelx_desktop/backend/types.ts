@@ -697,6 +697,8 @@ export interface ScanHistoryItem {
   projectPath: string;
   startedAt: string;
   completedAt: string;
+  canonicalScanAvailable?: boolean;
+  roleViewsAvailable?: UserRole[];
   risk: string;
   riskScore?: number;
   totalFindings: number;
