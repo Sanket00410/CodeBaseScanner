@@ -208,6 +208,18 @@ function reportWithZeroedSummaries() {
   assert.equal(auditor.report.vulnerability_fixed_code_report.findings[0].original_code, "");
   assert.equal(auditor.report.vulnerability_fixed_code_report.findings[0].patch_preview, "");
 
+  const roleViews = ["Admin", "Security Analyst", "Developer", "Auditor", "Management"].map((projectionRole) =>
+    store.getScanView("scan-1", projectionRole),
+  );
+  assert.equal(store.listHistory().length, 1);
+  for (const roleView of roleViews) {
+    assert.equal(roleView.scanId, "scan-1");
+    assert.equal(roleView.canonicalScan.scan_id, "scan-1");
+    assert.equal(roleView.projection.source_scan_id, "scan-1");
+    assert.equal(roleView.projection.scanner_invoked, false);
+    assert.match(roleView.projection.projection_reason, /scanner was not invoked/);
+  }
+
   const rawStoredScan = store.getScanView("scan-1");
   const exportService = new ExportService(exportDir);
   const adminHtml = exportService.renderReportHtml(rawStoredScan, "combined", undefined, "Admin");
