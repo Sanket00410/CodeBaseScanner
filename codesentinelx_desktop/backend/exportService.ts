@@ -1930,6 +1930,7 @@ function writeExistingPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     `Generated: ${exportedAt}`,
     `Profile: ${profileCompliance?.scan_profile_label || "Codebase"}`,
   ]);
+  writeProjectionPdfSection(doc, scan);
   writePdfMetricStrip(doc, [
     { label: "Implemented Controls", value: String(summary.implemented_controls || 0), tone: "accent" },
     { label: "Security Domains", value: String(Object.keys(summary.category_distribution || {}).length), tone: "low" },
@@ -2167,6 +2168,7 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     `Generated: ${exportedAt}`,
     `Risk Score: ${report.summary.risk_score} (${report.summary.risk_rating})`,
   ]);
+  writeProjectionPdfSection(doc, scan);
   writePdfMetricStrip(doc, [
     { label: "Total Issues", value: String(findings.length), tone: "accent" },
     { label: "Critical", value: String(severityDistribution.Critical || 0), tone: "critical" },
@@ -2612,6 +2614,7 @@ function writeFixesPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     `Generated: ${exportedAt}`,
     `Total Findings: ${findings.length}`,
   ]);
+  writeProjectionPdfSection(doc, scan);
   const fixVerificationSummary = normalizedFixVerificationSummary(report.summary.fix_verification, findings);
   writePdfMetricStrip(doc, [
     { label: "Verified Fixed", value: String(fixVerificationSummary.verified_fixed), tone: "info" },
@@ -2893,6 +2896,7 @@ function writeCombinedPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     `Generated: ${formatDisplayTimestamp(resolveReportGeneratedAt(scan, "combined"))}`,
     `Role: ${reportRole}`,
   ]);
+  writeProjectionPdfSection(doc, scan);
   const summaryFindingCount = Number(
     (managementSummary as Record<string, unknown> | null)?.deduplicated_vulnerabilities ||
       (managementSummary as Record<string, unknown> | null)?.total_findings ||
@@ -3001,6 +3005,7 @@ function writeFindingDetailsPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     `Generated: ${formatDisplayTimestamp(resolveReportGeneratedAt(scan, "finding_details"))}`,
     `Total Findings: ${findings.length}`,
   ]);
+  writeProjectionPdfSection(doc, scan);
   writePdfSectionHeader(doc, "Issue Details");
 
   for (const finding of findings.slice(0, 320)) {
@@ -3092,6 +3097,26 @@ function writePdfHero(doc: PDFKit.PDFDocument, title: string, meta: string[]): v
   doc.restore();
   doc.fillColor("#dce9f7");
   doc.y = y + height + 10;
+}
+
+function writeProjectionPdfSection(doc: PDFKit.PDFDocument, scan: ScanView): void {
+  const projection = scan.projection;
+  if (!projection) {
+    return;
+  }
+  writePdfSectionHeader(doc, "Role Projection");
+  writePdfKeyValueTable(
+    doc,
+    [
+      { key: "Role", value: projection.role },
+      { key: "Visibility", value: projection.visibility },
+      { key: "Source Scan", value: projection.source_scan_id || scan.scanId },
+      { key: "Scanner Invoked", value: projection.scanner_invoked === false ? "No - rendered from canonical scan" : "Unknown" },
+      { key: "Included Data", value: projection.inclusion_policy },
+      { key: "Redaction", value: projection.redaction_policy },
+    ],
+    { keyWidthRatio: 0.32, rowHeight: 22 },
+  );
 }
 
 function writePdfSectionHeader(doc: PDFKit.PDFDocument, title: string): void {
