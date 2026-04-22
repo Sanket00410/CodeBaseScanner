@@ -179,8 +179,15 @@ function report() {
 
   const rawStoredScan = store.getScanView("scan-1");
   const exportService = new ExportService(exportDir);
+  const adminHtml = exportService.renderReportHtml(rawStoredScan, "combined", undefined, "Admin");
+  assert.match(adminHtml, /Role Projection/);
+  assert.match(adminHtml, /Admin projection includes the complete canonical scan/);
+  assert.match(adminHtml, /Top Prioritized Issues/);
+
   const managementHtml = exportService.renderReportHtml(rawStoredScan, "combined", undefined, "Management");
   assert.match(managementHtml, /Management Snapshot/);
+  assert.match(managementHtml, /Role Projection/);
+  assert.match(managementHtml, /Management projection includes executive counts/);
   assert.match(managementHtml, /Critical:\s*1/);
   assert.doesNotMatch(managementHtml, /secret = true/);
 

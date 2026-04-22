@@ -5872,6 +5872,25 @@ function renderCombinedHtml(scan: ScanView): string {
     }
     return `<tr><td>${escapeHtml(severity)}</td><td align="center">${count}</td></tr>`;
   }).join("");
+  const combinedGroupedAll = groupByAlertTitle(findings);
+  const combinedGrouped = combinedGroupedAll.slice(0, 120);
+  const combinedAlertAnchorByGroup = new Map(
+    combinedGroupedAll.map((group) => [group.id, stableAnchorId("combined-alert", group.id)]),
+  );
+  const combinedAlertInstanceAnchorByGroup = new Map(
+    combinedGroupedAll.map((group) => {
+      const lead = group.findings[0];
+      const leadAny = lead as unknown as Record<string, unknown> | undefined;
+      return [
+        group.id,
+        String(
+          leadAny?.alert_group_anchor ||
+            leadAny?.alert_title_group_anchor ||
+            stableAnchorId("combined-alert-instance", `${group.id}::${String(lead?.finding_uid || `${lead?.file_path || ""}:${lead?.line_number || 1}`)}`),
+        ),
+      ];
+    }),
+  );
   const topRiskRows = rankedFindings(findings, 30)
     .map((finding, index) => {
       const uid = escapeHtml(String(finding.finding_uid || `${index + 1}`));
@@ -5897,25 +5916,6 @@ function renderCombinedHtml(scan: ScanView): string {
       </tr>`;
     })
     .join("");
-  const combinedGroupedAll = groupByAlertTitle(findings);
-  const combinedGrouped = combinedGroupedAll.slice(0, 120);
-  const combinedAlertAnchorByGroup = new Map(
-    combinedGroupedAll.map((group) => [group.id, stableAnchorId("combined-alert", group.id)]),
-  );
-  const combinedAlertInstanceAnchorByGroup = new Map(
-    combinedGroupedAll.map((group) => {
-      const lead = group.findings[0];
-      const leadAny = lead as unknown as Record<string, unknown> | undefined;
-      return [
-        group.id,
-        String(
-          leadAny?.alert_group_anchor ||
-            leadAny?.alert_title_group_anchor ||
-            stableAnchorId("combined-alert-instance", `${group.id}::${String(lead?.finding_uid || `${lead?.file_path || ""}:${lead?.line_number || 1}`)}`),
-        ),
-      ];
-    }),
-  );
   const combinedAlertRows = combinedGrouped
     .map(
       (group) => `<tr>
@@ -6047,6 +6047,20 @@ function renderCombinedHtml(scan: ScanView): string {
     </div>
   </details>`
       : "";
+  const projectionMetadata = scan.projection || {
+    visibility: "security",
+    projection_reason: "Projection metadata unavailable for this legacy report view.",
+    inclusion_policy: "Report uses the loaded scan view.",
+    redaction_policy: "Report uses the loaded scan view.",
+  };
+  const projectionAuditSection = `<section class="section">
+    <div class="callout">
+      <strong>Role Projection:</strong> ${escapeHtml(String(projectionMetadata.visibility || ""))}<br>
+      <strong>Source:</strong> ${escapeHtml(String(projectionMetadata.projection_reason || ""))}<br>
+      <strong>Included:</strong> ${escapeHtml(String(projectionMetadata.inclusion_policy || ""))}<br>
+      <strong>Redaction:</strong> ${escapeHtml(String(projectionMetadata.redaction_policy || ""))}
+    </div>
+  </section>`;
   const cards = renderStatGrid([
     {
       label: "Total Issues",
@@ -6347,6 +6361,8 @@ function renderCombinedHtml(scan: ScanView): string {
         Combined export now includes executive metrics, prioritized risks, analyzer execution evidence, and quality signals in one report.
       </div>
     </section>
+
+    ${projectionAuditSection}
 
     ${managementChartSection}
 
