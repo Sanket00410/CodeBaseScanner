@@ -3,7 +3,7 @@
 This guide is written for the actual CodeSentinelX UI.
 
 Use the references below while reading:
-- Top bar: `Codebase Folder`, `Browse`, `Run Scan`, scan preset, role selector, `Pause`, `Resume`, `Stop`
+- Top bar: `Codebase File or Folder`, `Browse`, `Run Canonical Scan`, scan preset, role selector, `Pause`, `Resume`, `Stop`
 - Main tabs: `Code Findings`, `Secure Coding Controls`, `Code Risk Overview`, `Analyzer Catalog`, `Help`
 - History area: `Scan History`, `Reports History`, `Audit Logs`
 - Report actions: `Open`, `Export`, `Download`, `Select All`, `Delete Selected`, `Delete All`
@@ -27,7 +27,7 @@ Use the references below while reading:
 2. In the top bar, click `Browse` and select the repository root folder.
 3. Choose the role you want to use from the role selector.
 4. Choose a scan preset such as `Fast`, `Standard`, or `Deep`.
-5. Click `Run Scan`, wait for the status to complete, and then open the role-relevant report section from the left sidebar.
+5. Click `Run Canonical Scan`, wait for the status to complete, and then open the role-relevant report section from the left sidebar. Role changes reuse the same stored scan and redraw the report projection; they do not rerun analyzers.
 
 ## 2. Core Concepts
 
@@ -59,7 +59,7 @@ Use the references below while reading:
 2. Use `Browse` in the top bar to select the target codebase folder.
 3. Pick the role that matches the report you want to generate.
 4. Pick the preset that matches how long you can wait.
-5. Click `Run Scan`.
+5. Click `Run Canonical Scan`.
 6. Watch the progress/status area until the scan completes.
 7. Open `Code Findings` or the matching report area from the left sidebar.
 8. If you need the history later, open `Scan History` or `Reports History`.

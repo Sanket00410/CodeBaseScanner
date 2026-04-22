@@ -85,7 +85,7 @@ Build is native-only and does not package app-managed external tool caches or se
 ## 8. Run a Scan
 
 1. Enter target.
-2. Click `Run Scan`.
+2. Click `Run Canonical Scan`.
 3. Watch live progress:
    - Header progress bar
    - Sidebar progress bar
@@ -306,7 +306,7 @@ Use these when customizing deployment paths and scanner behavior.
 1. Launch app.
 2. Set role to `Security Analyst`.
 3. Enter a local codebase folder path.
-4. Click `Run Scan`.
+4. Click `Run Canonical Scan`.
 5. Review secure coding findings and export HTML/PDF.
 
 

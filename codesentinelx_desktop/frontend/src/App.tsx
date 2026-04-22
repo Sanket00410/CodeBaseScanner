@@ -1965,7 +1965,7 @@ export default function App(): React.JSX.Element {
     () => ({
       file: [
         { label: "Browse File or Folder", onSelect: browseProject },
-        { label: "Run Scan", disabled: !projectPath.trim() || !roleCaps.canRunScan, onSelect: runScan },
+        { label: "Run Canonical Scan", disabled: !projectPath.trim() || !roleCaps.canRunScan, onSelect: runScan },
         { label: "Open Last Export", disabled: !lastExport, onSelect: openLastExport },
         { label: "Open Export Folder", disabled: !lastExport, onSelect: openLastExportFolder },
       ],
@@ -4231,7 +4231,7 @@ export default function App(): React.JSX.Element {
               disabled={!roleCaps.canRunScan}
               title={!roleCaps.canRunScan ? `Role ${role} cannot start scans.` : ""}
             >
-              {isScanning ? `Run Scan (+${activeScanSessions.filter((item) => item.status === "running" || item.status === "paused").length} live)` : "Run Scan"}
+              {isScanning ? `Canonical Scan (+${activeScanSessions.filter((item) => item.status === "running" || item.status === "paused").length} live)` : "Run Canonical Scan"}
             </button>
             <select
               value={scanPreset}
@@ -4332,7 +4332,7 @@ export default function App(): React.JSX.Element {
             Role Drill-Down ({role}): {roleDrilldownSummary(role)}
           </p>
           <p className="role-hint">
-            This role will show: {ROLE_SCAN_SCOPE[role].join(", ")}. Scan execution runs once, then export scope is projected for this role.
+            This role will show: {ROLE_SCAN_SCOPE[role].join(", ")}. The scanner runs once and stores a canonical scan; role changes only redraw the view/export projection.
           </p>
           <p className="role-hint">Severity policy: {ROLE_SEVERITY_POLICY[role]}</p>
           <p className="role-hint">
