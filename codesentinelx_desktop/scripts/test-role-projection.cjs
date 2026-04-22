@@ -122,6 +122,37 @@ function report() {
   };
 }
 
+function reportWithZeroedSummaries() {
+  const payload = report();
+  const zero = { Critical: 0, High: 0, Medium: 0, Low: 0, Info: 0 };
+  payload.executive_summary.total_vulnerabilities = 0;
+  payload.executive_summary.deduplicated_vulnerabilities = 0;
+  payload.executive_summary.severity_distribution = zero;
+  payload.executive_summary.top_vulnerability_types = [];
+  payload.executive_summary.top_owasp_categories = [];
+  payload.executive_summary.affected_modules = [];
+  payload.executive_summary.management_summary = {
+    total_findings: 0,
+    deduplicated_vulnerabilities: 0,
+    active_risk_findings: 0,
+    severity_distribution: zero,
+    severity_distribution_raw: zero,
+    severity_breakdown_groups: [],
+    risk_score: 0,
+    risk_rating: "Informational",
+  };
+  payload.vulnerability_fixed_code_report.summary.total_findings = 0;
+  payload.vulnerability_fixed_code_report.summary.raw_findings_total = 0;
+  payload.vulnerability_fixed_code_report.summary.severity_distribution = zero;
+  payload.vulnerability_fixed_code_report.summary.top_vulnerability_types = [];
+  payload.vulnerability_fixed_code_report.summary.top_owasp_categories = [];
+  payload.vulnerability_fixed_code_report.summary.affected_modules = [];
+  payload.vulnerability_fixed_code_report.summary.active_risk_findings = 0;
+  payload.vulnerability_fixed_code_report.summary.open_findings = 0;
+  payload.vulnerability_fixed_code_report.summary.reviewed_findings = 0;
+  return payload;
+}
+
 (async () => {
   const store = await ScanStore.create(dbFile);
   await store.addScan({
@@ -262,6 +293,30 @@ function report() {
   const auditorPayload = JSON.parse(fs.readFileSync(auditorJsonPath, "utf-8"));
   assert.equal(auditorPayload.projection_metadata.role, "Auditor");
   assert.match(auditorPayload.projection_metadata.redaction_policy, /redacts source code/);
+
+  await store.addScan({
+    scanId: "scan-2",
+    projectPath: "C:/repo",
+    requestedBy: "test",
+    role: "Management",
+    startedAt: "2026-04-22T00:02:00.000Z",
+    completedAt: "2026-04-22T00:03:00.000Z",
+    report: reportWithZeroedSummaries(),
+    findingStates: {},
+  });
+  const zeroSummaryManagement = store.getScanView("scan-2", "Management");
+  assert.equal(zeroSummaryManagement.report.vulnerability_fixed_code_report.findings.length, 0);
+  assert.equal(zeroSummaryManagement.report.executive_summary.total_vulnerabilities, 2);
+  assert.equal(zeroSummaryManagement.report.executive_summary.severity_distribution.Critical, 1);
+  assert.equal(zeroSummaryManagement.report.executive_summary.severity_distribution.High, 1);
+  assert.equal(zeroSummaryManagement.report.executive_summary.management_summary.severity_breakdown_groups.length, 2);
+
+  const zeroSummaryManagementHtml = exportService.renderReportHtml(store.getScanView("scan-2"), "combined", undefined, "Management");
+  assert.match(zeroSummaryManagementHtml, /Critical:\s*1/);
+  assert.match(zeroSummaryManagementHtml, /High:\s*1/);
+  assert.match(zeroSummaryManagementHtml, /conic-gradient/);
+  assert.match(zeroSummaryManagementHtml, /SQL Injection/);
+  assert.doesNotMatch(zeroSummaryManagementHtml, /secret = true/);
 
   fs.rmSync(tempRoot, { recursive: true, force: true });
 })().catch((error) => {

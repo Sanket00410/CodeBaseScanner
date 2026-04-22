@@ -48,6 +48,7 @@ const MAX_AUTOFIX_RECOMMENDATIONS_AGGRESSIVE = 80;
 const MIN_FINDINGS_AFTER_SHRINK = 100;
 const USER_ROLE_SET = new Set<UserRole>(["Admin", "Security Analyst", "Developer", "Auditor", "Management"]);
 const SEVERITY_SET = new Set<Severity>(["Critical", "High", "Medium", "Low", "Info"]);
+const SEVERITY_VALUES: Severity[] = ["Critical", "High", "Medium", "Low", "Info"];
 
 export class ScanStore {
   private state: PersistedState;
@@ -769,6 +770,38 @@ function syncReportSummary(report: UniversalScanReport): void {
   report.executive_summary.total_files_impacted = filesImpacted;
   report.executive_summary.severity_distribution = { ...severityDistribution };
   report.executive_summary.active_risk_findings = activeRiskFindings;
+  const managementSummary = asRecord(report.executive_summary.management_summary);
+  const existingManagementSeverity = normalizeSeverityDistribution(
+    managementSummary.severity_distribution_raw || managementSummary.severity_distribution,
+    severityDistribution,
+  );
+  const managementSeverity =
+    Object.values(existingManagementSeverity).some((value) => Number(value || 0) > 0)
+      ? existingManagementSeverity
+      : severityDistribution;
+  report.executive_summary.management_summary = {
+    ...managementSummary,
+    total_findings: asNumber(managementSummary.total_findings, totalFindings) || totalFindings,
+    deduplicated_vulnerabilities: asNumber(managementSummary.deduplicated_vulnerabilities, totalFindings) || totalFindings,
+    active_risk_findings:
+      asNumber(managementSummary.active_risk_findings, activeRiskFindings) || activeRiskFindings,
+    severity_distribution: managementSeverity,
+    severity_distribution_raw: managementSeverity,
+    severity_breakdown_groups: asArray(managementSummary.severity_breakdown_groups).length
+      ? asArray(managementSummary.severity_breakdown_groups).map((item) => asRecord(item))
+      : buildSeverityBreakdownGroups(findings),
+    top_vulnerability_types: normalizeTopTypeRows(managementSummary.top_vulnerability_types).length
+      ? normalizeTopTypeRows(managementSummary.top_vulnerability_types)
+      : buildTopVulnerabilityTypeRows(findings),
+    top_owasp_categories: normalizeTopOwaspRows(managementSummary.top_owasp_categories).length
+      ? normalizeTopOwaspRows(managementSummary.top_owasp_categories)
+      : buildTopOwaspRows(findings),
+    affected_modules: normalizeAffectedModuleRows(managementSummary.affected_modules).length
+      ? normalizeAffectedModuleRows(managementSummary.affected_modules)
+      : buildAffectedModuleRows(findings),
+    risk_score: asNumber(managementSummary.risk_score, currentExecSummary.risk_score || 0),
+    risk_rating: asString(managementSummary.risk_rating, currentExecSummary.risk_rating || "Informational"),
+  };
 }
 
 function buildFindingIdentity(finding: VulnerabilityFinding): string {
@@ -892,13 +925,24 @@ function normalizeSeverity(value: unknown): Severity {
 function normalizeSeverityDistribution(input: unknown, fallback?: Record<string, number>): Record<string, number> {
   const source = asRecord(input);
   const base = fallback || { Critical: 0, High: 0, Medium: 0, Low: 0, Info: 0 };
-  return {
+  const normalized = {
     Critical: asNumber(source.Critical, base.Critical || 0),
     High: asNumber(source.High, base.High || 0),
     Medium: asNumber(source.Medium, base.Medium || 0),
     Low: asNumber(source.Low, base.Low || 0),
     Info: asNumber(source.Info, base.Info || 0),
   };
+  const normalizedTotal = Object.values(normalized).reduce((total, value) => total + Number(value || 0), 0);
+  const fallbackTotal = Object.values(base).reduce((total, value) => total + Number(value || 0), 0);
+  return normalizedTotal <= 0 && fallbackTotal > 0
+    ? {
+        Critical: Number(base.Critical || 0),
+        High: Number(base.High || 0),
+        Medium: Number(base.Medium || 0),
+        Low: Number(base.Low || 0),
+        Info: Number(base.Info || 0),
+      }
+    : normalized;
 }
 
 function summarizeSeverityBreakdownGroups(input: unknown): Record<Severity, number> {
@@ -1179,6 +1223,120 @@ function normalizeActivePoc(input: unknown, maxLength: number): VulnerabilityFin
     output: asOptionalString(truncateText(asString(raw.output, ""), maxLength)),
     line_tested: raw.line_tested === undefined ? undefined : asNumber(raw.line_tested, 0),
   };
+}
+
+function buildSeverityBreakdownGroups(findings: VulnerabilityFinding[]): Array<Record<string, unknown>> {
+  const bySeverity = new Map<Severity, Map<string, {
+    title: string;
+    cwe: string;
+    owasp: string;
+    count: number;
+    modules: Set<string>;
+    instances: Array<Record<string, unknown>>;
+  }>>();
+  for (const finding of findings) {
+    const severity = normalizeSeverity(finding.severity);
+    const title = asString((finding as unknown as Record<string, unknown>).vulnerability_title, asString((finding as unknown as Record<string, unknown>).title, asString(finding.rule_id, "Security Issue")));
+    const cwe = asString(finding.cwe_id, "N/A");
+    const owasp = asString(finding.owasp_mapping, "N/A");
+    const key = `${title.toLowerCase()}::${cwe.toLowerCase()}`;
+    if (!bySeverity.has(severity)) {
+      bySeverity.set(severity, new Map());
+    }
+    const severityMap = bySeverity.get(severity)!;
+    if (!severityMap.has(key)) {
+      severityMap.set(key, { title, cwe, owasp, count: 0, modules: new Set(), instances: [] });
+    }
+    const group = severityMap.get(key)!;
+    const filePath = asString(finding.file_path, "unknown");
+    const lineNumber = asNumber(finding.line_number, 1);
+    const module = moduleFromPath(filePath);
+    group.count += 1;
+    group.modules.add(module);
+    group.instances.push({
+      file_name: fileNameFromPath(filePath),
+      file_path: filePath,
+      line_number: lineNumber,
+      location: `${filePath}:${lineNumber}`,
+      module,
+    });
+  }
+  return SEVERITY_VALUES.map((severity) => {
+    const groups = Array.from(bySeverity.get(severity)?.values() || [])
+      .sort((left, right) => right.count - left.count || left.title.localeCompare(right.title))
+      .map((group) => ({
+        title: group.title,
+        vulnerability: group.title,
+        cwe: group.cwe,
+        cwe_id: group.cwe,
+        owasp: group.owasp,
+        owasp_mapping: group.owasp,
+        count: group.count,
+        group_count: group.count,
+        modules: Array.from(group.modules).sort(),
+        instances: group.instances,
+      }));
+    return {
+      severity,
+      count: groups.reduce((total, group) => total + Number(group.count || 0), 0),
+      group_count: groups.length,
+      groups,
+    };
+  }).filter((section) => section.groups.length > 0);
+}
+
+function buildTopVulnerabilityTypeRows(findings: VulnerabilityFinding[]): Array<{ type: string; count: number }> {
+  const counts: Record<string, number> = {};
+  for (const finding of findings) {
+    const title = asString((finding as unknown as Record<string, unknown>).vulnerability_title, asString((finding as unknown as Record<string, unknown>).title, asString(finding.rule_id, "Security Issue")));
+    counts[title] = (counts[title] || 0) + 1;
+  }
+  return sortCountRows(counts).map(([type, count]) => ({ type, count }));
+}
+
+function buildTopOwaspRows(findings: VulnerabilityFinding[]): Array<{ owasp_category: string; count: number }> {
+  const counts: Record<string, number> = {};
+  for (const finding of findings) {
+    const owasp = asString(finding.owasp_mapping, "");
+    if (owasp && owasp !== "N/A") {
+      counts[owasp] = (counts[owasp] || 0) + 1;
+    }
+  }
+  return sortCountRows(counts).map(([owasp_category, count]) => ({ owasp_category, count }));
+}
+
+function buildAffectedModuleRows(findings: VulnerabilityFinding[]): Array<{ module: string; count: number; critical: number; high: number }> {
+  const rows = new Map<string, { module: string; count: number; critical: number; high: number }>();
+  for (const finding of findings) {
+    const module = moduleFromPath(finding.file_path);
+    if (!rows.has(module)) {
+      rows.set(module, { module, count: 0, critical: 0, high: 0 });
+    }
+    const row = rows.get(module)!;
+    row.count += 1;
+    if (finding.severity === "Critical") row.critical += 1;
+    if (finding.severity === "High") row.high += 1;
+  }
+  return Array.from(rows.values()).sort((left, right) => right.count - left.count || left.module.localeCompare(right.module)).slice(0, 40);
+}
+
+function sortCountRows(counts: Record<string, number>): Array<[string, number]> {
+  return Object.entries(counts)
+    .filter(([key, count]) => key && key !== "N/A" && Number(count || 0) > 0)
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, 20);
+}
+
+function moduleFromPath(value: unknown): string {
+  const normalized = asString(value, "root").replaceAll("\\", "/");
+  const parts = normalized.split("/").filter(Boolean);
+  return parts[0] || "root";
+}
+
+function fileNameFromPath(value: unknown): string {
+  const normalized = asString(value, "unknown").replaceAll("\\", "/");
+  const parts = normalized.split("/").filter(Boolean);
+  return parts[parts.length - 1] || "unknown";
 }
 
 function normalizeCommandExecution(

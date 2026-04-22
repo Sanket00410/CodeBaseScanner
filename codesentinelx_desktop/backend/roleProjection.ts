@@ -101,6 +101,9 @@ export function buildCanonicalScanObject(input: {
   const summary = vulnerability.summary;
   const executive = report.executive_summary;
   const findings = cloneStructured(vulnerability.findings || []);
+  const derivedTopTypes = buildTopVulnerabilityTypes(findings);
+  const derivedTopOwasp = buildTopOwaspCategories(findings);
+  const derivedModules = buildAffectedModules(findings);
   const severityDistribution = normalizeSeverityDistribution(
     summary.severity_distribution,
     normalizeSeverityDistribution(executive.severity_distribution, summarizeSeverity(findings)),
@@ -142,9 +145,9 @@ export function buildCanonicalScanObject(input: {
       severity_distribution: severityDistribution,
       risk_score: Number(summary.risk_score || executive.risk_score || 0),
       risk_rating: String(summary.risk_rating || executive.risk_rating || "Unknown"),
-      top_vulnerability_types: cloneStructured(summary.top_vulnerability_types || executive.top_vulnerability_types || []),
-      top_owasp_categories: cloneStructured(summary.top_owasp_categories || executive.top_owasp_categories || []),
-      affected_modules: cloneStructured(summary.affected_modules || executive.affected_modules || []),
+      top_vulnerability_types: nonEmptyArray(summary.top_vulnerability_types) || nonEmptyArray(executive.top_vulnerability_types) || derivedTopTypes,
+      top_owasp_categories: nonEmptyArray(summary.top_owasp_categories) || nonEmptyArray(executive.top_owasp_categories) || derivedTopOwasp,
+      affected_modules: nonEmptyArray(summary.affected_modules) || nonEmptyArray(executive.affected_modules) || derivedModules,
     },
   };
 }
@@ -242,10 +245,14 @@ function applyManagementProjection(report: UniversalScanReport, canonical: Canon
   const executive = report.executive_summary;
   const summary = report.vulnerability_fixed_code_report.summary;
   const existingManagement = (executive.management_summary || {}) as NonNullable<typeof executive.management_summary>;
+  const canonicalFindings = canonical.deduplicated_findings || canonical.raw_findings || [];
   const managementSeverity = normalizeSeverityDistribution(
     existingManagement.severity_distribution_raw || existingManagement.severity_distribution,
     canonical.severity_distribution,
   );
+  const existingSeverityBreakdown = Array.isArray(existingManagement.severity_breakdown_groups)
+    ? existingManagement.severity_breakdown_groups
+    : [];
 
   executive.management_summary = {
     ...existingManagement,
@@ -254,10 +261,10 @@ function applyManagementProjection(report: UniversalScanReport, canonical: Canon
     active_risk_findings: (managementSeverity.Critical || 0) + (managementSeverity.High || 0),
     severity_distribution: managementSeverity,
     severity_distribution_raw: managementSeverity,
-    top_vulnerability_types: existingManagement.top_vulnerability_types || canonical.summary_metrics.top_vulnerability_types,
-    top_owasp_categories: existingManagement.top_owasp_categories || canonical.summary_metrics.top_owasp_categories,
-    affected_modules: existingManagement.affected_modules || canonical.summary_metrics.affected_modules,
-    severity_breakdown_groups: existingManagement.severity_breakdown_groups || [],
+    top_vulnerability_types: nonEmptyArray(existingManagement.top_vulnerability_types) || canonical.summary_metrics.top_vulnerability_types || buildTopVulnerabilityTypes(canonicalFindings),
+    top_owasp_categories: nonEmptyArray(existingManagement.top_owasp_categories) || canonical.summary_metrics.top_owasp_categories || buildTopOwaspCategories(canonicalFindings),
+    affected_modules: nonEmptyArray(existingManagement.affected_modules) || canonical.summary_metrics.affected_modules || buildAffectedModules(canonicalFindings),
+    severity_breakdown_groups: existingSeverityBreakdown.length ? existingSeverityBreakdown : buildSeverityBreakdownGroups(canonicalFindings),
     risk_score: canonical.summary_metrics.risk_score,
     risk_rating: canonical.summary_metrics.risk_rating,
   };
@@ -330,6 +337,133 @@ function summarizeSeverity(findings: VulnerabilityFinding[]): Record<string, num
     summary[severity] += 1;
   }
   return summary;
+}
+
+function buildSeverityBreakdownGroups(findings: VulnerabilityFinding[]): Array<Record<string, unknown>> {
+  const bySeverity = new Map<Severity, Map<string, {
+    severity: Severity;
+    title: string;
+    cwe: string;
+    owasp: string;
+    count: number;
+    modules: Set<string>;
+    instances: Array<Record<string, unknown>>;
+  }>>();
+  for (const finding of findings) {
+    const findingRecord = finding as unknown as Record<string, unknown>;
+    const severity = SEVERITIES.includes(finding.severity) ? finding.severity : "Info";
+    const title = String(finding.vulnerability_title || findingRecord.title || finding.rule_id || "Security Issue").trim();
+    const cwe = String(finding.cwe_id || "N/A").trim() || "N/A";
+    const owasp = String(finding.owasp_mapping || "N/A").trim() || "N/A";
+    const key = `${title.toLowerCase()}::${cwe.toLowerCase()}`;
+    if (!bySeverity.has(severity)) {
+      bySeverity.set(severity, new Map());
+    }
+    const severityMap = bySeverity.get(severity)!;
+    if (!severityMap.has(key)) {
+      severityMap.set(key, {
+        severity,
+        title,
+        cwe,
+        owasp,
+        count: 0,
+        modules: new Set(),
+        instances: [],
+      });
+    }
+    const group = severityMap.get(key)!;
+    const filePath = String(finding.file_path || "unknown");
+    const lineNumber = Number(finding.line_number || 1);
+    const module = moduleFromPath(filePath);
+    group.count += 1;
+    group.modules.add(module);
+    group.instances.push({
+      file_name: fileNameFromPath(filePath),
+      file_path: filePath,
+      line_number: lineNumber,
+      location: `${filePath}:${lineNumber}`,
+      module,
+    });
+  }
+  return SEVERITIES.map((severity) => {
+    const groups = Array.from(bySeverity.get(severity)?.values() || [])
+      .sort((left, right) => right.count - left.count || left.title.localeCompare(right.title))
+      .map((group) => ({
+        severity: group.severity,
+        title: group.title,
+        vulnerability: group.title,
+        cwe: group.cwe,
+        cwe_id: group.cwe,
+        owasp: group.owasp,
+        owasp_mapping: group.owasp,
+        count: group.count,
+        group_count: group.count,
+        modules: Array.from(group.modules).sort(),
+        instances: group.instances,
+      }));
+    return {
+      severity,
+      count: groups.reduce((total, group) => total + Number(group.count || 0), 0),
+      group_count: groups.length,
+      groups,
+    };
+  }).filter((section) => section.groups.length > 0);
+}
+
+function buildTopVulnerabilityTypes(findings: VulnerabilityFinding[]): Array<{ type: string; count: number }> {
+  const counts: Record<string, number> = {};
+  for (const finding of findings) {
+    const findingRecord = finding as unknown as Record<string, unknown>;
+    const title = String(finding.vulnerability_title || findingRecord.title || finding.rule_id || "Security Issue").trim();
+    increment(counts, title);
+  }
+  return sortCountRows(counts).map(([type, count]) => ({ type, count }));
+}
+
+function buildTopOwaspCategories(findings: VulnerabilityFinding[]): Array<{ owasp_category: string; count: number }> {
+  const counts: Record<string, number> = {};
+  for (const finding of findings) {
+    increment(counts, finding.owasp_mapping);
+  }
+  return sortCountRows(counts).map(([owasp_category, count]) => ({ owasp_category, count }));
+}
+
+function buildAffectedModules(findings: VulnerabilityFinding[]): Array<{ module: string; count: number; critical: number; high: number }> {
+  const rows = new Map<string, { module: string; count: number; critical: number; high: number }>();
+  for (const finding of findings) {
+    const module = moduleFromPath(finding.file_path);
+    if (!rows.has(module)) {
+      rows.set(module, { module, count: 0, critical: 0, high: 0 });
+    }
+    const row = rows.get(module)!;
+    row.count += 1;
+    if (finding.severity === "Critical") row.critical += 1;
+    if (finding.severity === "High") row.high += 1;
+  }
+  return Array.from(rows.values()).sort((left, right) => right.count - left.count || left.module.localeCompare(right.module)).slice(0, 40);
+}
+
+function sortCountRows(counts: Record<string, number>): Array<[string, number]> {
+  return Object.entries(counts)
+    .filter(([key, count]) => key && key !== "N/A" && Number(count || 0) > 0)
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, 20);
+}
+
+function moduleFromPath(value: unknown): string {
+  const normalized = String(value || "root").replaceAll("\\", "/");
+  const parts = normalized.split("/").filter(Boolean);
+  return parts[0] || "root";
+}
+
+function fileNameFromPath(value: unknown): string {
+  const normalized = String(value || "unknown").replaceAll("\\", "/");
+  const parts = normalized.split("/").filter(Boolean);
+  return parts[parts.length - 1] || "unknown";
+}
+
+function nonEmptyArray<T>(value: T[] | undefined): T[] | undefined {
+  return Array.isArray(value) && value.length > 0 ? cloneStructured(value) : undefined;
 }
 
 function normalizeSeverityDistribution(input: unknown, fallback?: Record<string, number>): Record<string, number> {

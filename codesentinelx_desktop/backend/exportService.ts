@@ -6133,6 +6133,8 @@ function renderCombinedHtml(scan: ScanView): string {
   </details>`
       : "";
   const projectionAuditSection = renderProjectionAuditSection(scan);
+  const summaryCardSeverityDistribution =
+    reportRole === "Management" ? effectiveManagementSeverityDistribution : effectiveSummarySeverityDistribution;
   const cards = renderStatGrid([
     {
       label: "Total Issues",
@@ -6142,13 +6144,13 @@ function renderCombinedHtml(scan: ScanView): string {
     },
     {
       label: "Critical",
-      value: Number(summarySeverityDistribution?.Critical || 0),
+      value: Number(summaryCardSeverityDistribution?.Critical || 0),
       tone: "critical",
       sub: "Immediate release blockers",
     },
     {
       label: "High",
-      value: Number(summarySeverityDistribution?.High || 0),
+      value: Number(summaryCardSeverityDistribution?.High || 0),
       tone: "high",
       sub: "High-priority remediation candidates",
     },
@@ -6211,7 +6213,7 @@ function renderCombinedHtml(scan: ScanView): string {
         <div class="management-visual-card">
           <h3>Severity Ring</h3>
           <div class="management-ring-wrap">
-            <div class="management-ring"${managementSeverityGradientResolved ? ` style="background:conic-gradient(${managementSeverityGradientResolved});"` : ""}>
+            <div class="management-ring"${managementSeverityGradientResolved || managementSeverityGradient ? ` style="background:conic-gradient(${managementSeverityGradientResolved || managementSeverityGradient});"` : ""}>
               <div class="management-ring-center">
                 <div class="management-ring-value">${summaryFindingCount}</div>
                 <div class="management-ring-label">${summaryFindingCount > 0 ? "Findings" : "Clean"}</div>

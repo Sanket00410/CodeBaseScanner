@@ -2247,10 +2247,11 @@ export default function App(): React.JSX.Element {
     }
     const summary = scan.report.executive_summary;
     const vulnSummary = scan.report.vulnerability_fixed_code_report.summary;
+    const activeProjectionRole = scan.role || role;
     const vulnerabilityFindingsSummary = ((scan.report as unknown as Record<string, unknown>).vulnerability_findings as { summary?: Record<string, unknown> } | undefined)?.summary;
     const managementSummary = (summary as Record<string, unknown>).management_summary as Record<string, unknown> | undefined;
-    const dashboardSummary = role === "Management" ? (managementSummary || summary) : summary;
-    const dashboardVulnSummary = role === "Management" ? (managementSummary || vulnSummary) : vulnSummary;
+    const dashboardSummary = activeProjectionRole === "Management" ? (managementSummary || summary) : summary;
+    const dashboardVulnSummary = activeProjectionRole === "Management" ? (managementSummary || vulnSummary) : vulnSummary;
     const dashboardSummaryAny = dashboardSummary as Record<string, any>;
     const dashboardVulnSummaryAny = dashboardVulnSummary as Record<string, any>;
     const summaryRecord = summary as unknown as Record<string, unknown>;
@@ -2274,7 +2275,7 @@ export default function App(): React.JSX.Element {
     const severityTotal = (distribution: Record<Severity, number> | undefined) =>
       Object.values(distribution || {}).reduce((total, value) => total + Number(value || 0), 0);
     const dashboardSeverityDistribution =
-      role === "Management"
+      activeProjectionRole === "Management"
         ? (severityTotal(executiveSeverityDistribution) > 0
             ? executiveSeverityDistribution
             : severityTotal(managementSeverityDistribution) > 0
@@ -2291,13 +2292,13 @@ export default function App(): React.JSX.Element {
       const numeric = Number(primary);
       return Number.isFinite(numeric) && numeric > 0 ? numeric : fallback;
     };
-    const dashboardOwaspCategories: Array<{ owasp_category: string; count: number }> = role === "Management"
+    const dashboardOwaspCategories: Array<{ owasp_category: string; count: number }> = activeProjectionRole === "Management"
       ? (Array.isArray(dashboardSummaryAny.top_owasp_categories) ? dashboardSummaryAny.top_owasp_categories : [])
       : ((vulnSummary.top_owasp_categories || summary.top_owasp_categories || []) as Array<{ owasp_category: string; count: number }>);
-    const dashboardAffectedModules: Array<{ module: string; count: number; critical: number; high: number }> = role === "Management"
+    const dashboardAffectedModules: Array<{ module: string; count: number; critical: number; high: number }> = activeProjectionRole === "Management"
       ? (Array.isArray(dashboardSummaryAny.affected_modules) ? dashboardSummaryAny.affected_modules : [])
       : ((vulnSummary.affected_modules || []) as Array<{ module: string; count: number; critical: number; high: number }>);
-    const dashboardActionPlan: string[] = role === "Management"
+    const dashboardActionPlan: string[] = activeProjectionRole === "Management"
       ? (Array.isArray(dashboardSummaryAny.recommended_action_plan) ? dashboardSummaryAny.recommended_action_plan : [])
       : ((summary.recommended_action_plan || []) as string[]);
 
@@ -2322,7 +2323,7 @@ export default function App(): React.JSX.Element {
               <MetricCard
                 label="Raw Findings"
                 value={String(
-                  role === "Management"
+                  activeProjectionRole === "Management"
                     ? positiveNumberOrFallback(
                         dashboardSummaryAny.total_findings,
                         positiveNumberOrFallback(
@@ -2336,7 +2337,7 @@ export default function App(): React.JSX.Element {
               <MetricCard
                 label="Deduplicated Findings"
                 value={String(
-                  role === "Management"
+                  activeProjectionRole === "Management"
                     ? positiveNumberOrFallback(
                         dashboardSummaryAny.deduplicated_vulnerabilities,
                         positiveNumberOrFallback(
@@ -2350,7 +2351,7 @@ export default function App(): React.JSX.Element {
               <MetricCard
                 label="Open Findings"
                 value={String(
-                  role === "Management"
+                  activeProjectionRole === "Management"
                     ? positiveNumberOrFallback(
                         dashboardSummaryAny.active_risk_findings,
                         positiveNumberOrFallback(
@@ -2364,7 +2365,7 @@ export default function App(): React.JSX.Element {
               <MetricCard
                 label="Reviewed Findings"
                 value={String(
-                  role === "Management"
+                  activeProjectionRole === "Management"
                     ? positiveNumberOrFallback(
                         dashboardSummaryAny.deduplicated_vulnerabilities,
                         positiveNumberOrFallback(
@@ -2396,7 +2397,7 @@ export default function App(): React.JSX.Element {
               ))}
             </div>
 
-              {role === "Management" && managementSeverityBreakdown.length > 0 && (
+              {activeProjectionRole === "Management" && managementSeverityBreakdown.length > 0 && (
                 <div className="subpanel">
                   <h3>Severity Drilldown</h3>
                   <p className="muted-text">
