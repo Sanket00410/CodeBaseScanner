@@ -22,10 +22,10 @@ In the current UI, role selection should simply choose which projection is rende
 Do not rebuild the desktop shell. Keep the scan controls, the dashboard, the report preview, the export buttons, and the history panels. Change only the wiring so they read from the stored canonical scan and the current role projection.
 
 8. Make report preview use the current projection.
-The preview panel should render the currently selected role’s projection from the same scan. If the user switches from Developer to Management, the preview should update instantly from the same canonical scan data, not request a new scan.
+The preview panel should render the currently selected role's projection from the same scan. If the user switches from Developer to Management, the preview should update instantly from the same canonical scan data, not request a new scan.
 
 9. Make exports use the same projection layer.
-HTML, PDF, JSON, SARIF, and any other export should be generated from the current role projection. The same scan result can produce multiple exports, but each export should be formatted according to the selected role’s visibility and detail rules.
+HTML, PDF, JSON, SARIF, and any other export should be generated from the current role projection. The same scan result can produce multiple exports, but each export should be formatted according to the selected role's visibility and detail rules.
 
 10. Keep Management summary-only, but powered by the canonical scan.
 Management should not show raw finding rows, but it must still receive accurate counts, severity distribution, top vulnerability types, OWASP categories, affected modules, and risk charts from the shared scan data. The management view should be diagrammatic, not blank.
@@ -55,7 +55,7 @@ Define what each role sees in a single place. For example: Admin sees everything
 Components like the severity ring, severity table, top OWASP cards, action plan, management snapshot, and drilldown accordions should accept a projection object instead of reading directly from scan execution fragments. That reduces drift and keeps the same UI shell.
 
 19. Keep drilldown behavior within the selected projection.
-Clicking a severity group or finding row should jump to the exact detailed section within the current role’s view. For Management, that means group-level drilldown and summary tables; for Developer and Admin, that means deeper file/line evidence. The same anchors should work across HTML preview and export.
+Clicking a severity group or finding row should jump to the exact detailed section within the current role's view. For Management, that means group-level drilldown and summary tables; for Developer and Admin, that means deeper file/line evidence. The same anchors should work across HTML preview and export.
 
 20. Make role-specific redaction deterministic.
 Auditor and Management views should redact the same fields every time. The redaction rules should be deterministic and encoded in the projection layer so the same scan always produces the same redacted output for the same role.
@@ -73,4 +73,4 @@ The final check is simple: the dashboard counts and severity ring should come fr
 Once the data model is stable, clean up the scan button so it creates one canonical scan, saves it, and updates the current projection. The role tabs should be pure view switches at that point.
 
 25. Push in this order.
-First the data model, then the store, then the projection layer, then the UI wiring, then the export generator, then the tests, and finally the cleanup pass. That order keeps the app working while we move from “role changes scan” to “role changes report.”
+First the data model, then the store, then the projection layer, then the UI wiring, then the export generator, then the tests, and finally the cleanup pass. That order keeps the app working while we move from "role changes scan" to "role changes report."
