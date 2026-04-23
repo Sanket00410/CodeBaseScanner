@@ -942,8 +942,39 @@ function loadReportGlobeTextureDataUri(): string {
 const REPORT_GLOBE_TEXTURE_PATH = resolveReportGlobeTexturePath();
 const REPORT_GLOBE_TEXTURE_DATA_URI = loadReportGlobeTextureDataUri();
 
+const SEVERITY_HEX_COLORS: Record<string, string> = {
+  Critical: "#ff5b77",
+  High: "#ff9b4b",
+  Medium: "#ffd65e",
+  Low: "#67b8ff",
+  Info: "#70d5ab",
+};
+
 function hasRenderableQualityBenchmark(benchmark?: QualityBenchmarkSummary | null): boolean {
   return Boolean(benchmark && benchmark.configured && Number(benchmark.cases_total || 0) > 0);
+}
+
+function severityColorHex(severity: string): string {
+  return SEVERITY_HEX_COLORS[normalizeSeverityLabel(severity)] || SEVERITY_HEX_COLORS.Info;
+}
+
+function buildSeverityGradient(distribution: Record<string, number> | undefined | null): string {
+  const bands = SEVERITY_ORDER.map((severity) => ({ severity, count: Number(distribution?.[severity] || 0) }));
+  const total = bands.reduce((sum, band) => sum + band.count, 0);
+  if (total <= 0) {
+    return "";
+  }
+
+  let cursor = 0;
+  return bands
+    .filter((band) => band.count > 0)
+    .map((band) => {
+      const start = cursor;
+      const span = (band.count / total) * 100;
+      cursor += span;
+      return `${severityColorHex(band.severity)} ${start.toFixed(2)}% ${cursor.toFixed(2)}%`;
+    })
+    .join(", ");
 }
 
 function resolveEnterpriseAssurance(
@@ -5927,35 +5958,7 @@ function renderCombinedHtml(scan: ScanView): string {
     reportRole === "Management" && Object.values(managementSeverityFromGroups).some((value) => Number(value || 0) > 0)
       ? normalizeSeverityDistribution(managementSeverityFromGroups)
       : effectiveSummarySeverityDistribution;
-  const managementSeverityGradientResolved =
-    reportRole === "Management" && Object.values(managementSeverityFromGroups).some((value) => Number(value || 0) > 0)
-      ? (() => {
-          const bands = SEVERITY_ORDER.map((severity) => ({ severity, count: Number(effectiveManagementSeverityDistribution?.[severity] || 0) }));
-          const total = bands.reduce((sum, band) => sum + band.count, 0);
-          let cursor = 0;
-          return total > 0
-            ? bands
-                .filter((band) => band.count > 0)
-                .map((band) => {
-                  const start = cursor;
-                  const span = (band.count / total) * 100;
-                  cursor += span;
-                  const color =
-                    band.severity === "Critical"
-                      ? "var(--critical)"
-                      : band.severity === "High"
-                        ? "var(--high)"
-                        : band.severity === "Medium"
-                          ? "var(--warning)"
-                          : band.severity === "Low"
-                            ? "var(--info)"
-                            : "var(--success)";
-                  return `${color} ${start.toFixed(2)}% ${cursor.toFixed(2)}%`;
-                })
-                .join(", ")
-            : "";
-          })()
-      : "";
+  const managementSeverityGradient = buildSeverityGradient(effectiveManagementSeverityDistribution);
   const severityRowsSource = reportRole === "Management" ? effectiveManagementSeverityDistribution : effectiveSummarySeverityDistribution;
   const severityRows = SEVERITY_ORDER.map((severity) => {
     const count = Number(severityRowsSource?.[severity] || 0);
@@ -6174,34 +6177,7 @@ function renderCombinedHtml(scan: ScanView): string {
       sub: String(summary.risk_rating || scan.report.executive_summary.risk_rating || ""),
     },
   ]);
-  const managementSeverityBands = SEVERITY_ORDER.map((severity) => {
-    const count = Number(effectiveSummarySeverityDistribution?.[severity] || 0);
-    return { severity, count };
-  });
-  const managementSeverityTotal = managementSeverityBands.reduce((total, item) => total + item.count, 0);
-  let managementSeverityCursor = 0;
-  const managementSeverityGradient =
-    managementSeverityTotal > 0
-      ? managementSeverityBands
-          .filter((item) => item.count > 0)
-          .map((item) => {
-            const start = managementSeverityCursor;
-            const span = (item.count / managementSeverityTotal) * 100;
-            managementSeverityCursor += span;
-            const color =
-              item.severity === "Critical"
-                ? "var(--critical)"
-                : item.severity === "High"
-                  ? "var(--high)"
-                  : item.severity === "Medium"
-                    ? "var(--warning)"
-                    : item.severity === "Low"
-                      ? "var(--info)"
-                      : "var(--success)";
-            return `${color} ${start.toFixed(2)}% ${managementSeverityCursor.toFixed(2)}%`;
-          })
-          .join(", ")
-      : "";
+  const dashboardManagementSeverityGradient = buildSeverityGradient(effectiveSummarySeverityDistribution);
   const managementTopTypes = Array.isArray((managementTopSource as Record<string, unknown>).top_vulnerability_types)
     ? ((managementTopSource as Record<string, unknown>).top_vulnerability_types as Array<{ type: string; count: number }>).slice(0, 6)
     : [];
@@ -6220,7 +6196,7 @@ function renderCombinedHtml(scan: ScanView): string {
         <div class="management-visual-card">
           <h3>Severity Ring</h3>
           <div class="management-ring-wrap">
-            <div class="management-ring"${managementSeverityGradientResolved || managementSeverityGradient ? ` style="background:conic-gradient(${managementSeverityGradientResolved || managementSeverityGradient});"` : ""}>
+            <div class="management-ring"${dashboardManagementSeverityGradient ? ` style="background:conic-gradient(${dashboardManagementSeverityGradient});"` : ""}>
               <div class="management-ring-center">
                 <div class="management-ring-value">${summaryFindingCount}</div>
                 <div class="management-ring-label">${summaryFindingCount > 0 ? "Findings" : "Clean"}</div>
@@ -6229,16 +6205,7 @@ function renderCombinedHtml(scan: ScanView): string {
             <div class="management-ring-legend">
               ${SEVERITY_ORDER.map((severity) => {
                 const count = Number(managementSeverityLegendSource?.[severity] || 0);
-                const color =
-                  severity === "Critical"
-                    ? "var(--critical)"
-                    : severity === "High"
-                      ? "var(--high)"
-                      : severity === "Medium"
-                        ? "var(--warning)"
-                        : severity === "Low"
-                          ? "var(--info)"
-                          : "var(--success)";
+                const color = severityColorHex(severity);
                 return `<div class="legend-item"><span class="dot" style="background:${color}"></span><span>${escapeHtml(severity)}: ${count}</span></div>`;
               }).join("")}
             </div>

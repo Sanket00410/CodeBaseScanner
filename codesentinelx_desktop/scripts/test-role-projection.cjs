@@ -444,6 +444,7 @@ function assertReportLinksResolve(html, label) {
   assert.match(zeroSummaryManagementHtml, /Critical:\s*1/);
   assert.match(zeroSummaryManagementHtml, /High:\s*1/);
   assert.match(zeroSummaryManagementHtml, /conic-gradient/);
+  assert.match(zeroSummaryManagementHtml, /#ff5b77|#ff9b4b|#ffd65e|#67b8ff|#70d5ab/);
   assert.match(zeroSummaryManagementHtml, /SQL Injection/);
   assert.match(zeroSummaryManagementHtml, /CWE-89/);
   assert.match(zeroSummaryManagementHtml, /File Name/);
@@ -481,6 +482,7 @@ function assertReportLinksResolve(html, label) {
   assert.match(mixedManagementHtml, /High:\s*1/);
   assert.match(mixedManagementHtml, /Medium:\s*1/);
   assert.match(mixedManagementHtml, /Low:\s*1/);
+  assert.match(mixedManagementHtml, /#ff5b77|#ff9b4b|#ffd65e|#67b8ff|#70d5ab/);
   assert.match(mixedManagementHtml, /api\/auth.py/);
   assert.match(mixedManagementHtml, /api\/user.py/);
   assert.doesNotMatch(mixedManagementHtml, /secret = true/);
