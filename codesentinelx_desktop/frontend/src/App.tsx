@@ -805,6 +805,7 @@ export default function App(): React.JSX.Element {
   const [changedFilesManifestPath, setChangedFilesManifestPath] = useState("");
   const [showScmOptions, setShowScmOptions] = useState(false);
   const [role, setRole] = useState<UserRole>("Security Analyst");
+  const roleRef = useRef<UserRole>("Security Analyst");
   const [scanSessions, setScanSessions] = useState<Record<string, ActiveScanSession>>({});
   const [activeScanId, setActiveScanId] = useState("");
   const [scanStatus, setScanStatus] = useState<ScanProgress["status"]>("completed");
@@ -1142,6 +1143,10 @@ export default function App(): React.JSX.Element {
   };
 
   useEffect(() => {
+    roleRef.current = role;
+  }, [role]);
+
+  useEffect(() => {
     const dispose = window.codeSentinelX.onScanProgress((payload) => {
       const nowTs = Date.now();
       const now = new Date().toISOString();
@@ -1174,7 +1179,7 @@ export default function App(): React.JSX.Element {
       if (payload.status === "completed") {
         setLastCompletedScanId(payload.scanId);
         window.codeSentinelX
-          .getScanById(payload.scanId, role)
+          .getScanById(payload.scanId, roleRef.current)
           .then((result) => {
             if (result) {
               setScan((current) => {
@@ -1579,6 +1584,10 @@ export default function App(): React.JSX.Element {
           },
         };
       });
+      if (loadedResult.role && loadedResult.role !== roleRef.current) {
+        roleRef.current = loadedResult.role;
+        setRole(loadedResult.role);
+      }
       setScan(loadedResult);
       setActiveScanId(loadedResult.scanId);
       setLastCompletedScanId(loadedResult.scanId);
@@ -1704,6 +1713,10 @@ export default function App(): React.JSX.Element {
     if (!result) {
       setStatusText(`Scan ${scanId} not found.`);
       return;
+    }
+    if (result.role && result.role !== roleRef.current) {
+      roleRef.current = result.role;
+      setRole(result.role);
     }
     setScan(result);
     setLastCompletedScanId(scanId);
