@@ -731,7 +731,7 @@ function exportReportTypeToken(
 }
 
 function exportFormatExtension(format: ExportRequest["format"]): string {
-  return format === "sarif" ? "sairf" : format;
+  return format;
 }
 
 type ReportRole = NonNullable<ExportRequest["role"]>;

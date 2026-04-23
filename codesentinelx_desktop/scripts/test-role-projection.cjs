@@ -324,6 +324,8 @@ function assertReportLinksResolve(html, label) {
     reportType: "vulnerability",
     format: "sarif",
   });
+  assert.match(securitySarifPath, /\.sarif$/);
+  assert.doesNotMatch(securitySarifPath, /\.sairf$/);
   const securitySarif = JSON.parse(fs.readFileSync(securitySarifPath, "utf-8"));
   assert.equal(securitySarif.runs[0].properties.projectionRole, "Security Analyst");
   assert.equal(securitySarif.runs[0].properties.projectionVisibility, "security");
@@ -347,6 +349,27 @@ function assertReportLinksResolve(html, label) {
   assert.match(findingDetailsHtml, /data-target-id="finding-detail-/);
   assert.match(findingDetailsHtml, /data-instance-target-id="finding-detail-instance-/);
   assertReportLinksResolve(findingDetailsHtml, "Finding Details report");
+
+  const findingDetailsPdfPath = await exportService.exportReport(rawStoredScan, {
+    scanId: "scan-1",
+    role: "Admin",
+    reportType: "finding_details",
+    format: "pdf",
+  });
+  assert.match(findingDetailsPdfPath, /Admin[\\/]+Full_Scope_Reports/);
+  assert.match(findingDetailsPdfPath, /finding_details/);
+  assert.match(findingDetailsPdfPath, /\.pdf$/);
+  assert.ok(fs.statSync(findingDetailsPdfPath).size > 0);
+
+  const findingDetailsJsonPath = await exportService.exportReport(rawStoredScan, {
+    scanId: "scan-1",
+    role: "Developer",
+    reportType: "finding_details",
+    format: "json",
+  });
+  const findingDetailsPayload = JSON.parse(fs.readFileSync(findingDetailsJsonPath, "utf-8"));
+  assert.equal(findingDetailsPayload.projection_metadata.role, "Developer");
+  assert.equal(findingDetailsPayload.finding_details_report.rows.length, 2);
 
   const auditorHtml = exportService.renderReportHtml(rawStoredScan, "existing", undefined, "Auditor");
   assert.match(auditorHtml, /Role Projection/);
