@@ -484,32 +484,11 @@ TOOL_CATALOG: dict[str, ToolCatalogEntry] = {
 
 
 DEFAULT_ACTIVE_CODEBASE_TOOLS = [
-    "bandit",
-    "brakeman",
     "checkov",
-    "clair",
-    "codeql",
-    "cppcheck",
-    "eslint-security",
-    "findsecbugs",
-    "flawfinder",
     "gitleaks",
-    "gosec",
-    "govulncheck",
-    "grype",
     "hadolint",
-    "infer",
-    "npm-audit",
     "osv-scanner",
-    "owasp-dependency-check",
-    "pip-audit",
-    "safety",
     "semgrep",
-    "snyk",
-    "sonarqube",
-    "spotbugs",
-    "tfsec",
-    "trivy",
 ]
 DEFAULT_ACTIVE_RUNTIME_TOOLS = [
     "runtime_http_probe",

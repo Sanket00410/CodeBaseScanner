@@ -33,6 +33,7 @@ LOGGER = logging.getLogger(__name__)
 ProgressCallback = Callable[[float, str, str | None, str | None], None]
 
 ALWAYS_RELEVANT_TOOLS = {"semgrep", "gitleaks"}
+ACTIVE_CODEBASE_TOOLS = {"semgrep", "gitleaks", "checkov", "hadolint", "osv-scanner"}
 TOOL_FILE_HINTS: dict[str, dict[str, set[str]]] = {
     "bandit": {"extensions": {".py"}, "files": {"requirements.txt", "pyproject.toml", "poetry.lock", "pipfile"}},
     "brakeman": {"extensions": {".rb", ".erb"}, "files": {"gemfile", "gemfile.lock"}},
@@ -73,25 +74,23 @@ TOOL_FILE_HINTS: dict[str, dict[str, set[str]]] = {
 }
 
 _DEPENDENCY_TOOLS = {
-    "grype",
     "osv-scanner",
-    "govulncheck",
 }
 
-_DEEP_TOOLS = {"codeql"}
+_DEEP_TOOLS = set()
 
 _DEPENDENCY_TOOL_PRIORITIES: dict[str, tuple[str, ...]] = {
-    "python": ("osv-scanner", "grype"),
-    "javascript": ("osv-scanner", "grype"),
-    "go": ("govulncheck", "osv-scanner", "grype"),
-    "java": ("osv-scanner", "grype"),
-    "ruby": ("osv-scanner", "grype"),
-    "php": ("osv-scanner", "grype"),
-    "dotnet": ("osv-scanner", "grype"),
-    "rust": ("osv-scanner", "grype"),
-    "iac": ("osv-scanner", "grype"),
-    "container": ("grype", "osv-scanner"),
-    "generic": ("osv-scanner", "grype"),
+    "python": ("osv-scanner",),
+    "javascript": ("osv-scanner",),
+    "go": ("osv-scanner",),
+    "java": ("osv-scanner",),
+    "ruby": ("osv-scanner",),
+    "php": ("osv-scanner",),
+    "dotnet": ("osv-scanner",),
+    "rust": ("osv-scanner",),
+    "iac": ("osv-scanner",),
+    "container": ("osv-scanner",),
+    "generic": ("osv-scanner",),
 }
 
 
@@ -185,14 +184,11 @@ def _apply_tool_execution_strategy(
 ) -> tuple[list[str], dict[str, str]]:
     retained: list[str] = []
     skipped_reasons: dict[str, str] = {}
-    allow_deep_tools = role.strip().lower() in {"admin", "administrator"} or scan_preset.strip().lower() == "deep"
 
     for tool_name in selected_tools:
         normalized = tool_name.strip().lower()
-        if normalized in _DEEP_TOOLS and not allow_deep_tools:
-            skipped_reasons[tool_name] = (
-                "Skipped by execution policy: deep analyzer is restricted to Admin role or deep scan preset."
-            )
+        if normalized not in ACTIVE_CODEBASE_TOOLS:
+            skipped_reasons[tool_name] = "Skipped by execution policy: tool removed from the standardized app tool set."
             continue
         if not _is_tool_relevant(tool_name, extensions, filenames):
             skipped_reasons[tool_name] = (
@@ -200,24 +196,6 @@ def _apply_tool_execution_strategy(
             )
             continue
         retained.append(tool_name)
-
-    dependency_candidates = {tool.strip().lower() for tool in retained if tool.strip().lower() in _DEPENDENCY_TOOLS}
-    if dependency_candidates and not _allow_dependency_corroboration(role, scan_preset):
-        ecosystems = _detect_dependency_ecosystems(extensions, filenames)
-        primary = _select_primary_dependency_tools(dependency_candidates, ecosystems)
-        if primary:
-            ecosystem_label = ", ".join(sorted(ecosystems)) if ecosystems else "generic"
-            filtered: list[str] = []
-            for tool_name in retained:
-                normalized = tool_name.strip().lower()
-                if normalized in _DEPENDENCY_TOOLS and normalized not in primary:
-                    skipped_reasons[tool_name] = (
-                        "Skipped dependency overlap for cleaner output: "
-                        f"primary scanner selected for {ecosystem_label} ecosystem(s)."
-                    )
-                    continue
-                filtered.append(tool_name)
-            retained = filtered
 
     return retained, skipped_reasons
 

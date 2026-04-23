@@ -45,41 +45,22 @@ class RoleScope:
 
 
 _ALL_CODEBASE_TOOLS = {
-    "bandit",
-    "brakeman",
     "checkov",
-    "clair",
-    "codeql",
-    "eslint-security",
     "gitleaks",
-    "gosec",
-    "govulncheck",
-    "grype",
     "hadolint",
-    "infer",
     "osv-scanner",
     "semgrep",
-    "tfsec",
 }
 
 _STANDARD_CODEBASE_TOOLS = {
-    "bandit",
-    "brakeman",
     "checkov",
-    "eslint-security",
     "gitleaks",
-    "gosec",
-    "govulncheck",
-    "grype",
     "hadolint",
-    "infer",
     "osv-scanner",
     "semgrep",
-    "tfsec",
 }
 
 _FAST_CODEBASE_TOOLS = {
-    "bandit",
     "checkov",
     "gitleaks",
     "semgrep",
@@ -90,24 +71,20 @@ _ROLE_TOOL_ALLOWLIST = {
     "Security Analyst": frozenset(_STANDARD_CODEBASE_TOOLS),
     "Developer": frozenset(
         {
-            "bandit",
             "checkov",
-            "eslint-security",
             "gitleaks",
-            "gosec",
-            "govulncheck",
             "hadolint",
-            "infer",
+            "osv-scanner",
             "semgrep",
-            "tfsec",
         }
     ),
     "Auditor": frozenset(
         {
             "checkov",
+            "gitleaks",
             "hadolint",
             "osv-scanner",
-            "tfsec",
+            "semgrep",
         }
     ),
     "Management": frozenset(),
@@ -184,22 +161,7 @@ _ROLE_SCOPES = {
     ),
     "Management": RoleScope(
         role="Management",
-        tool_allowlist=frozenset(
-            {
-                "bandit",
-                "brakeman",
-                "checkov",
-                "codeql",
-                "eslint-security",
-                "gosec",
-                "govulncheck",
-                "grype",
-                "hadolint",
-                "infer",
-                "osv-scanner",
-                "tfsec",
-            }
-        ),
+        tool_allowlist=frozenset(),
         run_external_tools=True,
         run_file_findings=True,
         run_project_rules=False,

@@ -375,34 +375,9 @@ function applyScanPreset(
   const logicalCores = Math.max(2, Math.min(16, os.cpus().length || 4));
   const normalizedRole = String(role || "Security Analyst").trim().toLowerCase();
   const toolPresets: Record<NonNullable<ScanRequest["scanPreset"]>, string[]> = {
-    fast: ["semgrep", "gitleaks", "bandit", "checkov"],
-    standard: [
-      "semgrep",
-      "gitleaks",
-      "bandit",
-      "checkov",
-      "gosec",
-      "govulncheck",
-      "eslint-security",
-      "hadolint",
-      "tfsec",
-      "grype",
-      "osv-scanner",
-    ],
-    deep: [
-      "bandit",
-      "checkov",
-      "codeql",
-      "gitleaks",
-      "gosec",
-      "govulncheck",
-      "grype",
-      "hadolint",
-      "infer",
-      "osv-scanner",
-      "semgrep",
-      "tfsec",
-    ],
+    fast: ["semgrep", "gitleaks", "checkov", "hadolint", "osv-scanner"],
+    standard: ["semgrep", "gitleaks", "checkov", "hadolint", "osv-scanner"],
+    deep: ["semgrep", "gitleaks", "checkov", "hadolint", "osv-scanner"],
   };
   const roleScopedTools = resolveRoleScopedTools(role, preset, toolPresets);
   env.USS_SCAN_PRESET = preset;
@@ -509,27 +484,13 @@ function resolveRoleScopedTools(
     return base;
   }
   if (normalized === "security analyst" || normalized === "securityanalyst") {
-    return base.filter((tool) => !["codeql", "grype"].includes(tool));
+    return base;
   }
   if (normalized === "developer") {
-    return [
-      "semgrep",
-      "bandit",
-      "eslint-security",
-      "gosec",
-      "checkov",
-      "hadolint",
-      "gitleaks",
-    ];
+    return ["semgrep", "gitleaks", "checkov", "hadolint", "osv-scanner"];
   }
   if (normalized === "auditor") {
-    return [
-      "checkov",
-      "tfsec",
-      "hadolint",
-      "gitleaks",
-      "osv-scanner",
-    ];
+    return ["semgrep", "gitleaks", "checkov", "hadolint", "osv-scanner"];
   }
   if (normalized === "management" || normalized === "manager" || normalized === "board") {
     return [];

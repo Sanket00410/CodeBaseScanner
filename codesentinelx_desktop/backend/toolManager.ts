@@ -75,10 +75,7 @@ export class ToolManager {
     const script = [
       "import json",
       "from codesentinelx_engine.scanner.external.catalog import TOOL_CATALOG",
-      "ACTIVE = {",
-      "    'bandit','brakeman','checkov','clair','codeql','eslint-security','gitleaks','gosec',",
-      "    'govulncheck','grype','hadolint','infer','osv-scanner','semgrep','tfsec'",
-      "}",
+      "ACTIVE = {'checkov', 'gitleaks', 'hadolint', 'osv-scanner', 'semgrep'}",
       "payload=[]",
       "for name,item in TOOL_CATALOG.items():",
       "    if name not in ACTIVE:",
