@@ -5265,7 +5265,7 @@ function renderFixesHtml(scan: ScanView): string {
         <tr><th>Severity</th><td>${escapeHtml(finding.severity)}</td></tr>
         <tr><th>Title</th><td>${escapeHtml(normalizedFindingTitle(finding))}</td></tr>
         <tr><th>Rule / Family</th><td>${escapeHtml(ruleFamily || "N/A")}${ruleId ? ` | <code>${escapeHtml(ruleId)}</code>` : ""}</td></tr>
-        <tr><th>Finding ID</th><td>${findingUid ? `<code>${escapeHtml(findingUid)}</code>` : "N/A"}</td></tr>
+        <tr><th>Issue ID</th><td>${findingUid ? `<code>${escapeHtml(findingUid)}</code>` : "N/A"}</td></tr>
       </tbody></table>`);
 
       sectionPrimaryLocation.push(`<table class="results"><tbody>
@@ -8454,7 +8454,7 @@ function renderFixWindowValue(value: unknown, findingByUid?: Map<string, Vulnera
       if (typeof entry === "string") {
         const finding = findingByUid?.get(entry);
         if (!finding) {
-          return `<div class="ai-fix-item"><div><strong>${escapeHtml(entry)}</strong></div><div class="muted">Finding metadata unavailable in this report snapshot.</div></div>`;
+          return `<div class="ai-fix-item"><div><strong>${escapeHtml(entry)}</strong></div><div class="muted">Issue metadata unavailable in this report snapshot.</div></div>`;
         }
         const title = normalizedFindingTitle(finding);
         const normalizedTitle = title.trim().toLowerCase();
