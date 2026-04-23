@@ -298,10 +298,10 @@ const ROLE_EXPORT_PRESETS: Record<UserRole, RoleExportPreset> = {
       "Backend enforces security-analysis scope",
     ],
     formats: [
-      { format: "html", label: "HTML", helper: "Open the findings report in a browser." },
-      { format: "pdf", label: "PDF", helper: "Generate a shareable findings PDF." },
-      { format: "json", label: "JSON", helper: "Export findings for downstream tooling." },
-      { format: "xml", label: "XML", helper: "Export findings for integrations." },
+      { format: "html", label: "HTML", helper: "Open the issue report in a browser." },
+      { format: "pdf", label: "PDF", helper: "Generate a shareable issue PDF." },
+      { format: "json", label: "JSON", helper: "Export issues for downstream tooling." },
+      { format: "xml", label: "XML", helper: "Export issues for integrations." },
       { format: "sarif", label: "SARIF", helper: "Export for code-scanning integrations." },
       { format: "csv", label: "CSV", helper: "Export a tabular triage queue." },
     ],
@@ -2978,7 +2978,7 @@ export default function App(): React.JSX.Element {
         <SubTabs
           tabs={[
             { key: "queue", label: "Findings Queue", icon: "Q" },
-            { key: "detail", label: "Finding Detail", icon: "D" },
+            { key: "detail", label: "Issue Detail", icon: "D" },
           ]}
           active={vulnerabilitySection}
           onChange={(value) => setVulnerabilitySection(value as VulnerabilitySection)}
@@ -3066,7 +3066,7 @@ export default function App(): React.JSX.Element {
                   ))}
                   {filteredFindings.length === 0 && (
                     <tr>
-                      <td colSpan={7}>No findings match this filter.</td>
+                      <td colSpan={7}>No issues match this filter.</td>
                     </tr>
                   )}
                 </tbody>
