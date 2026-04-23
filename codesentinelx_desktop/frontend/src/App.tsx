@@ -162,25 +162,25 @@ const ROLE_DRILLDOWN: Array<{ role: UserRole; purpose: string; drillDownUse: str
   {
     role: "Admin",
     purpose: "Govern platform policies and team-level risk posture.",
-    drillDownUse: "Escalate from executive trends into cross-project critical findings and ownership.",
+    drillDownUse: "Escalate from executive trends into cross-project critical issues and ownership.",
     primaryActions: "Policy changes, baseline updates, analyzer governance, exception approvals.",
   },
   {
     role: "Security Analyst",
-    purpose: "Triage and validate findings with security context.",
+    purpose: "Triage and validate issues with security context.",
     drillDownUse: "Pivot from module/file counts to exact evidence and exploitability before routing work.",
     primaryActions: "Triage, severity validation, false-positive suppression, handoff to developers.",
   },
   {
     role: "Developer",
     purpose: "Fix vulnerable code with minimal context switching.",
-    drillDownUse: "Jump directly from finding row to file/line, original code, and suggested fix.",
+    drillDownUse: "Jump directly from issue row to file/line, original code, and suggested fix.",
     primaryActions: "Patch implementation, review status updates, regression-safe remediation.",
   },
   {
     role: "Auditor",
     purpose: "Produce evidence and compliance-ready reporting.",
-    drillDownUse: "Trace each metric back to concrete findings, ownership, and export artifacts.",
+    drillDownUse: "Trace each metric back to concrete issues, ownership, and export artifacts.",
     primaryActions: "Audit evidence capture, control verification, export sign-off packages.",
   },
   {
@@ -366,12 +366,12 @@ const ROLE_SEVERITY_POLICY: Record<UserRole, string> = {
   "Security Analyst": "All severities remain visible for the selected security scope.",
   Developer: "All severities remain visible for the remediation scope, ordered by fix priority.",
   Auditor: "All severities remain visible with audit redaction applied to sensitive detail.",
-  Management: "No raw findings; only aggregated risk and executive summaries are shown.",
+  Management: "No raw issues; only aggregated risk and executive summaries are shown.",
 };
 
 const LANDING_HIGHLIGHTS = [
   "Codebase-only secure analysis designed to stay office-safe and audit-friendly.",
-  "Parser, dataflow, dependency, and evidence-backed findings instead of loose pattern spam.",
+  "Parser, dataflow, dependency, and evidence-backed issues instead of loose pattern spam.",
   "Grounded remediation and report exports built for developers, security teams, and leadership.",
 ];
 
@@ -1736,7 +1736,7 @@ export default function App(): React.JSX.Element {
 
   const markReviewed = async (findingId: string): Promise<void> => {
     if (!roleCaps.canReviewFindings) {
-      setStatusText(`Role ${role} cannot mark findings as reviewed.`);
+      setStatusText(`Role ${role} cannot mark issues as reviewed.`);
       return;
     }
     if (!scan) {
@@ -1750,7 +1750,7 @@ export default function App(): React.JSX.Element {
     });
     if (updated) {
       setScan(updated);
-      setStatusText("Finding marked as reviewed.");
+      setStatusText("Issue marked as reviewed.");
       await loadAudits(scan.scanId);
     }
   };
@@ -1765,7 +1765,7 @@ export default function App(): React.JSX.Element {
     }
     const patch = await window.codeSentinelX.generatePatch({ scanId: scan.scanId, findingId });
     if (!patch) {
-      setStatusText("No patch preview available for this finding.");
+      setStatusText("No patch preview available for this issue.");
       return;
     }
     await navigator.clipboard.writeText(patch);
@@ -1893,7 +1893,7 @@ export default function App(): React.JSX.Element {
     setSeverityFilter("All");
     setFindingScope("all");
     setFindingGroupMode("none");
-    setStatusText("Finding filters cleared.");
+    setStatusText("Issue filters cleared.");
   };
 
   const openPrimaryDashboardView = (): void => {
@@ -3157,7 +3157,7 @@ export default function App(): React.JSX.Element {
                     type="button"
                     onClick={() => markReviewed(selectedFinding.finding_uid)}
                     disabled={!roleCaps.canReviewFindings}
-                    title={!roleCaps.canReviewFindings ? `Role ${role} cannot mark findings.` : ""}
+                    title={!roleCaps.canReviewFindings ? `Role ${role} cannot mark issues.` : ""}
                   >
                     Mark Reviewed
                   </button>

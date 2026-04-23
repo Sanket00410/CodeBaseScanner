@@ -4844,7 +4844,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
         }
 
         if (!selected.length) {
-          tbody.innerHTML = "<tr><td colspan='8' class='muted'>No findings matched this drill-down.</td></tr>";
+          tbody.innerHTML = "<tr><td colspan='8' class='muted'>No issues matched this drill-down.</td></tr>";
           return;
         }
 
