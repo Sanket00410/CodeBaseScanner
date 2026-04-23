@@ -169,6 +169,22 @@ function reportWithZeroedSummaries() {
   return payload;
 }
 
+function mixedReportWithZeroedSummaries() {
+  const payload = reportWithZeroedSummaries();
+  payload.vulnerability_fixed_code_report.findings = [
+    finding("critical-sql-1", "Critical", "SQL Injection", "api/auth.py", 11),
+    finding("critical-sql-2", "Critical", "SQL Injection", "api/user.py", 31),
+    finding("high-xss-1", "High", "Cross-Site Scripting", "web/App.tsx", 20),
+    finding("medium-crypto-1", "Medium", "Weak Cryptography Usage", "crypto/hash.py", 7),
+    finding("low-log-1", "Low", "Sensitive Data Logged", "logger/audit.py", 9),
+  ];
+  payload.vulnerability_fixed_code_report.findings[3].cwe_id = "CWE-327";
+  payload.vulnerability_fixed_code_report.findings[3].owasp_mapping = "A02:2025 - Cryptographic Failures";
+  payload.vulnerability_fixed_code_report.findings[4].cwe_id = "CWE-532";
+  payload.vulnerability_fixed_code_report.findings[4].owasp_mapping = "A09:2025 - Security Logging and Monitoring Failures";
+  return payload;
+}
+
 function assertReportLinksResolve(html, label) {
   const ids = new Set();
   for (const match of html.matchAll(/\sid="([^"]+)"/g)) {
@@ -413,6 +429,38 @@ function assertReportLinksResolve(html, label) {
   assert.match(zeroSummaryManagementHtml, /Module/);
   assert.match(zeroSummaryManagementHtml, /src\/app.py/);
   assert.doesNotMatch(zeroSummaryManagementHtml, /secret = true/);
+
+  await store.addScan({
+    scanId: "scan-3",
+    projectPath: "C:/repo",
+    requestedBy: "test",
+    role: "Admin",
+    startedAt: "2026-04-22T00:04:00.000Z",
+    completedAt: "2026-04-22T00:05:00.000Z",
+    report: mixedReportWithZeroedSummaries(),
+    findingStates: {},
+  });
+  const mixedManagement = store.getScanView("scan-3", "Management");
+  assert.equal(mixedManagement.report.executive_summary.total_vulnerabilities, 5);
+  assert.equal(mixedManagement.report.executive_summary.severity_distribution.Critical, 2);
+  assert.equal(mixedManagement.report.executive_summary.severity_distribution.High, 1);
+  assert.equal(mixedManagement.report.executive_summary.severity_distribution.Medium, 1);
+  assert.equal(mixedManagement.report.executive_summary.severity_distribution.Low, 1);
+  const mixedGroups = mixedManagement.report.executive_summary.management_summary.severity_breakdown_groups;
+  const criticalGroup = mixedGroups.find((group) => group.severity === "Critical");
+  assert.equal(criticalGroup.count, 2);
+  assert.equal(criticalGroup.groups.length, 1);
+  assert.equal(criticalGroup.groups[0].count, 2);
+  assert.equal(criticalGroup.groups[0].instances.length, 2);
+  assert.deepEqual(criticalGroup.groups[0].modules, ["api"]);
+  const mixedManagementHtml = exportService.renderReportHtml(store.getScanView("scan-3"), "combined", undefined, "Management");
+  assert.match(mixedManagementHtml, /Critical:\s*2/);
+  assert.match(mixedManagementHtml, /High:\s*1/);
+  assert.match(mixedManagementHtml, /Medium:\s*1/);
+  assert.match(mixedManagementHtml, /Low:\s*1/);
+  assert.match(mixedManagementHtml, /api\/auth.py/);
+  assert.match(mixedManagementHtml, /api\/user.py/);
+  assert.doesNotMatch(mixedManagementHtml, /secret = true/);
 
   fs.rmSync(tempRoot, { recursive: true, force: true });
 })().catch((error) => {
