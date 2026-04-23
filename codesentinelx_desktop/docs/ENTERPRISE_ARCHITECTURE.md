@@ -279,9 +279,9 @@ codesentinelx_desktop/backend/types.ts
 codesentinelx_desktop/frontend/src/types.ts
 codesentinelx_desktop/backend/exportService.ts
 codesentinelx_desktop/frontend/src/App.tsx
-Fix Safety Simulator
+Fix Verification Simulator
 Build: run suggested fix in temp workspace, score compile/test/security delta/side-effects.
-Add simulator module and result fields: fix_safety.compile_ok, tests_ok, finding_removed, side_effect_risk, safety_score.
+Add simulator module and result fields: fix_verification.compile_ok, tests_ok, finding_removed, side_effect_risk, verification_score.
 Files:
 codesentinelx_engine/scanner/reporting/report_builder.py
 codesentinelx_engine/scanner/scan_control.py

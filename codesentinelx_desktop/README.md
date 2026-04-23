@@ -39,7 +39,7 @@ Detailed usage guide:
     - Whether finding is on changed file/line relative to current git diff
     - Repo-relative path and git status marker in finding payload
   - Native code analyzers and local secure coding rules:
-    Semgrep, CodeQL, OSV-Scanner, Grype, Gitleaks, Bandit, Checkov, tfsec, Hadolint, gosec, and CodeSentinelX built-in rules
+    Semgrep, Gitleaks, OSV-Scanner, Checkov, Hadolint, and CodeSentinelX built-in rules
   - Reference catalog mapping for additional code-analysis families (SAST, SCA, IaC, container policy)
 - One canonical scan with role-projected reports:
   - Admin: Full Scope Export
