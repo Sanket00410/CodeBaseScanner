@@ -87,9 +87,25 @@ function report() {
       title: "Existing",
       target_path: "C:/repo",
       generated_at: "2026-04-22T00:00:00.000Z",
-      summary: { implemented_controls: 0, category_distribution: {}, coverage_levels: {}, standards_coverage: {} },
-      controls: [],
-      compliance_matrix: [],
+      summary: {
+        implemented_controls: 1,
+        category_distribution: { Authentication: 1 },
+        coverage_levels: { Implemented: 1 },
+        standards_coverage: { "OWASP ASVS": 1 },
+      },
+      controls: [
+        {
+          control_id: "CTRL-AUTH-1",
+          name: "Authentication guard",
+          category: "Authentication",
+          description: "Route requires authenticated access.",
+          status: "Implemented",
+          coverage_level: "Implemented",
+          standard_mappings: ["OWASP ASVS"],
+          evidence: [{ file_path: "src/app.py", line_number: 10, snippet: "login_required" }],
+        },
+      ],
+      compliance_matrix: [{ standard: "OWASP ASVS", control_count: 1, status: "partial" }],
     },
     vulnerability_fixed_code_report: {
       report_type: "vulnerability_fixed_code",
@@ -151,6 +167,32 @@ function reportWithZeroedSummaries() {
   payload.vulnerability_fixed_code_report.summary.open_findings = 0;
   payload.vulnerability_fixed_code_report.summary.reviewed_findings = 0;
   return payload;
+}
+
+function assertReportLinksResolve(html, label) {
+  const ids = new Set();
+  for (const match of html.matchAll(/\sid="([^"]+)"/g)) {
+    ids.add(match[1]);
+  }
+  const clickLinks = [...html.matchAll(/<(?:a|button)\b[^>]*(?:alert-link|fix-link|finding-detail-link|existing-control-link|existing-control-evidence-link)[^>]*>/g)].map(
+    (match) => match[0],
+  );
+  assert.ok(clickLinks.length > 0, `${label} should contain clickable drilldown links`);
+  for (const link of clickLinks) {
+    const target = /data-target-id="([^"]+)"/.exec(link)?.[1];
+    const instance = /data-instance-target-id="([^"]+)"/.exec(link)?.[1];
+    const href = /href="#([^"]+)"/.exec(link)?.[1];
+    assert.ok(target || href, `${label} clickable link should include a target: ${link}`);
+    if (target) {
+      assert.ok(ids.has(target), `${label} data-target-id should resolve: ${target}`);
+    }
+    if (instance) {
+      assert.ok(ids.has(instance), `${label} data-instance-target-id should resolve: ${instance}`);
+    }
+    if (href) {
+      assert.ok(ids.has(href), `${label} href anchor should resolve: ${href}`);
+    }
+  }
 }
 
 (async () => {
@@ -238,6 +280,7 @@ function reportWithZeroedSummaries() {
   assert.match(adminHtml, /data-target-id="combined-alert-/);
   assert.match(adminHtml, /data-instance-target-id="combined-alert-instance-/);
   assert.match(adminHtml, /class="report-disclosure combined-issue"/);
+  assertReportLinksResolve(adminHtml, "Admin combined report");
 
   const securityHtml = exportService.renderReportHtml(rawStoredScan, "vulnerability", undefined, "Security Analyst");
   assert.match(securityHtml, /Role Projection/);
@@ -247,6 +290,7 @@ function reportWithZeroedSummaries() {
   assert.match(securityHtml, /class="alert-link"/);
   assert.match(securityHtml, /data-target-id="alert-/);
   assert.match(securityHtml, /data-instance-target-id="alert-instance-/);
+  assertReportLinksResolve(securityHtml, "Security Analyst vulnerability report");
 
   const securityCsvPath = await exportService.exportReport(rawStoredScan, {
     scanId: "scan-1",
@@ -277,6 +321,7 @@ function reportWithZeroedSummaries() {
   assert.match(developerHtml, /class="fix-link"/);
   assert.match(developerHtml, /data-target-id="fix-/);
   assert.match(developerHtml, /data-instance-target-id="fix-instance-/);
+  assertReportLinksResolve(developerHtml, "Developer fixes report");
 
   const findingDetailsHtml = exportService.renderReportHtml(rawStoredScan, "finding_details", undefined, "Admin");
   assert.match(findingDetailsHtml, /CodeSentinelX Finding Details Report/);
@@ -285,10 +330,14 @@ function reportWithZeroedSummaries() {
   assert.match(findingDetailsHtml, /class="finding-detail-link"/);
   assert.match(findingDetailsHtml, /data-target-id="finding-detail-/);
   assert.match(findingDetailsHtml, /data-instance-target-id="finding-detail-instance-/);
+  assertReportLinksResolve(findingDetailsHtml, "Finding Details report");
 
   const auditorHtml = exportService.renderReportHtml(rawStoredScan, "existing", undefined, "Auditor");
   assert.match(auditorHtml, /Role Projection/);
   assert.match(auditorHtml, /Auditor projection includes traceable assurance/);
+  if (/existing-control(?:-evidence)?-link/.test(auditorHtml)) {
+    assertReportLinksResolve(auditorHtml, "Auditor existing report");
+  }
 
   const managementHtml = exportService.renderReportHtml(rawStoredScan, "combined", undefined, "Management");
   assert.match(managementHtml, /Management Snapshot/);

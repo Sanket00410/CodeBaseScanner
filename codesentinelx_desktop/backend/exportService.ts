@@ -3275,7 +3275,7 @@ function renderExistingHtml(scan: ScanView): string {
     .map((control) => {
       const controlAnchorId = stableAnchorId("existing-control", control.name);
       const evidenceAnchorId = stableAnchorId("existing-control-evidence", control.name);
-      return `<tr>
+      return `<tr id="${escapeHtml(controlAnchorId)}" data-control-id="${escapeHtml(controlAnchorId)}">
         <td><a href="#${escapeHtml(controlAnchorId)}" class="existing-control-link" data-target-id="${escapeHtml(controlAnchorId)}" data-instance-target-id="${escapeHtml(evidenceAnchorId)}">${escapeHtml(control.name)}</a></td>
         <td>${escapeHtml(control.category)}</td>
         <td>${escapeHtml(control.coverage_level)}</td>
@@ -5978,7 +5978,7 @@ function renderCombinedHtml(scan: ScanView): string {
         String(
           leadAny?.alert_group_anchor ||
             leadAny?.alert_title_group_anchor ||
-            stableAnchorId("combined-alert-instance", `${group.id}::${String(lead?.finding_uid || `${lead?.file_path || ""}:${lead?.line_number || 1}`)}`),
+            stableAnchorId("combined-alert-instance", String(lead?.finding_uid || `${lead?.file_path || ""}:${lead?.line_number || 1}`)),
         ),
       ];
     }),
