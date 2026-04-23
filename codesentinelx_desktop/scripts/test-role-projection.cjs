@@ -334,6 +334,12 @@ function reportWithZeroedSummaries() {
   assert.match(zeroSummaryManagementHtml, /High:\s*1/);
   assert.match(zeroSummaryManagementHtml, /conic-gradient/);
   assert.match(zeroSummaryManagementHtml, /SQL Injection/);
+  assert.match(zeroSummaryManagementHtml, /CWE-89/);
+  assert.match(zeroSummaryManagementHtml, /File Name/);
+  assert.match(zeroSummaryManagementHtml, /File \/ Path/);
+  assert.match(zeroSummaryManagementHtml, /Line/);
+  assert.match(zeroSummaryManagementHtml, /Module/);
+  assert.match(zeroSummaryManagementHtml, /src\/app.py/);
   assert.doesNotMatch(zeroSummaryManagementHtml, /secret = true/);
 
   fs.rmSync(tempRoot, { recursive: true, force: true });
