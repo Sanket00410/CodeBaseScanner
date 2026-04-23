@@ -170,6 +170,12 @@ function reportWithZeroedSummaries() {
   assert.equal(history.length, 1);
   assert.equal(history[0].canonicalScanAvailable, true);
   assert.deepEqual(history[0].roleViewsAvailable, ["Admin", "Security Analyst", "Developer", "Auditor", "Management"]);
+  const persistedAfterAdd = JSON.parse(fs.readFileSync(dbFile, "utf-8"));
+  assert.deepEqual(Object.keys(persistedAfterAdd.scans[0].projectionCache).sort(), ["Admin", "Auditor", "Developer", "Management", "Security Analyst"].sort());
+  for (const projectionRole of ["Admin", "Security Analyst", "Developer", "Auditor", "Management"]) {
+    assert.equal(persistedAfterAdd.scans[0].projectionCache[projectionRole].scanner_invoked, false);
+    assert.equal(persistedAfterAdd.scans[0].projectionCache[projectionRole].source_scan_id, "scan-1");
+  }
 
   const management = store.getScanView("scan-1", "Management");
   assert.equal(management.role, "Management");

@@ -305,7 +305,7 @@ function compactScanRecord(input: Partial<ScanRecord> | LooseRecord): ScanRecord
     report,
   });
 
-  return {
+  const record: ScanRecord = {
     scanId,
     projectPath,
     requestedBy: truncateText(asString(raw.requestedBy, "local-user"), 180),
@@ -317,6 +317,8 @@ function compactScanRecord(input: Partial<ScanRecord> | LooseRecord): ScanRecord
     report,
     findingStates,
   };
+  refreshProjectionCache(record);
+  return record;
 }
 
 function compactReport(input: unknown): UniversalScanReport {
@@ -898,6 +900,19 @@ function refreshCanonicalScan(record: ScanRecord): void {
     completedAt: record.completedAt,
     report: record.report,
   });
+  refreshProjectionCache(record);
+}
+
+function refreshProjectionCache(record: ScanRecord): void {
+  const existing = normalizeProjectionCache(record.projectionCache);
+  const cache: Partial<Record<UserRole, RoleProjectionMetadata>> = { ...existing };
+  for (const role of USER_ROLE_SET) {
+    const projected = toProjectedScanView(record, role);
+    if (projected.projection) {
+      cache[role] = projected.projection;
+    }
+  }
+  record.projectionCache = cache;
 }
 
 function normalizeSeverity(value: unknown): Severity {

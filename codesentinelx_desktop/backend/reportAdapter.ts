@@ -90,6 +90,9 @@ export function toProjectedScanView(record: ScanRecord, role: ScanRecord["role"]
 
 export function toHistoryItem(record: ScanRecord): ScanHistoryItem {
   const summary = record.report.vulnerability_fixed_code_report.summary;
+  const cachedRoles = ["Admin", "Security Analyst", "Developer", "Auditor", "Management"].filter(
+    (role) => Boolean(record.projectionCache?.[role as ScanRecord["role"]]),
+  ) as ScanRecord["role"][];
   const suppressionReport =
     (record.report.vulnerability_fixed_code_report as { suppression_report?: { suppressed_count?: number } }).suppression_report ||
     (record.report as { suppression_report?: { suppressed_count?: number } }).suppression_report ||
@@ -100,7 +103,7 @@ export function toHistoryItem(record: ScanRecord): ScanHistoryItem {
     startedAt: record.startedAt,
     completedAt: record.completedAt,
     canonicalScanAvailable: Boolean(record.canonicalScan),
-    roleViewsAvailable: ["Admin", "Security Analyst", "Developer", "Auditor", "Management"],
+    roleViewsAvailable: cachedRoles.length ? cachedRoles : ["Admin", "Security Analyst", "Developer", "Auditor", "Management"],
     risk: record.report.executive_summary.risk_rating,
     riskScore: record.report.executive_summary.risk_score,
     totalFindings: summary.total_findings,
