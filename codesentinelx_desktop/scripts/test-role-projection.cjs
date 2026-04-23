@@ -232,10 +232,21 @@ function reportWithZeroedSummaries() {
   assert.match(adminHtml, /Role Projection/);
   assert.match(adminHtml, /Admin projection includes the complete canonical scan/);
   assert.match(adminHtml, /Top Prioritized Issues/);
+  assert.match(adminHtml, /Alerts by Type/);
+  assert.match(adminHtml, /Issue Details/);
+  assert.match(adminHtml, /class="alert-link"/);
+  assert.match(adminHtml, /data-target-id="combined-alert-/);
+  assert.match(adminHtml, /data-instance-target-id="combined-alert-instance-/);
+  assert.match(adminHtml, /class="report-disclosure combined-issue"/);
 
   const securityHtml = exportService.renderReportHtml(rawStoredScan, "vulnerability", undefined, "Security Analyst");
   assert.match(securityHtml, /Role Projection/);
   assert.match(securityHtml, /Security Analyst projection includes broad security triage/);
+  assert.match(securityHtml, /Alerts by Type/);
+  assert.match(securityHtml, /Detailed Findings/);
+  assert.match(securityHtml, /class="alert-link"/);
+  assert.match(securityHtml, /data-target-id="alert-/);
+  assert.match(securityHtml, /data-instance-target-id="alert-instance-/);
 
   const securityCsvPath = await exportService.exportReport(rawStoredScan, {
     scanId: "scan-1",
@@ -262,6 +273,18 @@ function reportWithZeroedSummaries() {
   const developerHtml = exportService.renderReportHtml(rawStoredScan, "fixes", undefined, "Developer");
   assert.match(developerHtml, /Role Projection/);
   assert.match(developerHtml, /Developer projection includes fix-oriented issue detail/);
+  assert.match(developerHtml, /Issue Details/);
+  assert.match(developerHtml, /class="fix-link"/);
+  assert.match(developerHtml, /data-target-id="fix-/);
+  assert.match(developerHtml, /data-instance-target-id="fix-instance-/);
+
+  const findingDetailsHtml = exportService.renderReportHtml(rawStoredScan, "finding_details", undefined, "Admin");
+  assert.match(findingDetailsHtml, /CodeSentinelX Finding Details Report/);
+  assert.match(findingDetailsHtml, /Issue Details/);
+  assert.match(findingDetailsHtml, /Issue Drill-Down/);
+  assert.match(findingDetailsHtml, /class="finding-detail-link"/);
+  assert.match(findingDetailsHtml, /data-target-id="finding-detail-/);
+  assert.match(findingDetailsHtml, /data-instance-target-id="finding-detail-instance-/);
 
   const auditorHtml = exportService.renderReportHtml(rawStoredScan, "existing", undefined, "Auditor");
   assert.match(auditorHtml, /Role Projection/);

@@ -742,6 +742,8 @@ interface RoleExportProfile {
   label: string;
 }
 
+const FINDING_DETAILS_EXPORT_FORMATS = new Set<ExportRequest["format"]>(["html", "pdf", "json", "csv"]);
+
 const ROLE_EXPORT_PROFILES: Record<ReportRole, RoleExportProfile> = {
   Admin: {
     reportType: "combined",
@@ -852,14 +854,17 @@ function resolveExportProfile(scan: ScanView, requestedRole?: ExportRequest["rol
 
 function assertExportAllowed(scan: ScanView, request: ExportRequest): RoleExportProfile {
   const profile = resolveExportProfile(scan, request.role);
-  if (profile.reportType !== request.reportType) {
+  const role = resolveExportRole(scan, request.role);
+  const isFindingDetailsStyle = request.reportType === "finding_details" && role !== "Management";
+  if (profile.reportType !== request.reportType && !isFindingDetailsStyle) {
     throw new Error(
-      `Export report type ${request.reportType} is not allowed for role ${resolveExportRole(scan, request.role)}. Allowed export preset: ${profile.label} (${profile.reportType}).`,
+      `Export report type ${request.reportType} is not allowed for role ${role}. Allowed export preset: ${profile.label} (${profile.reportType}).`,
     );
   }
-  if (!profile.formats.has(request.format)) {
+  const allowedFormats = isFindingDetailsStyle ? FINDING_DETAILS_EXPORT_FORMATS : profile.formats;
+  if (!allowedFormats.has(request.format)) {
     throw new Error(
-      `Export format ${request.format} is not allowed for role ${resolveExportRole(scan, request.role)} and export preset ${profile.label}.`,
+      `Export format ${request.format} is not allowed for role ${role} and export preset ${isFindingDetailsStyle ? "Finding Details" : profile.label}.`,
     );
   }
   return profile;
@@ -871,9 +876,11 @@ function assertPreviewAllowed(
   requestedRole?: ExportRequest["role"],
 ): RoleExportProfile {
   const profile = resolveExportProfile(scan, requestedRole);
-  if (profile.reportType !== reportType) {
+  const role = resolveExportRole(scan, requestedRole);
+  const isFindingDetailsStyle = reportType === "finding_details" && role !== "Management";
+  if (profile.reportType !== reportType && !isFindingDetailsStyle) {
     throw new Error(
-      `Preview report type ${reportType} is not allowed for role ${resolveExportRole(scan, requestedRole)}. Allowed export preset: ${profile.label} (${profile.reportType}).`,
+      `Preview report type ${reportType} is not allowed for role ${role}. Allowed export preset: ${profile.label} (${profile.reportType}).`,
     );
   }
   return profile;
@@ -1539,7 +1546,7 @@ export class ExportService {
       return destination;
     }
     if (request.format === "pdf") {
-      await this.writePdf(projectedScan, destination, profile.reportType);
+      await this.writePdf(projectedScan, destination, request.reportType);
       return destination;
     }
     throw new Error(`Unsupported export format: ${request.format}`);
