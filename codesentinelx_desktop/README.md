@@ -39,20 +39,23 @@ Detailed usage guide:
     - Whether finding is on changed file/line relative to current git diff
     - Repo-relative path and git status marker in finding payload
   - Native code analyzers and local secure coding rules:
-    Semgrep, Trivy manifest analysis, Gitleaks, CodeQL, Bandit, Checkov, pip-audit, Grype, OSV-Scanner, tfsec, Hadolint, gosec, OWASP Dependency-Check
+    Semgrep, CodeQL, OSV-Scanner, Grype, Gitleaks, Bandit, Checkov, tfsec, Hadolint, gosec, and CodeSentinelX built-in rules
   - Reference catalog mapping for additional code-analysis families (SAST, SCA, IaC, container policy)
-- Three separate reports in UI and exports:
-  - Existing Security Implementation Report
-  - Vulnerability Report
-  - Original and Suggested Fix Report
-- Supports one scan target mode:
-  - Codebase scan via local folder path only
+- One canonical scan with role-projected reports:
+  - Admin: Full Scope Export
+  - Security Analyst: Security Analysis Export
+  - Developer: Remediation Export
+  - Auditor: Audit / Compliance Export
+  - Management: Executive Summary Export
+- Supports local codebase targets:
+  - Folder scan
+  - Single-file scan
 
 ## Features
 
 - Real-time scan progress in desktop UI
 - Live scan event log stream (stage, file/module, scanner message)
-- Drill-down findings with severity filtering and search
+- Drill-down findings with severity filtering, search, grouped alert navigation, and file/line anchors
 - Original code vs suggested fix and patch preview
 - Mark finding as reviewed
 - Toolchain intelligence panel:
@@ -82,10 +85,17 @@ Detailed usage guide:
 - Keyboard shortcuts:
   - Main navigation: `Alt+1..6`
   - Active section tabs: `1..9`
-- Export formats:
-  - Existing: JSON, HTML, PDF
-  - Vulnerability: JSON, HTML, PDF, CSV, SARIF, patch
-  - Fixes: HTML, PDF
+- Export model:
+  - One scan is stored once as the canonical scan.
+  - Role changes redraw the current projection and do not rerun analyzers.
+  - Exports carry projection metadata so the selected role scope is auditable.
+- Export formats by role:
+  - Admin: HTML, PDF, JSON, XML
+  - Security Analyst: HTML, PDF, JSON, XML, CSV, SARIF
+  - Developer: HTML, PDF, JSON, patch
+  - Auditor: HTML, PDF, JSON, XML
+  - Management: HTML, PDF, JSON
+  - Finding Details: HTML, PDF, JSON, CSV for non-Management roles
 
 ## Run in Development
 
@@ -96,6 +106,24 @@ npm run dev
 ```
 
 In the app target field, provide a local project folder path only.
+In the app target field, provide a local project folder path or a single source file path.
+
+## Validation
+
+Use the ordered canonical-flow verifier before pushing report/projection changes:
+
+```powershell
+npm run verify:canonical-flow
+```
+
+This runs, in order:
+
+- TypeScript typecheck for main and renderer
+- Main-process build
+- Canonical scan / role projection / report export regression tests
+- Renderer production build
+
+Do not run `build:main` and `test:projection` in parallel. `build:main` cleans `dist-main`, while `test:projection` imports compiled files from that folder.
 
 ## Build EXE
 

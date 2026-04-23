@@ -15,7 +15,8 @@
     "build:renderer": "vite build --config frontend/vite.config.ts",
     "build:main": "node scripts/clean-dir.cjs dist-main && tsc -p tsconfig.main.json",
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p frontend/tsconfig.json --noEmit",
-    "test:projection": "node scripts/test-role-projection.cjs"
+    "test:projection": "node scripts/test-role-projection.cjs",
+    "verify:canonical-flow": "node scripts/verify-canonical-flow.cjs"
   },
   "dependencies": {
     "electron-log": "^5.2.4",
