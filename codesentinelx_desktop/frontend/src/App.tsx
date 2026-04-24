@@ -2274,12 +2274,24 @@ export default function App(): React.JSX.Element {
       const numeric = Number(primary);
       return Number.isFinite(numeric) && numeric > 0 ? numeric : fallback;
     };
-    const dashboardOwaspCategories: Array<{ owasp_category: string; count: number }> = (vulnSummary.top_owasp_categories ||
-      summary.top_owasp_categories ||
-      []) as Array<{ owasp_category: string; count: number }>;
-    const dashboardAffectedModules: Array<{ module: string; count: number; critical: number; high: number }> = (vulnSummary.affected_modules ||
-      []) as Array<{ module: string; count: number; critical: number; high: number }>;
-    const dashboardActionPlan: string[] = (summary.recommended_action_plan || []) as string[];
+    const dashboardOwaspCategories: Array<{ owasp_category: string; count: number }> =
+      activeProjectionRole === "Management"
+        ? ((managementSummaryRecord.top_owasp_categories ||
+            vulnerabilityFindingsSummaryRecord.top_owasp_categories ||
+            summary.top_owasp_categories ||
+            []) as Array<{ owasp_category: string; count: number }>)
+        : ((vulnSummary.top_owasp_categories || summary.top_owasp_categories || []) as Array<{ owasp_category: string; count: number }>);
+    const dashboardAffectedModules: Array<{ module: string; count: number; critical: number; high: number }> =
+      activeProjectionRole === "Management"
+        ? ((managementSummaryRecord.affected_modules ||
+            vulnerabilityFindingsSummaryRecord.affected_modules ||
+            vulnSummary.affected_modules ||
+            []) as Array<{ module: string; count: number; critical: number; high: number }>)
+        : ((vulnSummary.affected_modules || []) as Array<{ module: string; count: number; critical: number; high: number }>);
+    const dashboardActionPlan: string[] =
+      activeProjectionRole === "Management"
+        ? ((managementSummaryRecord.recommended_action_plan || summary.recommended_action_plan || []) as string[])
+        : ((summary.recommended_action_plan || []) as string[]);
 
     return (
       <section className="panel stack-gap">
