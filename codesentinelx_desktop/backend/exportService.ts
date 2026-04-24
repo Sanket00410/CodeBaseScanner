@@ -901,7 +901,7 @@ function resolveAllowedSections(scan: ScanView): Set<string> {
     "Security Analyst": ["all"],
     Developer: ["developer_devops_view", "risk_story_mode", "advanced_features", "data_quality", "tool_evidence", "deterministic_replay", "report_integrity_chain"],
     Auditor: ["enterprise_assurance", "false_positive_report", "data_quality", "tool_evidence", "deterministic_replay", "report_integrity_chain"],
-    Management: ["cto_board_view", "risk_story_mode", "enterprise_assurance", "data_quality", "deterministic_replay", "report_integrity_chain"],
+    Management: ["cto_board_view", "risk_story_mode", "enterprise_assurance", "management_summary", "severity_breakdown_groups", "data_quality", "deterministic_replay", "report_integrity_chain"],
   };
   return new Set((fallback[role] || ["all"]).map((item) => String(item).trim().toLowerCase()));
 }
