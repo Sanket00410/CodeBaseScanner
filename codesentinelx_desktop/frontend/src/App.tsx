@@ -2252,6 +2252,9 @@ export default function App(): React.JSX.Element {
     const executiveSeverityDistribution = normalizeSeverityDistribution(
       summaryRecord.severity_distribution_raw || summaryRecord.severity_distribution,
     );
+    const managementSeverityDistribution = normalizeSeverityDistribution(
+      managementSummaryRecord.severity_distribution_raw || managementSummaryRecord.severity_distribution,
+    );
     const findingsSeverityDistributionFromSummary = normalizeSeverityDistribution(
       vulnerabilityFindingsSummaryRecord.severity_distribution_raw || vulnerabilityFindingsSummaryRecord.severity_distribution,
     );
@@ -2261,15 +2264,27 @@ export default function App(): React.JSX.Element {
     const severityTotal = (distribution: Record<Severity, number> | undefined) =>
       Object.values(distribution || {}).reduce((total, value) => total + Number(value || 0), 0);
     const dashboardSeverityDistribution =
-      severityTotal(executiveSeverityDistribution) > 0
-        ? executiveSeverityDistribution
-        : severityTotal(findingsSeverityDistributionFromSummary) > 0
-          ? findingsSeverityDistributionFromSummary
-          : severityTotal(severityBreakdownSeverityDistribution) > 0
-            ? severityBreakdownSeverityDistribution
-            : severityTotal(fallbackSeverityDistribution) > 0
-              ? fallbackSeverityDistribution
-              : findingsSeverityDistribution;
+      activeProjectionRole === "Management"
+        ? (severityTotal(managementSeverityDistribution) > 0
+            ? managementSeverityDistribution
+            : severityTotal(severityBreakdownSeverityDistribution) > 0
+              ? severityBreakdownSeverityDistribution
+              : severityTotal(executiveSeverityDistribution) > 0
+                ? executiveSeverityDistribution
+                : severityTotal(findingsSeverityDistributionFromSummary) > 0
+                  ? findingsSeverityDistributionFromSummary
+                  : severityTotal(fallbackSeverityDistribution) > 0
+                    ? fallbackSeverityDistribution
+                    : findingsSeverityDistribution)
+        : (severityTotal(executiveSeverityDistribution) > 0
+            ? executiveSeverityDistribution
+            : severityTotal(findingsSeverityDistributionFromSummary) > 0
+              ? findingsSeverityDistributionFromSummary
+              : severityTotal(severityBreakdownSeverityDistribution) > 0
+                ? severityBreakdownSeverityDistribution
+                : severityTotal(fallbackSeverityDistribution) > 0
+                  ? fallbackSeverityDistribution
+                  : findingsSeverityDistribution);
     const positiveNumberOrFallback = (primary: unknown, fallback: number) => {
       const numeric = Number(primary);
       return Number.isFinite(numeric) && numeric > 0 ? numeric : fallback;
