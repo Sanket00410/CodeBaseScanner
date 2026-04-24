@@ -2240,9 +2240,14 @@ export default function App(): React.JSX.Element {
     const dashboardVulnSummaryAny = dashboardVulnSummary as Record<string, any>;
     const summaryRecord = summary as unknown as Record<string, unknown>;
     const vulnSummaryRecord = vulnSummary as unknown as Record<string, unknown>;
+    const managementSummaryRecord = ((summary as Record<string, unknown>).management_summary ||
+      (vulnSummary as Record<string, unknown>).management_summary ||
+      {}) as Record<string, unknown>;
     const vulnerabilityFindingsSummaryRecord = (vulnerabilityFindingsSummary || {}) as Record<string, unknown>;
     const managementSeverityBreakdown = normalizeSeverityBreakdownGroups(
-      vulnerabilityFindingsSummaryRecord.severity_breakdown_groups || vulnSummaryRecord.severity_breakdown_groups,
+      managementSummaryRecord.severity_breakdown_groups ||
+        vulnerabilityFindingsSummaryRecord.severity_breakdown_groups ||
+        vulnSummaryRecord.severity_breakdown_groups,
     );
     const executiveSeverityDistribution = normalizeSeverityDistribution(
       summaryRecord.severity_distribution_raw || summaryRecord.severity_distribution,
