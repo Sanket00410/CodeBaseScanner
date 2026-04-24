@@ -5951,10 +5951,10 @@ function renderCombinedHtml(scan: ScanView): string {
   }).join("");
   const combinedGroupedAll = groupByAlertTitle(findings);
   const managementGroupedAll =
-    reportRole === "Management" && combinedGroupedAll.length === 0 && managementSeverityBreakdown.length
+    reportRole === "Management" && managementSeverityBreakdown.length
       ? managementSeverityBreakdown.flatMap((severitySection) =>
           severitySection.groups.map((group) => {
-              const findingInstances = group.instances.map((instance, index) => ({
+            const findingInstances = group.instances.map((instance, index) => ({
               finding_uid: `${group.title}:${instance.file_path}:${instance.line_number}:${index}`,
               severity: severitySection.severity,
               cvss_score: 0,
