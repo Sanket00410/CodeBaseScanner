@@ -2942,7 +2942,10 @@ function writeCombinedPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
       0,
   );
   const summarySeverityDistributionSource =
-    (summary as Record<string, unknown>)?.severity_distribution_raw || (summary as Record<string, unknown>)?.severity_distribution;
+    (managementSummary as Record<string, unknown> | null)?.severity_distribution_raw ||
+    (managementSummary as Record<string, unknown> | null)?.severity_distribution ||
+    (summary as Record<string, unknown>)?.severity_distribution_raw ||
+    (summary as Record<string, unknown>)?.severity_distribution;
   const summarySeverityDistribution = normalizeSeverityDistribution(summarySeverityDistributionSource);
   const summarySeverityDistributionTotal = SEVERITY_ORDER.reduce((total, severity) => total + Number(summarySeverityDistribution?.[severity] || 0), 0);
   const effectiveSummarySeverityDistribution =
@@ -6189,8 +6192,12 @@ function renderCombinedHtml(scan: ScanView): string {
       sub: String(summary.risk_rating || scan.report.executive_summary.risk_rating || ""),
     },
   ]);
-  const dashboardManagementSeverityGradient = buildSeverityGradient(effectiveSummarySeverityDistribution);
-  const managementTopSource = summary as unknown as Record<string, unknown>;
+  const dashboardManagementSeverityGradient = buildSeverityGradient(
+    reportRole === "Management" ? effectiveManagementSeverityDistribution : effectiveSummarySeverityDistribution,
+  );
+  const managementTopSource =
+    (managementSummary as unknown as Record<string, unknown>) ||
+    (summary as unknown as Record<string, unknown>);
   const managementTopTypes = Array.isArray((managementTopSource as Record<string, unknown>).top_vulnerability_types)
     ? ((managementTopSource as Record<string, unknown>).top_vulnerability_types as Array<{ type: string; count: number }>).slice(0, 6)
     : [];
