@@ -244,24 +244,20 @@ function buildProjectionMetadata(canonical: CanonicalScanObject, role: UserRole)
 function applyManagementProjection(report: UniversalScanReport, canonical: CanonicalScanObject): void {
   const executive = report.executive_summary;
   const summary = report.vulnerability_fixed_code_report.summary;
-  const existingManagement = (executive.management_summary || {}) as NonNullable<typeof executive.management_summary>;
   const canonicalFindings = canonical.deduplicated_findings || canonical.raw_findings || [];
   const managementSeverity = { ...canonical.severity_distribution };
-  const existingSeverityBreakdown = Array.isArray(existingManagement.severity_breakdown_groups)
-    ? existingManagement.severity_breakdown_groups
-    : [];
+  const managementSeverityBreakdown = buildSeverityBreakdownGroups(canonicalFindings);
 
   executive.management_summary = {
-    ...existingManagement,
     total_findings: canonical.summary_metrics.total_findings,
     deduplicated_vulnerabilities: canonical.summary_metrics.deduplicated_findings,
     active_risk_findings: (managementSeverity.Critical || 0) + (managementSeverity.High || 0),
     severity_distribution: managementSeverity,
     severity_distribution_raw: managementSeverity,
-    top_vulnerability_types: nonEmptyArray(existingManagement.top_vulnerability_types) || canonical.summary_metrics.top_vulnerability_types || buildTopVulnerabilityTypes(canonicalFindings),
-    top_owasp_categories: nonEmptyArray(existingManagement.top_owasp_categories) || canonical.summary_metrics.top_owasp_categories || buildTopOwaspCategories(canonicalFindings),
-    affected_modules: nonEmptyArray(existingManagement.affected_modules) || canonical.summary_metrics.affected_modules || buildAffectedModules(canonicalFindings),
-    severity_breakdown_groups: existingSeverityBreakdown.length ? existingSeverityBreakdown : buildSeverityBreakdownGroups(canonicalFindings),
+    top_vulnerability_types: canonical.summary_metrics.top_vulnerability_types || buildTopVulnerabilityTypes(canonicalFindings),
+    top_owasp_categories: canonical.summary_metrics.top_owasp_categories || buildTopOwaspCategories(canonicalFindings),
+    affected_modules: canonical.summary_metrics.affected_modules || buildAffectedModules(canonicalFindings),
+    severity_breakdown_groups: managementSeverityBreakdown,
     risk_score: canonical.summary_metrics.risk_score,
     risk_rating: canonical.summary_metrics.risk_rating,
   };

@@ -467,36 +467,20 @@ function compactReport(input: unknown): UniversalScanReport {
     normalizeCompactObject(executive.suppression_lifecycle);
   const managementSummary = asRecord(executive.management_summary);
   const vulnerabilityManagementSummary = asRecord(vulnerabilityFindings.summary);
-  const managementSeverityBreakdownGroups = asArray(managementSummary.severity_breakdown_groups).map((item) => asRecord(item));
-  const vulnerabilitySeverityBreakdownGroups = asArray(vulnerabilityManagementSummary.severity_breakdown_groups).map((item) => asRecord(item));
   const managementSummaryPayload = {
-    total_findings: asNumber(managementSummary.total_findings, asNumber(vulnerabilityManagementSummary.total_findings, totalFindings)),
-    deduplicated_vulnerabilities: asNumber(
-      managementSummary.deduplicated_vulnerabilities,
-      asNumber(vulnerabilityManagementSummary.deduplicated_vulnerabilities, totalFindings),
-    ),
-    active_risk_findings: asNumber(
-      managementSummary.active_risk_findings,
-      asNumber(vulnerabilityManagementSummary.active_risk_findings, activeRiskFindings),
-    ),
-    severity_distribution: normalizeSeverityDistribution(
-      managementSummary.severity_distribution,
-      normalizeSeverityDistribution(vulnerabilityManagementSummary.severity_distribution, severityDistribution),
-    ),
-    severity_distribution_raw: normalizeSeverityDistribution(
-      managementSummary.severity_distribution_raw,
-      normalizeSeverityDistribution(vulnerabilityManagementSummary.severity_distribution_raw, severityDistribution),
-    ),
-    severity_breakdown_groups: managementSeverityBreakdownGroups.length
-      ? managementSeverityBreakdownGroups
-      : vulnerabilitySeverityBreakdownGroups,
-    top_vulnerability_types: normalizeTopTypeRows(managementSummary.top_vulnerability_types || vulnerabilityManagementSummary.top_vulnerability_types),
-    top_owasp_categories: normalizeTopOwaspRows(managementSummary.top_owasp_categories || vulnerabilityManagementSummary.top_owasp_categories),
-    affected_modules: normalizeAffectedModuleRows(managementSummary.affected_modules || vulnerabilityManagementSummary.affected_modules),
-    affected_files: normalizeAffectedFileRows(managementSummary.affected_files || vulnerabilityManagementSummary.affected_files),
-    affected_folders: normalizeAffectedFolderRows(managementSummary.affected_folders || vulnerabilityManagementSummary.affected_folders),
-    risk_score: asNumber(managementSummary.risk_score, asNumber(vulnerabilityManagementSummary.risk_score, asNumber(executive.risk_score, 0))),
-    risk_rating: asString(managementSummary.risk_rating, asString(vulnerabilityManagementSummary.risk_rating, asString(executive.risk_rating, "Informational"))),
+    total_findings: totalFindings,
+    deduplicated_vulnerabilities: totalFindings,
+    active_risk_findings: activeRiskFindings,
+    severity_distribution: { ...severityDistribution },
+    severity_distribution_raw: { ...severityDistribution },
+    severity_breakdown_groups: buildSeverityBreakdownGroups(findings),
+    top_vulnerability_types: buildTopVulnerabilityTypeRows(findings),
+    top_owasp_categories: buildTopOwaspRows(findings),
+    affected_modules: buildAffectedModuleRows(findings),
+    affected_files: normalizeAffectedFileRows(vulnerabilityManagementSummary.affected_files),
+    affected_folders: normalizeAffectedFolderRows(vulnerabilityManagementSummary.affected_folders),
+    risk_score: asNumber(executive.risk_score, 0),
+    risk_rating: asString(executive.risk_rating, "Informational"),
   };
 
   const report: UniversalScanReport = {

@@ -2910,13 +2910,11 @@ function writeCombinedPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
   const summary = report.summary;
   const findings = sortedFindings(report.findings || []);
   const reportRole = resolveReportRole(scan);
-  const summarySource = reportRole === "Management" ? scan.report.executive_summary : summary;
+  const summarySource = summary;
   const managementSummary =
-    reportRole === "Management"
-      ? ((scan.report.executive_summary as unknown as Record<string, unknown>).management_summary ||
-          (summary as unknown as Record<string, unknown>).management_summary ||
-          null)
-      : null;
+    (scan.report.executive_summary as unknown as Record<string, unknown>).management_summary ||
+    (summary as unknown as Record<string, unknown>).management_summary ||
+    null;
   const vulnerabilityFindingsSummary = resolveVulnerabilityFindingsSummary(scan);
   const toolchainExecution = resolveToolchainExecution(scan, summary);
   const enterprise = resolveEnterpriseAssurance(scan, summary);
@@ -2944,18 +2942,11 @@ function writeCombinedPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
       0,
   );
   const summarySeverityDistributionSource =
-    reportRole === "Management"
-      ? (vulnerabilityFindingsSummary as Record<string, unknown> | null)?.severity_distribution_raw ||
-        (vulnerabilityFindingsSummary as Record<string, unknown> | null)?.severity_distribution ||
-        (summarySource as Record<string, unknown>)?.severity_distribution_raw ||
-        (summarySource as Record<string, unknown>)?.severity_distribution ||
-        (managementSummary as Record<string, unknown> | null)?.severity_distribution_raw ||
-        (managementSummary as Record<string, unknown> | null)?.severity_distribution
-      : (summary as Record<string, unknown>)?.severity_distribution_raw || (summary as Record<string, unknown>)?.severity_distribution;
+    (summary as Record<string, unknown>)?.severity_distribution_raw || (summary as Record<string, unknown>)?.severity_distribution;
   const summarySeverityDistribution = normalizeSeverityDistribution(summarySeverityDistributionSource);
   const summarySeverityDistributionTotal = SEVERITY_ORDER.reduce((total, severity) => total + Number(summarySeverityDistribution?.[severity] || 0), 0);
   const effectiveSummarySeverityDistribution =
-    reportRole === "Management" && summaryFindingCount > 0 && summarySeverityDistributionTotal <= 0
+    summaryFindingCount > 0 && summarySeverityDistributionTotal <= 0
       ? buildSeverityDistribution(findings)
       : summarySeverityDistribution;
   writePdfMetricStrip(doc, [
@@ -5910,13 +5901,11 @@ function renderCombinedHtml(scan: ScanView): string {
   const riskIntel = resolveRiskIntelligence(summary as VulnerabilityFixedCodeReport["summary"] & {
     risk_intelligence?: { findings_with_cve?: number; findings_cvss_ge_7?: number; known_exploited_findings?: number };
   }, findings);
-  const managementSummarySource = reportRole === "Management" ? scan.report.executive_summary : summary;
+  const managementSummarySource = summary;
   const managementSummary =
-    reportRole === "Management"
-      ? ((scan.report.executive_summary as unknown as Record<string, unknown>).management_summary ||
-          (summary as unknown as Record<string, unknown>).management_summary ||
-          null)
-      : null;
+    (scan.report.executive_summary as unknown as Record<string, unknown>).management_summary ||
+    (summary as unknown as Record<string, unknown>).management_summary ||
+    null;
   const vulnerabilityFindingsSummary = resolveVulnerabilityFindingsSummary(scan);
   const exportedAt = formatDisplayTimestamp(resolveReportGeneratedAt(scan, "combined"));
   const summaryFindingCount = Number(
@@ -5928,24 +5917,17 @@ function renderCombinedHtml(scan: ScanView): string {
       0,
   );
   const summarySeverityDistributionSource =
-    reportRole === "Management"
-      ? (vulnerabilityFindingsSummary as Record<string, unknown> | null)?.severity_distribution_raw ||
-        (vulnerabilityFindingsSummary as Record<string, unknown> | null)?.severity_distribution ||
-        (managementSummarySource as Record<string, unknown>)?.severity_distribution_raw ||
-        (managementSummarySource as Record<string, unknown>)?.severity_distribution ||
-        (managementSummary as Record<string, unknown> | null)?.severity_distribution_raw ||
-        (managementSummary as Record<string, unknown> | null)?.severity_distribution
-      : (summary as Record<string, unknown>)?.severity_distribution_raw || (summary as Record<string, unknown>)?.severity_distribution;
+    (summary as Record<string, unknown>)?.severity_distribution_raw || (summary as Record<string, unknown>)?.severity_distribution;
   const summarySeverityDistribution = normalizeSeverityDistribution(summarySeverityDistributionSource);
   const summarySeverityDistributionTotal = SEVERITY_ORDER.reduce((total, severity) => total + Number(summarySeverityDistribution?.[severity] || 0), 0);
   const effectiveSummarySeverityDistribution =
     reportRole === "Management" && summaryFindingCount > 0 && summarySeverityDistributionTotal <= 0
       ? buildSeverityDistribution(findings)
       : summarySeverityDistribution;
-  const managementTopSource = (managementSummary as Record<string, unknown> | null) || managementSummarySource;
   const managementSeverityBreakdown = normalizeManagementSeverityBreakdown(
-    (managementSummary as Record<string, unknown> | null)?.severity_breakdown_groups ||
-      (managementSummarySource as Record<string, unknown> | null)?.severity_breakdown_groups,
+    (vulnerabilityFindingsSummary as Record<string, unknown> | null)?.severity_breakdown_groups ||
+      (managementSummary as Record<string, unknown> | null)?.severity_breakdown_groups ||
+      (summary as Record<string, unknown> | null)?.severity_breakdown_groups,
   );
   const managementSeverityFromGroups = managementSeverityBreakdown.reduce<Record<string, number>>(
     (acc, item) => {
@@ -5955,7 +5937,7 @@ function renderCombinedHtml(scan: ScanView): string {
     { Critical: 0, High: 0, Medium: 0, Low: 0, Info: 0 },
   );
   const effectiveManagementSeverityDistribution =
-    reportRole === "Management" && Object.values(managementSeverityFromGroups).some((value) => Number(value || 0) > 0)
+    Object.values(managementSeverityFromGroups).some((value) => Number(value || 0) > 0)
       ? normalizeSeverityDistribution(managementSeverityFromGroups)
       : effectiveSummarySeverityDistribution;
   const managementSeverityGradient = buildSeverityGradient(effectiveManagementSeverityDistribution);
@@ -5968,12 +5950,42 @@ function renderCombinedHtml(scan: ScanView): string {
     return `<tr><td>${escapeHtml(severity)}</td><td align="center">${count}</td></tr>`;
   }).join("");
   const combinedGroupedAll = groupByAlertTitle(findings);
-  const combinedGrouped = combinedGroupedAll.slice(0, 120);
+  const managementGroupedAll =
+    reportRole === "Management" && combinedGroupedAll.length === 0 && managementSeverityBreakdown.length
+      ? managementSeverityBreakdown.flatMap((severitySection) =>
+          severitySection.groups.map((group) => {
+              const findingInstances = group.instances.map((instance, index) => ({
+              finding_uid: `${group.title}:${instance.file_path}:${instance.line_number}:${index}`,
+              severity: severitySection.severity,
+              cvss_score: 0,
+              file_path: instance.file_path,
+              line_number: instance.line_number,
+              cwe_id: group.cwe,
+              owasp_mapping: group.owasp,
+              description: group.title,
+              business_impact: "",
+              recommendation: "",
+              module: instance.module || "root",
+              workflow_status: "Open",
+              source_tool: "CodeSentinelX",
+            }));
+            return {
+              id: stableAnchorId("management-combined-group", `${severitySection.severity}:${group.title}:${group.cwe}:${group.owasp}`),
+              title: group.title,
+              severity: severitySection.severity,
+              count: Number(group.count || findingInstances.length || 0),
+              findings: findingInstances,
+            };
+          }),
+        )
+      : [];
+  const combinedDisplayGroups = managementGroupedAll.length ? managementGroupedAll : combinedGroupedAll;
+  const combinedGrouped = combinedDisplayGroups.slice(0, 120);
   const combinedAlertAnchorByGroup = new Map(
-    combinedGroupedAll.map((group) => [group.id, stableAnchorId("combined-alert", group.id)]),
+    combinedDisplayGroups.map((group) => [group.id, stableAnchorId("combined-alert", group.id)]),
   );
   const combinedAlertInstanceAnchorByGroup = new Map(
-    combinedGroupedAll.map((group) => {
+    combinedDisplayGroups.map((group) => {
       const lead = group.findings[0];
       const leadAny = lead as unknown as Record<string, unknown> | undefined;
       return [
@@ -6178,6 +6190,7 @@ function renderCombinedHtml(scan: ScanView): string {
     },
   ]);
   const dashboardManagementSeverityGradient = buildSeverityGradient(effectiveSummarySeverityDistribution);
+  const managementTopSource = summary as unknown as Record<string, unknown>;
   const managementTopTypes = Array.isArray((managementTopSource as Record<string, unknown>).top_vulnerability_types)
     ? ((managementTopSource as Record<string, unknown>).top_vulnerability_types as Array<{ type: string; count: number }>).slice(0, 6)
     : [];

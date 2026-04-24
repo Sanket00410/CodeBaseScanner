@@ -2234,58 +2234,47 @@ export default function App(): React.JSX.Element {
     const vulnSummary = scan.report.vulnerability_fixed_code_report.summary;
     const activeProjectionRole = scan.role || role;
     const vulnerabilityFindingsSummary = ((scan.report as unknown as Record<string, unknown>).vulnerability_findings as { summary?: Record<string, unknown> } | undefined)?.summary;
-    const managementSummary = (summary as Record<string, unknown>).management_summary as Record<string, unknown> | undefined;
-    const dashboardSummary = activeProjectionRole === "Management" ? (managementSummary || summary) : summary;
-    const dashboardVulnSummary = activeProjectionRole === "Management" ? (managementSummary || vulnSummary) : vulnSummary;
+    const dashboardSummary = summary;
+    const dashboardVulnSummary = vulnSummary;
     const dashboardSummaryAny = dashboardSummary as Record<string, any>;
     const dashboardVulnSummaryAny = dashboardVulnSummary as Record<string, any>;
     const summaryRecord = summary as unknown as Record<string, unknown>;
-    const managementSummaryRecord = managementSummary as Record<string, unknown> | undefined;
-    const vulnerabilityFindingsSummaryRecord = vulnerabilityFindingsSummary || {};
+    const vulnSummaryRecord = vulnSummary as unknown as Record<string, unknown>;
+    const vulnerabilityFindingsSummaryRecord = (vulnerabilityFindingsSummary || {}) as Record<string, unknown>;
     const managementSeverityBreakdown = normalizeSeverityBreakdownGroups(
-      managementSummaryRecord?.severity_breakdown_groups || vulnerabilityFindingsSummaryRecord.severity_breakdown_groups,
+      vulnerabilityFindingsSummaryRecord.severity_breakdown_groups || vulnSummaryRecord.severity_breakdown_groups,
     );
     const executiveSeverityDistribution = normalizeSeverityDistribution(
       summaryRecord.severity_distribution_raw || summaryRecord.severity_distribution,
     );
-    const managementSeverityDistribution = normalizeSeverityDistribution(
-      managementSummaryRecord?.severity_distribution_raw || managementSummaryRecord?.severity_distribution,
-    );
     const findingsSeverityDistributionFromSummary = normalizeSeverityDistribution(
       vulnerabilityFindingsSummaryRecord.severity_distribution_raw || vulnerabilityFindingsSummaryRecord.severity_distribution,
     );
-    const fallbackSeverityDistribution = normalizeSeverityDistribution(vulnSummary.severity_distribution);
+    const fallbackSeverityDistribution = normalizeSeverityDistribution(vulnSummaryRecord.severity_distribution);
     const findingsSeverityDistribution = aggregateSeverityDistribution(findings);
     const severityBreakdownSeverityDistribution = aggregateSeverityFromBreakdown(managementSeverityBreakdown);
     const severityTotal = (distribution: Record<Severity, number> | undefined) =>
       Object.values(distribution || {}).reduce((total, value) => total + Number(value || 0), 0);
     const dashboardSeverityDistribution =
-      activeProjectionRole === "Management"
-        ? (severityTotal(executiveSeverityDistribution) > 0
-            ? executiveSeverityDistribution
-            : severityTotal(managementSeverityDistribution) > 0
-              ? managementSeverityDistribution
-              : severityTotal(severityBreakdownSeverityDistribution) > 0
-                ? severityBreakdownSeverityDistribution
-                : severityTotal(findingsSeverityDistributionFromSummary) > 0
-                ? findingsSeverityDistributionFromSummary
-                : severityTotal(fallbackSeverityDistribution) > 0
-                  ? fallbackSeverityDistribution
-                  : findingsSeverityDistribution)
-        : (dashboardVulnSummaryAny.severity_distribution as Record<string, number> | undefined);
+      severityTotal(executiveSeverityDistribution) > 0
+        ? executiveSeverityDistribution
+        : severityTotal(findingsSeverityDistributionFromSummary) > 0
+          ? findingsSeverityDistributionFromSummary
+          : severityTotal(severityBreakdownSeverityDistribution) > 0
+            ? severityBreakdownSeverityDistribution
+            : severityTotal(fallbackSeverityDistribution) > 0
+              ? fallbackSeverityDistribution
+              : findingsSeverityDistribution;
     const positiveNumberOrFallback = (primary: unknown, fallback: number) => {
       const numeric = Number(primary);
       return Number.isFinite(numeric) && numeric > 0 ? numeric : fallback;
     };
-    const dashboardOwaspCategories: Array<{ owasp_category: string; count: number }> = activeProjectionRole === "Management"
-      ? (Array.isArray(dashboardSummaryAny.top_owasp_categories) ? dashboardSummaryAny.top_owasp_categories : [])
-      : ((vulnSummary.top_owasp_categories || summary.top_owasp_categories || []) as Array<{ owasp_category: string; count: number }>);
-    const dashboardAffectedModules: Array<{ module: string; count: number; critical: number; high: number }> = activeProjectionRole === "Management"
-      ? (Array.isArray(dashboardSummaryAny.affected_modules) ? dashboardSummaryAny.affected_modules : [])
-      : ((vulnSummary.affected_modules || []) as Array<{ module: string; count: number; critical: number; high: number }>);
-    const dashboardActionPlan: string[] = activeProjectionRole === "Management"
-      ? (Array.isArray(dashboardSummaryAny.recommended_action_plan) ? dashboardSummaryAny.recommended_action_plan : [])
-      : ((summary.recommended_action_plan || []) as string[]);
+    const dashboardOwaspCategories: Array<{ owasp_category: string; count: number }> = (vulnSummary.top_owasp_categories ||
+      summary.top_owasp_categories ||
+      []) as Array<{ owasp_category: string; count: number }>;
+    const dashboardAffectedModules: Array<{ module: string; count: number; critical: number; high: number }> = (vulnSummary.affected_modules ||
+      []) as Array<{ module: string; count: number; critical: number; high: number }>;
+    const dashboardActionPlan: string[] = (summary.recommended_action_plan || []) as string[];
 
     return (
       <section className="panel stack-gap">
