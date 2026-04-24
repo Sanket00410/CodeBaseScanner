@@ -5925,8 +5925,8 @@ function renderCombinedHtml(scan: ScanView): string {
       ? buildSeverityDistribution(findings)
       : summarySeverityDistribution;
   const managementSeverityBreakdown = normalizeManagementSeverityBreakdown(
-    (vulnerabilityFindingsSummary as Record<string, unknown> | null)?.severity_breakdown_groups ||
-      (managementSummary as Record<string, unknown> | null)?.severity_breakdown_groups ||
+    (managementSummary as Record<string, unknown> | null)?.severity_breakdown_groups ||
+      (vulnerabilityFindingsSummary as Record<string, unknown> | null)?.severity_breakdown_groups ||
       (summary as Record<string, unknown> | null)?.severity_breakdown_groups,
   );
   const managementSeverityFromGroups = managementSeverityBreakdown.reduce<Record<string, number>>(
