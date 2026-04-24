@@ -246,10 +246,7 @@ function applyManagementProjection(report: UniversalScanReport, canonical: Canon
   const summary = report.vulnerability_fixed_code_report.summary;
   const existingManagement = (executive.management_summary || {}) as NonNullable<typeof executive.management_summary>;
   const canonicalFindings = canonical.deduplicated_findings || canonical.raw_findings || [];
-  const managementSeverity = normalizeSeverityDistribution(
-    existingManagement.severity_distribution_raw || existingManagement.severity_distribution,
-    canonical.severity_distribution,
-  );
+  const managementSeverity = { ...canonical.severity_distribution };
   const existingSeverityBreakdown = Array.isArray(existingManagement.severity_breakdown_groups)
     ? existingManagement.severity_breakdown_groups
     : [];
@@ -273,8 +270,8 @@ function applyManagementProjection(report: UniversalScanReport, canonical: Canon
   executive.deduplicated_vulnerabilities = canonical.summary_metrics.deduplicated_findings;
   summary.severity_distribution = managementSeverity;
   summary.total_findings = canonical.summary_metrics.deduplicated_findings;
-  summary.open_findings = 0;
-  summary.reviewed_findings = canonical.summary_metrics.deduplicated_findings;
+  summary.open_findings = canonical.summary_metrics.open_findings;
+  summary.reviewed_findings = canonical.summary_metrics.reviewed_findings;
   report.vulnerability_fixed_code_report.findings = [];
   report.vulnerability_fixed_code_report.auto_fix_recommendations = [];
 }

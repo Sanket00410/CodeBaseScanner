@@ -773,14 +773,7 @@ function syncReportSummary(report: UniversalScanReport): void {
   report.executive_summary.severity_distribution = { ...severityDistribution };
   report.executive_summary.active_risk_findings = activeRiskFindings;
   const managementSummary = asRecord(report.executive_summary.management_summary);
-  const existingManagementSeverity = normalizeSeverityDistribution(
-    managementSummary.severity_distribution_raw || managementSummary.severity_distribution,
-    severityDistribution,
-  );
-  const managementSeverity =
-    Object.values(existingManagementSeverity).some((value) => Number(value || 0) > 0)
-      ? existingManagementSeverity
-      : severityDistribution;
+  const managementSeverity = { ...severityDistribution };
   report.executive_summary.management_summary = {
     ...managementSummary,
     total_findings: asNumber(managementSummary.total_findings, totalFindings) || totalFindings,

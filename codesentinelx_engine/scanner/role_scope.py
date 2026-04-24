@@ -87,7 +87,15 @@ _ROLE_TOOL_ALLOWLIST = {
             "semgrep",
         }
     ),
-    "Management": frozenset(),
+    "Management": frozenset(
+        {
+            "checkov",
+            "gitleaks",
+            "hadolint",
+            "osv-scanner",
+            "semgrep",
+        }
+    ),
 }
 
 _ROLE_SCOPES = {
@@ -161,23 +169,23 @@ _ROLE_SCOPES = {
     ),
     "Management": RoleScope(
         role="Management",
-        tool_allowlist=frozenset(),
+        tool_allowlist=_ROLE_TOOL_ALLOWLIST["Management"],
         run_external_tools=True,
         run_file_findings=True,
-        run_project_rules=False,
+        run_project_rules=True,
         run_native_code_analysis=True,
         run_native_dependency_analysis=True,
-        run_active_poc=False,
-        run_fix_verification=False,
-        redact_findings=True,
-        findings_empty=True,
-        report_sections=frozenset({"cto_board_view", "risk_story_mode", "enterprise_assurance"}),
+        run_active_poc=True,
+        run_fix_verification=True,
+        redact_findings=False,
+        findings_empty=False,
+        report_sections=frozenset({"cto_board_view", "risk_story_mode", "enterprise_assurance", "management_summary", "severity_breakdown_groups"}),
         summary_keys_to_keep=frozenset(
             {
                 "all",
             }
         ),
-        role_aware_keys=frozenset({"cto_board_view", "risk_story_mode", "enterprise_assurance"}),
+        role_aware_keys=frozenset({"cto_board_view", "risk_story_mode", "enterprise_assurance", "management_summary", "severity_breakdown_groups"}),
     ),
 }
 

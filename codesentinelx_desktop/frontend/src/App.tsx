@@ -198,7 +198,7 @@ const ROLE_SCAN_SCOPE: Record<UserRole, string[]> = {
   ],
   Developer: ["Semgrep", "Gitleaks", "Checkov", "Hadolint", "OSV-Scanner"],
   Auditor: ["Semgrep", "Gitleaks", "Checkov", "Hadolint", "OSV-Scanner"],
-  Management: ["Semgrep", "Gitleaks"],
+  Management: ["Semgrep", "Gitleaks", "Checkov", "Hadolint", "OSV-Scanner"],
 };
 
 const ROLE_CAPABILITIES: Record<UserRole, RoleCapabilities> = {

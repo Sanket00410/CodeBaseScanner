@@ -2634,8 +2634,8 @@ def build_report(scan_result: ScanResult) -> dict:
         distribution = _severity_distribution_from_scan_findings(scan_result.findings)
     if sum(scoped_distribution.values()) <= 0 and scoped_findings:
         scoped_distribution = _severity_distribution_from_enriched(raw_enriched)
-    summary_findings = enriched_findings if scan_role == "Management" else scoped_findings
-    summary_distribution = distribution if scan_role == "Management" else scoped_distribution
+    summary_findings = scoped_findings
+    summary_distribution = scoped_distribution
     risk_score = _risk_score_from_distribution(distribution)
     impacted_files = len({item["file_path"] for item in summary_findings})
     active_risk_count = summary_distribution.get("Critical", 0) + summary_distribution.get("High", 0)

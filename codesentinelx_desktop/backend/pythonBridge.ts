@@ -381,27 +381,6 @@ function applyScanPreset(
   };
   const roleScopedTools = resolveRoleScopedTools(role, preset, toolPresets);
   env.USS_SCAN_PRESET = preset;
-  if (normalizedRole === "management" || normalizedRole === "manager" || normalizedRole === "board") {
-    env.USS_USE_EXTERNAL_TOOLS = "0";
-    env.USS_CODEBASE_TOOLS = "";
-    env.USS_EXTERNAL_TOOLS = "";
-    env.USS_USE_NATIVE_CODE_ANALYSIS = "0";
-    env.USS_USE_NATIVE_DEPENDENCY_ANALYSIS = "0";
-    env.USS_USE_PROJECT_RULES = "0";
-    env.USS_NATIVE_ANALYSIS_FAMILIES = "";
-    env.USS_ACTIVE_POC_MODE = "0";
-    env.USS_ACTIVE_POC_MAX_FINDINGS = "0";
-    if (!env.USS_TOOL_WORKERS) {
-      env.USS_TOOL_WORKERS = String(Math.max(2, Math.min(8, logicalCores)));
-    }
-    if (!env.USS_EXTERNAL_TOOL_WORKERS) {
-      env.USS_EXTERNAL_TOOL_WORKERS = env.USS_TOOL_WORKERS;
-    }
-    if (!env.USS_SCAN_CACHE_ENABLED) {
-      env.USS_SCAN_CACHE_ENABLED = "1";
-    }
-    return;
-  }
   if (!env.USS_CODEBASE_TOOLS) {
     env.USS_CODEBASE_TOOLS = roleScopedTools.join(",");
   }
@@ -493,7 +472,7 @@ function resolveRoleScopedTools(
     return ["semgrep", "gitleaks", "checkov", "hadolint", "osv-scanner"];
   }
   if (normalized === "management" || normalized === "manager" || normalized === "board") {
-    return [];
+    return base;
   }
   return base;
 }
