@@ -760,26 +760,17 @@ function syncReportSummary(report: UniversalScanReport): void {
   const managementSeverity = { ...severityDistribution };
   report.executive_summary.management_summary = {
     ...managementSummary,
-    total_findings: asNumber(managementSummary.total_findings, totalFindings) || totalFindings,
-    deduplicated_vulnerabilities: asNumber(managementSummary.deduplicated_vulnerabilities, totalFindings) || totalFindings,
-    active_risk_findings:
-      asNumber(managementSummary.active_risk_findings, activeRiskFindings) || activeRiskFindings,
+    total_findings: totalFindings,
+    deduplicated_vulnerabilities: totalFindings,
+    active_risk_findings: activeRiskFindings,
     severity_distribution: managementSeverity,
     severity_distribution_raw: managementSeverity,
-    severity_breakdown_groups: asArray(managementSummary.severity_breakdown_groups).length
-      ? asArray(managementSummary.severity_breakdown_groups).map((item) => asRecord(item))
-      : buildSeverityBreakdownGroups(findings),
-    top_vulnerability_types: normalizeTopTypeRows(managementSummary.top_vulnerability_types).length
-      ? normalizeTopTypeRows(managementSummary.top_vulnerability_types)
-      : buildTopVulnerabilityTypeRows(findings),
-    top_owasp_categories: normalizeTopOwaspRows(managementSummary.top_owasp_categories).length
-      ? normalizeTopOwaspRows(managementSummary.top_owasp_categories)
-      : buildTopOwaspRows(findings),
-    affected_modules: normalizeAffectedModuleRows(managementSummary.affected_modules).length
-      ? normalizeAffectedModuleRows(managementSummary.affected_modules)
-      : buildAffectedModuleRows(findings),
-    risk_score: asNumber(managementSummary.risk_score, currentExecSummary.risk_score || 0),
-    risk_rating: asString(managementSummary.risk_rating, currentExecSummary.risk_rating || "Informational"),
+    severity_breakdown_groups: buildSeverityBreakdownGroups(findings),
+    top_vulnerability_types: buildTopVulnerabilityTypeRows(findings),
+    top_owasp_categories: buildTopOwaspRows(findings),
+    affected_modules: buildAffectedModuleRows(findings),
+    risk_score: asNumber(currentExecSummary.risk_score, 0),
+    risk_rating: asString(currentExecSummary.risk_rating, "Informational"),
   };
 }
 
