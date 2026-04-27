@@ -43,6 +43,17 @@ interface AlertTitleGroup {
   findings: VulnerabilityFinding[];
 }
 
+interface DeveloperSecureCodingPracticeCard {
+  key: string;
+  title: string;
+  summary: string;
+  severity: string;
+  count: number;
+  standards: string[];
+  practices: string[];
+  examples: string[];
+}
+
 interface ExecutionEvidenceRow {
   tool: string;
   status: string;
@@ -758,7 +769,7 @@ const ROLE_EXPORT_PROFILES: Record<ReportRole, RoleExportProfile> = {
   Developer: {
     reportType: "fixes",
     formats: new Set<ExportRequest["format"]>(["html", "pdf", "json", "patch"]),
-    label: "Remediation Export",
+    label: "Developer Secure Coding Practices",
   },
   Auditor: {
     reportType: "existing",
@@ -1627,17 +1638,19 @@ export class ExportService {
       };
     }
     if (reportType === "fixes") {
+      const findings = sortedFindings(scan.report.vulnerability_fixed_code_report.findings || []);
       return {
         scanner: scan.report.scanner,
         projection_metadata: projectionMetadata,
         executive_summary: scan.report.executive_summary,
         original_suggested_fix_report: {
-          title: "CodeSentinelX Original and Suggested Fix Report",
+          title: "CodeSentinelX Developer Secure Coding Practices Report",
           target_path: scan.report.vulnerability_fixed_code_report.target_path,
           generated_at: scan.report.vulnerability_fixed_code_report.generated_at,
           total_findings: scan.report.vulnerability_fixed_code_report.summary.total_findings,
           summary: scan.report.vulnerability_fixed_code_report.summary,
-          findings: sortedFindings(scan.report.vulnerability_fixed_code_report.findings || []).map((item) => ({
+          secure_coding_practices: buildDeveloperSecureCodingPractices(findings),
+          findings: findings.map((item) => ({
             finding_uid: item.finding_uid,
             severity: item.severity,
             cvss_score: item.cvss_score,
@@ -2630,6 +2643,7 @@ function writeFixesPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
       ? dataQualityRaw
       : deriveDataQuality(report.summary, scan.report.executive_summary, findings, toolchainExecution);
   const qualityBenchmark = dataQuality?.quality_benchmark || enterprise?.quality_benchmark || null;
+  const secureCodingPracticesSection = renderDeveloperSecureCodingPracticesHtmlSection(findings);
   const deterministicReplay =
     report.summary.deterministic_replay ||
     report.deterministic_replay ||
@@ -2647,7 +2661,7 @@ function writeFixesPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     })
     .slice(0, 40);
 
-  writePdfHero(doc, "CodeSentinelX Original and Suggested Fix Report", [
+  writePdfHero(doc, "CodeSentinelX Developer Secure Coding Practices Report", [
     `Target: ${report.target_path}`,
     `Generated: ${exportedAt}`,
     `Total Findings: ${findings.length}`,
@@ -2690,6 +2704,7 @@ function writeFixesPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
   if (Number(fixVerificationSummary.performed || 0) === 0) {
     writeWrapped(doc, "Note: No post-fix verification was executed in this scan. Active PoC output in this report is pre-fix validation evidence only.", 8);
   }
+  writeDeveloperSecureCodingPracticesPdfSection(doc, findings);
   writePdfSectionHeader(doc, "Data Quality");
   writePdfKeyValueTable(doc, [
     { key: "Raw Issues", value: String(dataQuality.raw_findings ?? 0) },
@@ -5546,19 +5561,20 @@ function renderFixesHtml(scan: ScanView): string {
       </div>
     </section>`
     : "";
+  const secureCodingPracticesSection = renderDeveloperSecureCodingPracticesHtmlSection(findings);
 
   return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>CodeSentinelX Original and Suggested Fix Report</title>
+  <title>CodeSentinelX Developer Secure Coding Practices Report</title>
   <style>${exportThemeCss(".fix-link{color:var(--accent);text-decoration:underline}.toolbar{display:flex;gap:8px;align-items:center;margin:6px 0 10px;flex-wrap:wrap}input{background:rgba(7,20,36,.14);border:1px solid rgba(120,168,205,.28);border-radius:8px;color:var(--text);padding:7px 10px;min-width:300px}.fix-detail{border:1px solid rgba(120,168,205,.24);border-radius:14px;background:rgba(8,21,36,.14);padding:12px;margin-bottom:10px}.fix-detail h3{margin-bottom:8px}.fix-detail h4{margin:10px 0 6px;font-size:12px;line-height:1.2;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}.fix-detail .results th,.fix-detail .results td{padding:8px 10px}.fix-detail .code-grid{gap:10px}.fix-detail .code-grid > div{min-width:0}.fix-detail .code-grid pre,.fix-detail pre.evidence-scroll,.fix-detail pre.evidence-full{margin:0}.fix-detail.is-active{outline:2px solid rgba(94,234,212,.38);box-shadow:0 0 0 1px rgba(94,234,212,.18),0 18px 32px rgba(15,23,42,.22)}.fix-subtitle{margin:8px 0 4px;font-size:11px;line-height:1.2;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700}.plain-language-brief{margin-top:10px}.plain-language-brief .results{margin-bottom:0}.plain-language-code{margin:0;white-space:pre-wrap;word-break:break-word;overflow:visible;max-height:none;background:rgba(7,19,34,.34);border:1px solid rgba(120,168,205,.16);border-radius:12px;padding:12px 14px}.fix-disclosure{border:1px solid rgba(120,168,205,.22);border-radius:12px;background:rgba(9,22,37,.1);margin:10px 0 0;overflow:hidden}.fix-disclosure>summary{cursor:pointer;list-style:none;padding:10px 12px;font-weight:700;color:var(--text);display:flex;align-items:center;justify-content:space-between;gap:12px}.fix-disclosure>summary::-webkit-details-marker{display:none}.fix-disclosure>summary::after{content:'+';color:var(--muted);font-size:16px;line-height:1}.fix-disclosure[open]>summary{border-bottom:1px solid rgba(120,168,205,.14)}.fix-disclosure[open]>summary::after{content:'–'}.fix-disclosure-body{padding:12px}.evidence-scroll{max-height:280px;overflow:auto;white-space:pre;word-break:normal;scrollbar-width:thin;scrollbar-color:rgba(128,169,196,.22) transparent}.evidence-full{max-height:none;overflow:visible;white-space:pre-wrap;word-break:break-word;scrollbar-width:thin;scrollbar-color:rgba(128,169,196,.22) transparent}.evidence-scroll::-webkit-scrollbar,.evidence-full::-webkit-scrollbar{height:8px;width:8px}.evidence-scroll::-webkit-scrollbar-track,.evidence-full::-webkit-scrollbar-track{background:transparent}.evidence-scroll::-webkit-scrollbar-thumb,.evidence-full::-webkit-scrollbar-thumb{background:rgba(128,169,196,.2);border-radius:999px}.evidence-scroll::-webkit-scrollbar-thumb:hover,.evidence-full::-webkit-scrollbar-thumb:hover{background:rgba(128,169,196,.32)}")}</style>
 </head>
 <body>
   <main class="report-shell">
     <section class="hero">
-      <h1>CodeSentinelX Original and Suggested Fix Report</h1>
+      <h1>CodeSentinelX Developer Secure Coding Practices Report</h1>
       <div class="hero-meta">
         <div class="meta-pill"><strong>Target:</strong> ${escapeHtml(report.target_path)}</div>
         <div class="meta-pill"><strong>Generated:</strong> ${escapeHtml(exportedAt)}</div>
@@ -5620,6 +5636,8 @@ function renderFixesHtml(scan: ScanView): string {
         </div>
       </div>
     </section>
+
+    ${secureCodingPracticesSection}
 
     ${hasQueueRows ? `<section class="section">
       <div class="table-frame">
@@ -6786,6 +6804,367 @@ function groupByAlert(findings: VulnerabilityFinding[]): AlertGroup[] {
     }
     return b.count - a.count;
   });
+}
+
+const DEVELOPER_SECURE_CODING_BASELINE = [
+  {
+    label: "OWASP Top 10 2021",
+    detail: "Use the OWASP Top 10 as the baseline language for design reviews, backlog grooming, and secure coding triage.",
+  },
+  {
+    label: "OWASP ASVS 4.0.3",
+    detail: "Translate implementation choices into explicit verification requirements for validation, auth, sessions, crypto, and logging.",
+  },
+  {
+    label: "NIST SSDF SP 800-218",
+    detail: "Bake security into planning, coding, and release workflows instead of treating it as a post-build activity.",
+  },
+  {
+    label: "CWE Top 25 / CWE-specific guidance",
+    detail: "Treat repeated CWEs as coding-system defects that need a standard pattern, not a one-off patch.",
+  },
+  {
+    label: "CERT Secure Coding / CIS / SLSA",
+    detail: "Apply language-specific secure coding, platform hardening, and software supply-chain controls together.",
+  },
+];
+
+interface DeveloperPracticeProfile {
+  key: string;
+  title: string;
+  summary: string;
+  standards: string[];
+  practices: string[];
+  tokens: string[];
+}
+
+const DEVELOPER_PRACTICE_LIBRARY: DeveloperPracticeProfile[] = [
+  {
+    key: "injection-defense",
+    title: "Injection Defense",
+    summary: "Keep untrusted data out of SQL, shell, template, and parser sinks.",
+    standards: [
+      "OWASP Top 10 2021 A03: Injection",
+      "OWASP ASVS 5.x - Validation, Sanitization and Encoding",
+      "CWE-20 / CWE-78 / CWE-79 / CWE-89 / CWE-22 / CWE-611 / CWE-918",
+      "CERT Secure Coding guidance for language-specific input handling",
+    ],
+    practices: [
+      "Use allow-list validation at trust boundaries and reject unexpected shapes early.",
+      "Prefer parameterized queries, prepared statements, and safe framework APIs.",
+      "Encode output for the exact context: HTML, attribute, JavaScript, shell, or URL.",
+      "Avoid string-built shell commands; pass arguments as structured values instead.",
+    ],
+    tokens: [
+      "sql injection",
+      "command injection",
+      "xss",
+      "cross-site scripting",
+      "path traversal",
+      "ssrf",
+      "xxe",
+      "ssti",
+      "ldap injection",
+      "nosql injection",
+      "prototype pollution",
+      "open redirect",
+      "csrf",
+    ],
+  },
+  {
+    key: "secrets-safety",
+    title: "Secrets & Credential Safety",
+    summary: "Keep secrets out of source, logs, and build artifacts, and rotate them on a schedule.",
+    standards: [
+      "OWASP Top 10 2021 A02: Cryptographic Failures",
+      "OWASP Top 10 2021 A07: Identification and Authentication Failures",
+      "OWASP ASVS 2.x / 3.x / 7.x",
+      "NIST SSDF SP 800-218 PW.5 / PW.6",
+      "CWE-798 / CWE-259 / CWE-321",
+    ],
+    practices: [
+      "Store secrets in a secret manager or protected environment variables, not in source files.",
+      "Rotate credentials, tokens, and API keys when they are exposed or no longer needed.",
+      "Prevent secrets from being logged, echoed in errors, or copied into sample data.",
+      "Add pre-commit and CI secret scanning so leaks are caught before release.",
+    ],
+    tokens: ["secret", "credential", "hardcoded", "token", "apikey", "api key", "password", "passphrase"],
+  },
+  {
+    key: "authn-authz",
+    title: "Authentication, Authorization & Session Safety",
+    summary: "Enforce access decisions on the server and keep session handling strict.",
+    standards: [
+      "OWASP Top 10 2021 A01: Broken Access Control",
+      "OWASP Top 10 2021 A07: Identification and Authentication Failures",
+      "OWASP ASVS 2.x / 4.x / 8.x",
+      "CWE-269 / CWE-284 / CWE-306 / CWE-862",
+    ],
+    practices: [
+      "Perform authorization checks on every sensitive action on the server side.",
+      "Use least privilege, short-lived sessions, and secure token expiry/rotation.",
+      "Require strong authentication for privileged workflows and admin operations.",
+      "Separate authentication from authorization and avoid trusting client-side state.",
+    ],
+    tokens: ["auth", "authorization", "session", "privilege", "role", "access control", "login", "mfa"],
+  },
+  {
+    key: "crypto",
+    title: "Cryptography & Data Protection",
+    summary: "Use modern, authenticated encryption and strong password storage primitives.",
+    standards: [
+      "OWASP Top 10 2021 A02: Cryptographic Failures",
+      "OWASP ASVS 2.1 / 2.8 / 5.1",
+      "NIST SP 800-57 / SP 800-131A",
+      "CWE-327 / CWE-326 / CWE-330 / CWE-319",
+    ],
+    practices: [
+      "Prefer authenticated encryption modes like AES-GCM for data at rest or in transit.",
+      "Use vetted password hashing like Argon2, bcrypt, or PBKDF2 with unique salts.",
+      "Replace deprecated algorithms, weak modes, and homegrown crypto with standard libraries.",
+      "Treat randomness as a security boundary and use secure entropy sources only.",
+    ],
+    tokens: ["crypto", "encrypt", "encryption", "hash", "digest", "random", "cleartext", "tls", "ssl", "cipher"],
+  },
+  {
+    key: "dependency-hygiene",
+    title: "Dependency & Supply Chain Hygiene",
+    summary: "Keep third-party packages pinned, updated, and traceable.",
+    standards: [
+      "OWASP Top 10 2021 A06: Software and Data Integrity Failures",
+      "NIST SSDF SP 800-218 PW.4 / PS.3",
+      "SLSA / SBOM practices",
+      "CWE-1104 / CWE-1328",
+    ],
+    practices: [
+      "Pin dependency versions and review advisories before upgrades.",
+      "Track manifests, lockfiles, and imports together so reachability is clear.",
+      "Use regular dependency update cadences instead of large drift bursts.",
+      "Prefer signed, maintained packages and remove unused dependencies quickly.",
+    ],
+    tokens: ["dependency", "package", "lockfile", "osv", "ghsa", "cve", "supply chain", "npm", "pip", "go.mod"],
+  },
+  {
+    key: "logging",
+    title: "Logging, Monitoring & Error Handling",
+    summary: "Log enough to investigate incidents without leaking secrets or noisy internals.",
+    standards: [
+      "OWASP Top 10 2021 A09: Security Logging and Monitoring Failures",
+      "OWASP ASVS 8.x",
+      "CERT secure logging guidance",
+    ],
+    practices: [
+      "Log security-relevant events with context, correlation IDs, and severity.",
+      "Redact secrets, tokens, and personal data before logging or exporting.",
+      "Handle errors safely and avoid exposing stack traces or internal file paths to users.",
+      "Alert on repeated failures, auth anomalies, and suspicious access patterns.",
+    ],
+    tokens: ["log", "logging", "monitor", "monitoring", "error", "exception", "stack trace", "telemetry"],
+  },
+  {
+    key: "config-hardening",
+    title: "Security Configuration Hardening",
+    summary: "Harden defaults, headers, cookies, and cross-origin policy explicitly.",
+    standards: [
+      "OWASP Top 10 2021 A05: Security Misconfiguration",
+      "OWASP ASVS 14.x",
+      "CWE-16 / CWE-693 / CWE-614",
+    ],
+    practices: [
+      "Set secure defaults for headers, cookies, CORS, CSP, and transport policy.",
+      "Disable debug or verbose modes in production builds.",
+      "Keep configuration in source-controlled templates and validate it in CI.",
+      "Prefer deny-by-default policy for origin, network, and feature exposure.",
+    ],
+    tokens: ["cors", "cookie", "header", "csp", "csrf", "misconfig", "configuration", "debug", "helmet"],
+  },
+  {
+    key: "safe-data-handling",
+    title: "Safe File & Data Handling",
+    summary: "Treat file paths, uploads, and deserialization as hostile until proven safe.",
+    standards: [
+      "OWASP Top 10 2021 A08: Software and Data Integrity Failures",
+      "OWASP Top 10 2021 A03: Injection",
+      "OWASP ASVS 5.x / 9.x",
+      "CWE-502 / CWE-22 / CWE-434",
+    ],
+    practices: [
+      "Canonicalize file paths and constrain them to allowed directories.",
+      "Validate uploads by type, size, and content before storing or processing them.",
+      "Avoid unsafe deserialization and prefer schema-validated data formats.",
+      "Use defensive parsing for JSON, XML, YAML, and binary payloads.",
+    ],
+    tokens: ["deserialize", "serialization", "file upload", "path", "xml", "yaml", "json", "binary", "stream"],
+  },
+  {
+    key: "platform-hardening",
+    title: "Infrastructure & Container Hardening",
+    summary: "Use secure base images, least-privilege runtime settings, and policy-as-code.",
+    standards: [
+      "OWASP Top 10 2021 A05: Security Misconfiguration",
+      "CIS Docker Benchmark / CIS Controls",
+      "NIST SSDF",
+      "Policy-as-code with Checkov / tfsec style controls",
+    ],
+    practices: [
+      "Run containers without root and use minimal, pinned base images.",
+      "Keep IaC, Kubernetes, and deployment config under version control with policy checks.",
+      "Remove secrets from images, environment dumps, and build layers.",
+      "Treat infrastructure rules as code and review them with the same rigor as app code.",
+    ],
+    tokens: ["docker", "container", "kubernetes", "terraform", "iac", "helm", "ansible", "pod", "image", "root"],
+  },
+];
+
+function resolveDeveloperPracticeProfile(finding: VulnerabilityFinding): DeveloperPracticeProfile {
+  const title = normalizedFindingTitle(finding).toLowerCase();
+  const blob = [
+    title,
+    finding.vulnerability_type,
+    finding.cwe_id,
+    finding.owasp_mapping,
+    finding.description,
+    finding.business_impact,
+    finding.recommendation,
+    finding.original_code,
+  ]
+    .map((value) => String(value || "").toLowerCase())
+    .join(" ");
+
+  return (
+    DEVELOPER_PRACTICE_LIBRARY.find((profile) => profile.tokens.some((token) => blob.includes(token))) || {
+      key: "baseline-review",
+      title: "Baseline Secure Coding Review",
+      summary: "Review the surrounding code path against secure coding standards and tighten the implementation pattern.",
+      standards: [
+        "OWASP Top 10 2021",
+        "OWASP ASVS 4.0.3",
+        "NIST SSDF SP 800-218",
+        "CERT Secure Coding / CWE guidance",
+      ],
+      practices: [
+        "Review input validation, trust boundaries, and error handling before shipping changes.",
+        "Use framework-safe APIs and remove ad hoc security-sensitive logic where possible.",
+        "Keep secrets, permissions, and runtime assumptions documented and testable.",
+      ],
+      tokens: [],
+    }
+  );
+}
+
+function buildDeveloperSecureCodingPractices(findings: VulnerabilityFinding[]): DeveloperSecureCodingPracticeCard[] {
+  const cards = new Map<string, DeveloperSecureCodingPracticeCard>();
+  for (const finding of findings || []) {
+    const profile = resolveDeveloperPracticeProfile(finding);
+    const key = profile.key;
+    const current = cards.get(key);
+    const severityRank = SEVERITY_ORDER.indexOf(finding.severity);
+    const example = `${normalizePath(finding.file_path)}:${finding.line_number || 1} - ${normalizedFindingTitle(finding)}`;
+    if (!current) {
+      cards.set(key, {
+        key,
+        title: profile.title,
+        summary: profile.summary,
+        severity: finding.severity,
+        count: 1,
+        standards: [...profile.standards],
+        practices: [...profile.practices],
+        examples: [example],
+      });
+      continue;
+    }
+    current.count += 1;
+    if (severityRank < SEVERITY_ORDER.indexOf(current.severity)) {
+      current.severity = finding.severity;
+    }
+    if (!current.examples.includes(example) && current.examples.length < 4) {
+      current.examples.push(example);
+    }
+  }
+
+  return [...cards.values()].sort((a, b) => {
+    const rankDiff = SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity);
+    if (rankDiff !== 0) {
+      return rankDiff;
+    }
+    return b.count - a.count;
+  });
+}
+
+function renderDeveloperSecureCodingPracticesHtmlSection(findings: VulnerabilityFinding[]): string {
+  const cards = buildDeveloperSecureCodingPractices(findings);
+  const baselineRows = DEVELOPER_SECURE_CODING_BASELINE.map(
+    (item) => `<tr><td>${escapeHtml(item.label)}</td><td>${escapeHtml(item.detail)}</td></tr>`,
+  ).join("");
+  const practiceCards = cards.length
+    ? cards
+        .map((card, index) => {
+          const examples = card.examples.length
+            ? `<ul>${card.examples.map((entry) => `<li>${escapeHtml(entry)}</li>`).join("")}</ul>`
+            : "<p class='muted'>No representative findings available for this practice group.</p>";
+          const standards = card.standards.length
+            ? `<ul>${card.standards.map((entry) => `<li>${escapeHtml(entry)}</li>`).join("")}</ul>`
+            : "<p class='muted'>No standards mapped.</p>";
+          const practices = card.practices.length
+            ? `<ul>${card.practices.map((entry) => `<li>${escapeHtml(entry)}</li>`).join("")}</ul>`
+            : "<p class='muted'>No practices mapped.</p>";
+          return `<details class="report-disclosure practice-card"${index === 0 ? " open" : ""}>
+            <summary><span>[${escapeHtml(card.severity)}]</span> ${escapeHtml(card.title)} <span class="muted">(${card.count} finding${card.count === 1 ? "" : "s"})</span></summary>
+            <div class="section-body">
+              <p>${escapeHtml(card.summary)}</p>
+              <table>
+                <thead><tr><th>Standards</th><th>Practices</th><th>Examples</th></tr></thead>
+                <tbody>
+                  <tr>
+                    <td>${standards}</td>
+                    <td>${practices}</td>
+                    <td>${examples}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </details>`;
+        })
+        .join("")
+    : `<p class="muted">No developer practice group matched this scan. Review the findings queue below for detailed remediation guidance.</p>`;
+
+  return `
+  <section class="panel practice-panel">
+    <h2>Developer Secure Coding Practices</h2>
+    <p class="muted">This section translates the scan into standards-backed coding practices for developers. It is grounded in OWASP Top 10 2021, OWASP ASVS 4.0.3, NIST SSDF SP 800-218, CWE guidance, CERT secure coding references, and platform hardening guidance where applicable.</p>
+    <table>
+      <thead><tr><th>Standard</th><th>How to use it in this report</th></tr></thead>
+      <tbody>${baselineRows}</tbody>
+    </table>
+    <h3>Practice Groups From This Scan</h3>
+    ${practiceCards}
+  </section>`;
+}
+
+function writeDeveloperSecureCodingPracticesPdfSection(doc: PDFKit.PDFDocument, findings: VulnerabilityFinding[]): void {
+  const cards = buildDeveloperSecureCodingPractices(findings);
+  writePdfSectionHeader(doc, "Developer Secure Coding Practices");
+  writeWrapped(
+    doc,
+    "Grounded in OWASP Top 10 2021, OWASP ASVS 4.0.3, NIST SSDF SP 800-218, CWE guidance, CERT secure coding, and platform hardening references.",
+    8,
+  );
+  writePdfKeyValueTable(doc, [
+    { key: "OWASP Top 10", value: "Use it as the baseline risk language for code review and backlog triage." },
+    { key: "OWASP ASVS", value: "Map implementation work to verification requirements instead of ad hoc fixes." },
+    { key: "NIST SSDF", value: "Bake secure coding into planning, coding, and release checks." },
+    { key: "CWE Guidance", value: "Treat repeated CWEs as reusable coding patterns, not isolated incidents." },
+    { key: "CERT / CIS / SLSA", value: "Apply language, container, and supply-chain controls together." },
+  ]);
+  for (const card of cards.slice(0, 8)) {
+    writePdfSectionHeader(doc, `${card.title} (${card.count})`);
+    writeWrapped(doc, card.summary, 8);
+    writePdfKeyValueTable(doc, [
+      { key: "Standards", value: card.standards.join(" | ") },
+      { key: "Practices", value: card.practices.join(" | ") },
+      { key: "Examples", value: card.examples.join(" | ") || "N/A" },
+    ]);
+  }
 }
 
 function aggregateFiles(findings: VulnerabilityFinding[]): FileAggregate[] {

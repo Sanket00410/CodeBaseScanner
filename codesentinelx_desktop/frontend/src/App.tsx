@@ -108,7 +108,7 @@ function parseHelpGuideSections(markdown: string): HelpGuideSection[] {
 
 const TABS: Array<{ key: AppTab; label: string; icon: string }> = [
   { key: "dashboard", label: "Code Risk Overview", icon: "CM" },
-  { key: "existing", label: "Secure Coding Controls", icon: "ES" },
+  { key: "existing", label: "Secure Coding Practices", icon: "ES" },
   { key: "vulnerabilities", label: "Code Findings", icon: "VR" },
   { key: "compliance", label: "Compliance", icon: "CP" },
   { key: "history", label: "Scan History", icon: "HS" },
@@ -279,20 +279,20 @@ const ROLE_EXPORT_PRESETS: Record<UserRole, RoleExportPreset> = {
     ],
   },
   Developer: {
-    title: "Remediation Export",
-    description: "Fix-centric export for implementation, review, and patching.",
+    title: "Developer Secure Coding Practices",
+    description: "Standards-backed secure coding practices and fix guidance for implementation, review, and patching.",
     reportType: "fixes",
-    previewLabel: "Preview Fixes",
-    scopeLabel: "Remediation",
+    previewLabel: "Preview Practices",
+    scopeLabel: "Secure coding",
     scopeDetails: [
-      "Fix-oriented export",
+      "Developer-focused secure coding report",
       "HTML, PDF, JSON, Patch bundle",
-      "Backend enforces remediation scope",
+      "Backend enforces developer-practice scope",
     ],
     formats: [
-      { format: "html", label: "HTML", helper: "Open the fixes report in a browser." },
-      { format: "pdf", label: "PDF", helper: "Generate a shareable remediation PDF." },
-      { format: "json", label: "JSON", helper: "Export remediation details for downstream tooling." },
+      { format: "html", label: "HTML", helper: "Open the secure coding practices report in a browser." },
+      { format: "pdf", label: "PDF", helper: "Generate a shareable secure coding PDF." },
+      { format: "json", label: "JSON", helper: "Export secure coding details for downstream tooling." },
       { format: "patch", label: "Patch", helper: "Download patch previews only." },
     ],
   },
@@ -350,7 +350,7 @@ const LANDING_HIGHLIGHTS = [
 const LANDING_FEATURES: Array<{ title: string; body: string }> = [
   {
     title: "What It Does",
-    body: "Scans source code, dependencies, secrets, and secure coding controls across a repo, then organizes the evidence into vulnerability, control, and fixes reports.",
+    body: "Scans source code, dependencies, secrets, and secure coding practices across a repo, then organizes the evidence into vulnerability, control, and fixes reports.",
   },
   {
     title: "Why Teams Use It",
@@ -1962,7 +1962,7 @@ export default function App(): React.JSX.Element {
       view: [
         { label: "Code Risk Overview", onSelect: openPrimaryDashboardView },
         { label: "Code Findings", onSelect: openPrimaryFindingView },
-        { label: "Secure Coding Controls", onSelect: () => { setTab("existing"); setExistingSection("summary"); setStatusText("Opened Secure Coding Controls."); } },
+        { label: "Secure Coding Practices", onSelect: () => { setTab("existing"); setExistingSection("summary"); setStatusText("Opened Secure Coding Practices."); } },
         { label: "Compliance", onSelect: () => { setTab("compliance"); setComplianceSection("profile"); setStatusText("Opened Compliance."); } },
         { label: "Scan History", onSelect: () => { setTab("history"); setHistorySection("scans"); setStatusText("Opened Scan History."); } },
         { label: "Help Center", onSelect: openHelpTab },
@@ -4363,7 +4363,7 @@ export default function App(): React.JSX.Element {
               className={tab === "existing" ? "active" : ""}
               onClick={() => setTab("existing")}
             >
-              Secure Coding Controls
+              Secure Coding Practices
             </button>
             <button type="button" className={tab === "dashboard" ? "active" : ""} onClick={() => setTab("dashboard")}>
               Code Risk Overview
