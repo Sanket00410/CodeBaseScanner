@@ -16,6 +16,7 @@
     "build:main": "node scripts/clean-dir.cjs dist-main && tsc -p tsconfig.main.json",
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p frontend/tsconfig.json --noEmit",
     "test:projection": "node scripts/test-role-projection.cjs",
+    "test:threat-model": "node scripts/test-threat-model.cjs",
     "verify:canonical-flow": "node scripts/verify-canonical-flow.cjs"
   },
   "dependencies": {

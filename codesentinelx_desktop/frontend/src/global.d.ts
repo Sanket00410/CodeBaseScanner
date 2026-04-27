@@ -24,6 +24,11 @@ declare global {
       toggleMaximizeWindow: () => Promise<boolean>;
       closeWindow: () => Promise<void>;
       pickProjectFolder: () => Promise<string | null>;
+      createThreatModel: (request: {
+        projectPath: string;
+        requestedBy?: string;
+        framework?: "STRIDE";
+      }) => Promise<import("./types").ThreatModelResult>;
       startScan: (request: {
         projectPath: string;
         requestedBy?: string;

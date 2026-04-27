@@ -15,6 +15,7 @@ import {
   ScanProgress,
   ScanView,
   ScanPreset,
+  ThreatModelResult,
   Severity,
   ToolCatalogItem,
   ToolchainExecutionSummary,
@@ -27,7 +28,7 @@ import {
   VulnerabilityFinding,
 } from "./types";
 
-type AppTab = "dashboard" | "existing" | "vulnerabilities" | "compliance" | "history" | "tools" | "help";
+type AppTab = "dashboard" | "threat-model" | "existing" | "vulnerabilities" | "compliance" | "history" | "tools" | "help";
 type ExportFormat = "json" | "xml" | "html" | "pdf" | "sarif" | "csv" | "patch";
 type ExportType = "existing" | "vulnerability" | "fixes" | "finding_details" | "combined" | "management";
 type ReportStyle = "classic" | "modern";
@@ -109,6 +110,7 @@ function parseHelpGuideSections(markdown: string): HelpGuideSection[] {
 
 const TABS: Array<{ key: AppTab; label: string; icon: string }> = [
   { key: "dashboard", label: "Code Risk Overview", icon: "CM" },
+  { key: "threat-model", label: "Threat Model", icon: "TH" },
   { key: "existing", label: "Secure Coding Practices", icon: "ES" },
   { key: "vulnerabilities", label: "Code Findings", icon: "VR" },
   { key: "compliance", label: "Compliance", icon: "CP" },
@@ -772,6 +774,7 @@ export default function App(): React.JSX.Element {
   const [landingTransition, setLandingTransition] = useState<"idle" | "to-app" | "to-landing">("idle");
   const [tab, setTab] = useState<AppTab>("dashboard");
   const [projectPath, setProjectPath] = useState("");
+  const [threatModelPath, setThreatModelPath] = useState("");
   const [scanPreset, setScanPreset] = useState<ScanPreset>("standard");
   const [diffBaseRef, setDiffBaseRef] = useState("");
   const [diffHeadRef, setDiffHeadRef] = useState("");
@@ -789,6 +792,12 @@ export default function App(): React.JSX.Element {
   const [lastCompletedScanId, setLastCompletedScanId] = useState("");
   const [scan, setScan] = useState<ScanView | null>(null);
   const [baselineScan, setBaselineScan] = useState<ScanView | null>(null);
+  const [threatModel, setThreatModel] = useState<ThreatModelResult | null>(null);
+  const [threatModelStatus, setThreatModelStatus] = useState("Ready");
+  const [isThreatModeling, setIsThreatModeling] = useState(false);
+  const [lastThreatModelHtml, setLastThreatModelHtml] = useState("");
+  const [lastThreatModelJson, setLastThreatModelJson] = useState("");
+  const [lastThreatModelMermaid, setLastThreatModelMermaid] = useState("");
   const [history, setHistory] = useState<ScanHistoryItem[]>([]);
   const [portfolioSummary, setPortfolioSummary] = useState<PortfolioSummary | null>(null);
   const [audits, setAudits] = useState<AuditLogEntry[]>([]);
@@ -1491,6 +1500,41 @@ export default function App(): React.JSX.Element {
     const picked = await window.codeSentinelX.pickProjectFolder();
     if (picked) {
       setProjectPath(picked);
+    }
+  };
+
+  const browseThreatModelProject = async (): Promise<void> => {
+    const picked = await window.codeSentinelX.pickProjectFolder();
+    if (picked) {
+      setThreatModelPath(picked);
+    }
+  };
+
+  const createThreatModel = async (): Promise<void> => {
+    const targetPath = threatModelPath.trim();
+    if (!targetPath) {
+      setThreatModelStatus("Select a project file or folder before creating a threat model.");
+      return;
+    }
+    setIsThreatModeling(true);
+    setThreatModelStatus("Analyzing codebase for STRIDE threat model...");
+    try {
+      const result = await window.codeSentinelX.createThreatModel({
+        projectPath: targetPath,
+        requestedBy: "local-user",
+        framework: "STRIDE",
+      });
+      setThreatModel(result);
+      setLastThreatModelHtml(result.htmlPath);
+      setLastThreatModelJson(result.jsonPath);
+      setLastThreatModelMermaid(result.mermaidPath);
+      setThreatModelStatus(
+        `Threat model completed: ${result.report.summary.threats} threats from ${result.report.summary.source_files_analyzed} source files.`,
+      );
+    } catch (error) {
+      setThreatModelStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsThreatModeling(false);
     }
   };
 
@@ -2295,6 +2339,12 @@ export default function App(): React.JSX.Element {
       setActiveScanId("");
       setLastCompletedScanId("");
       setSelectedFindingId("");
+      setThreatModel(null);
+      setThreatModelStatus("Ready");
+      setThreatModelPath("");
+      setLastThreatModelHtml("");
+      setLastThreatModelJson("");
+      setLastThreatModelMermaid("");
       setProgress(0);
       setLastExport("");
       setReportPreviewSrc("");
@@ -2950,6 +3000,238 @@ export default function App(): React.JSX.Element {
               </p>
             </div>
           </div>
+        )}
+      </section>
+    );
+  };
+
+  const renderThreatModel = (): React.JSX.Element => {
+    const report = threatModel?.report;
+    const jsonText = report ? JSON.stringify(report, null, 2) : "";
+
+    return (
+      <section className="panel stack-gap">
+        <div className="subpanel stack-gap">
+          <h3>Threat Model Workspace</h3>
+          <p className="muted-text">
+            This workflow is independent from the canonical scan. It reads source code only, infers architecture from the selected codebase, and generates a STRIDE threat model.
+          </p>
+          <div className="header-row">
+            <label htmlFor="threatModelPath">Codebase File or Folder</label>
+            <input
+              id="threatModelPath"
+              value={threatModelPath}
+              onChange={(event) => setThreatModelPath(event.target.value)}
+              placeholder="C:\\projects\\app-or-repo"
+            />
+            <button type="button" onClick={browseThreatModelProject}>
+              Browse
+            </button>
+            <button type="button" onClick={createThreatModel} disabled={isThreatModeling}>
+              {isThreatModeling ? "Creating Threat Model..." : "Create Threat Model"}
+            </button>
+            <button type="button" onClick={() => void window.codeSentinelX.openPath(lastThreatModelHtml)} disabled={!lastThreatModelHtml}>
+              Open HTML
+            </button>
+            <button type="button" onClick={() => void window.codeSentinelX.openPath(lastThreatModelJson)} disabled={!lastThreatModelJson}>
+              Open JSON
+            </button>
+            <button type="button" onClick={() => void window.codeSentinelX.openPath(lastThreatModelMermaid)} disabled={!lastThreatModelMermaid}>
+              Open Mermaid
+            </button>
+          </div>
+          <p className="role-hint">{threatModelStatus}</p>
+          <p className="role-hint">Threat model target selection does not affect canonical scan history or report exports.</p>
+        </div>
+
+        {!report ? (
+          <EmptyState text="Browse a project file or folder, then create a threat model to see STRIDE output." />
+        ) : (
+          <>
+            <div className="subpanel">
+              <h3>System Overview</h3>
+              <div className="metric-grid">
+                <div className="metric-card">
+                  <p>Application Type</p>
+                  <h4>{report.system_overview.application_type}</h4>
+                </div>
+                <div className="metric-card">
+                  <p>Source Files</p>
+                  <h4>{report.summary.source_files_analyzed}</h4>
+                </div>
+                <div className="metric-card">
+                  <p>Entry Points</p>
+                  <h4>{report.summary.entry_points}</h4>
+                </div>
+                <div className="metric-card">
+                  <p>Threats</p>
+                  <h4>{report.summary.threats}</h4>
+                </div>
+              </div>
+              <div className="table-split-grid">
+                <div>
+                  <h4>Main Components</h4>
+                  <ul className="landing-story-list">
+                    {report.system_overview.main_components.length > 0 ? (
+                      report.system_overview.main_components.map((item) => <li key={item}>{item}</li>)
+                    ) : (
+                      <li>No components detected.</li>
+                    )}
+                  </ul>
+                </div>
+                <div>
+                  <h4>External Integrations</h4>
+                  <ul className="landing-story-list">
+                    {report.system_overview.external_integrations.length > 0 ? (
+                      report.system_overview.external_integrations.map((item) => <li key={item}>{item}</li>)
+                    ) : (
+                      <li>No external integrations detected.</li>
+                    )}
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div className="subpanel">
+              <h3>Entry Points</h3>
+              <table className="simple-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Exposure</th>
+                    <th>Location</th>
+                    <th>Details</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.entry_points.map((entry) => (
+                    <tr key={`${entry.file}:${entry.line}:${entry.name}`}>
+                      <td>{entry.name}</td>
+                      <td>{entry.type}</td>
+                      <td>{entry.exposure}</td>
+                      <td>
+                        <button type="button" onClick={() => void window.codeSentinelX.openPath(entry.file)}>
+                          {entry.file}:{entry.line}
+                        </button>
+                      </td>
+                      <td>{entry.details}</td>
+                    </tr>
+                  ))}
+                  {report.entry_points.length === 0 && (
+                    <tr>
+                      <td colSpan={5}>No entry points detected in the selected source tree.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="subpanel">
+              <h3>Trust Boundaries</h3>
+              <table className="simple-table">
+                <thead>
+                  <tr>
+                    <th>From</th>
+                    <th>To</th>
+                    <th>Data</th>
+                    <th>Description</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.trust_boundaries.map((boundary, index) => (
+                    <tr key={`${boundary.from}-${boundary.to}-${index}`}>
+                      <td>{boundary.from}</td>
+                      <td>{boundary.to}</td>
+                      <td>{boundary.data.join(", ")}</td>
+                      <td>{boundary.description}</td>
+                    </tr>
+                  ))}
+                  {report.trust_boundaries.length === 0 && (
+                    <tr>
+                      <td colSpan={4}>No explicit trust boundaries were inferred from the selected code.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="subpanel">
+              <h3>Data Flows</h3>
+              <table className="simple-table">
+                <thead>
+                  <tr>
+                    <th>Source</th>
+                    <th>Destination</th>
+                    <th>Data</th>
+                    <th>Description</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.data_flows.map((flow, index) => (
+                    <tr key={`${flow.source}-${flow.destination}-${index}`}>
+                      <td>{flow.source}</td>
+                      <td>{flow.destination}</td>
+                      <td>{flow.data}</td>
+                      <td>{flow.description}</td>
+                    </tr>
+                  ))}
+                  {report.data_flows.length === 0 && (
+                    <tr>
+                      <td colSpan={4}>No high-confidence data flows were inferred.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="subpanel">
+              <h3>Threats (STRIDE)</h3>
+              <table className="simple-table">
+                <thead>
+                  <tr>
+                    <th>Title</th>
+                    <th>Component</th>
+                    <th>STRIDE</th>
+                    <th>Impact</th>
+                    <th>Likelihood</th>
+                    <th>Exposure</th>
+                    <th>Abuse Case</th>
+                    <th>Mitigation</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.threats.map((threat, index) => (
+                    <tr key={`${threat.title}-${index}`}>
+                      <td>{threat.title}</td>
+                      <td>{threat.component}</td>
+                      <td>{threat.stride_category}</td>
+                      <td>{threat.impact}</td>
+                      <td>{threat.likelihood}</td>
+                      <td>{threat.exposure}</td>
+                      <td>{threat.abuse_case}</td>
+                      <td>{threat.mitigation}</td>
+                    </tr>
+                  ))}
+                  {report.threats.length === 0 && (
+                    <tr>
+                      <td colSpan={8}>No high-confidence STRIDE threats were inferred from the code.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="subpanel">
+              <h3>Mermaid Diagram</h3>
+              <pre>{report.diagram}</pre>
+            </div>
+
+            <div className="subpanel">
+              <h3>JSON Output</h3>
+              <pre>{jsonText}</pre>
+            </div>
+          </>
         )}
       </section>
     );
@@ -4509,8 +4791,9 @@ export default function App(): React.JSX.Element {
 
         {toolAuthEnabled && !toolSessionValid && canOpenOwnerLogin && showOwnerAccessPanel && renderOwnerAccessPanel()}
 
-        {tab === "dashboard" && renderDashboard()}
-        {tab === "existing" && renderExistingReport()}
+            {tab === "dashboard" && renderDashboard()}
+            {tab === "threat-model" && renderThreatModel()}
+            {tab === "existing" && renderExistingReport()}
         {tab === "vulnerabilities" && renderVulnerabilityReport()}
         {tab === "compliance" && renderCompliance()}
         {tab === "history" && renderHistory()}

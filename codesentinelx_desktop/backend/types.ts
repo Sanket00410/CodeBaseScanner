@@ -43,6 +43,79 @@ export interface ExportRequest {
   managementContext?: ManagementReportContext;
 }
 
+export interface ThreatModelRequest {
+  projectPath: string;
+  requestedBy?: string;
+  framework?: "STRIDE";
+}
+
+export interface ThreatModelSystemOverview {
+  application_type: string;
+  main_components: string[];
+  external_integrations: string[];
+  technology_stack: string[];
+}
+
+export interface ThreatModelEntryPoint {
+  name: string;
+  type: string;
+  file: string;
+  line: number;
+  exposure: "Public" | "Authenticated" | "Internal";
+  details: string;
+}
+
+export interface ThreatModelTrustBoundary {
+  from: string;
+  to: string;
+  data: string[];
+  description: string;
+}
+
+export interface ThreatModelDataFlow {
+  source: string;
+  destination: string;
+  data: string;
+  description: string;
+}
+
+export interface ThreatModelThreat {
+  title: string;
+  component: string;
+  stride_category: "Spoofing" | "Tampering" | "Repudiation" | "Information Disclosure" | "Denial of Service" | "Elevation of Privilege";
+  description: string;
+  abuse_case: string;
+  impact: "High" | "Medium" | "Low";
+  likelihood: "High" | "Medium" | "Low";
+  exposure: "Public" | "Authenticated" | "Internal";
+  mitigation: string;
+}
+
+export interface ThreatModelReport {
+  schema_version: "codesentinelx.threat_model.v1";
+  target_path: string;
+  target_type: "file" | "folder" | "unknown";
+  generated_at: string;
+  system_overview: ThreatModelSystemOverview;
+  entry_points: ThreatModelEntryPoint[];
+  trust_boundaries: ThreatModelTrustBoundary[];
+  data_flows: ThreatModelDataFlow[];
+  threats: ThreatModelThreat[];
+  diagram: string;
+  summary: {
+    source_files_analyzed: number;
+    entry_points: number;
+    threats: number;
+  };
+}
+
+export interface ThreatModelResult {
+  report: ThreatModelReport;
+  jsonPath: string;
+  htmlPath: string;
+  mermaidPath: string;
+}
+
 export interface ManagementReportContext {
   portfolioSummary?: PortfolioSummary | null;
   scanHistory?: Array<{
