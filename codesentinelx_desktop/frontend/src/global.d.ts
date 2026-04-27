@@ -1,5 +1,6 @@
 import {
   AuditLogEntry,
+  ManagementReportContext,
   PortfolioSummary,
   ReportHistoryItem,
   ScmDiffContext,
@@ -46,15 +47,17 @@ declare global {
       exportReport: (request: {
         scanId: string;
         role?: UserRole;
-        reportType: "existing" | "vulnerability" | "fixes" | "finding_details" | "combined";
+        reportType: "existing" | "vulnerability" | "fixes" | "finding_details" | "combined" | "management";
         format: "json" | "xml" | "html" | "pdf" | "sarif" | "csv" | "patch";
         reportStyle?: "classic" | "modern";
+        managementContext?: ManagementReportContext;
       }) => Promise<string>;
       renderReportHtml: (payload: {
         scanId: string;
         role?: UserRole;
-        reportType: "existing" | "vulnerability" | "fixes" | "finding_details" | "combined";
+        reportType: "existing" | "vulnerability" | "fixes" | "finding_details" | "combined" | "management";
         reportStyle?: "classic" | "modern";
+        managementContext?: ManagementReportContext;
       }) => Promise<string>;
       openPath: (targetPath: string) => Promise<string>;
       listAuditLogs: (scanId?: string) => Promise<AuditLogEntry[]>;

@@ -1,5 +1,6 @@
 ﻿import { createWriteStream, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { promises as fs } from "node:fs";
+import fsSync from "node:fs";
 import path from "node:path";
 
 import PDFDocument from "pdfkit";
@@ -8,6 +9,8 @@ import {
   EnterpriseAssuranceSummary,
   DataQualitySummary,
   ExportRequest,
+  ManagementReportContext,
+  ProfileComplianceReport,
   QualityBenchmarkSummary,
   ScanView,
   ToolExecutionEvidence,
@@ -726,6 +729,8 @@ function resolveReportGeneratedAt(scan: ScanView, reportType: ExportRequest["rep
     case "fixes":
     case "finding_details":
       return vulnerabilityGeneratedAt || executiveGeneratedAt || existingGeneratedAt;
+    case "management":
+      return executiveGeneratedAt || vulnerabilityGeneratedAt || existingGeneratedAt;
     default:
       return executiveGeneratedAt || vulnerabilityGeneratedAt || existingGeneratedAt;
   }
@@ -777,9 +782,9 @@ const ROLE_EXPORT_PROFILES: Record<ReportRole, RoleExportProfile> = {
     label: "Audit / Compliance Export",
   },
   Management: {
-    reportType: "combined",
+    reportType: "management",
     formats: new Set<ExportRequest["format"]>(["html", "pdf", "json"]),
-    label: "Executive Summary Export",
+    label: "Management Risk Dashboard",
   },
 };
 
@@ -811,7 +816,7 @@ function reportFolderName(reportType: ExportRequest["reportType"], role: ReportR
     case "Auditor":
       return "Audit_Compliance_Reports";
     case "Management":
-      return "Executive_Summary_Reports";
+      return "Management_Risk_Dashboard_Reports";
     default:
       return sanitizeExportToken(exportReportTypeToken(reportType), "Reports");
   }
@@ -1549,10 +1554,11 @@ export class ExportService {
     reportType: ExportRequest["reportType"],
     reportStyle?: ExportRequest["reportStyle"],
     role?: ExportRequest["role"],
+    managementContext?: ManagementReportContext,
   ): string {
     const projectedScan = projectForRequestedRole(scan, role);
     assertPreviewAllowed(projectedScan, reportType, role);
-    return this.getCachedHtml(projectedScan, reportType, reportStyle, role);
+    return this.getCachedHtml(projectedScan, reportType, reportStyle, role, managementContext);
   }
 
   async exportReport(scan: ScanView, request: ExportRequest): Promise<string> {
@@ -1577,7 +1583,7 @@ export class ExportService {
       return destination;
     }
     if (request.format === "html") {
-      await fs.writeFile(destination, this.getCachedHtml(projectedScan, request.reportType, request.reportStyle, request.role), "utf-8");
+      await fs.writeFile(destination, this.getCachedHtml(projectedScan, request.reportType, request.reportStyle, request.role, request.managementContext), "utf-8");
       return destination;
     }
     if (request.format === "sarif") {
@@ -1588,7 +1594,7 @@ export class ExportService {
       return destination;
     }
     if (request.format === "pdf") {
-      await this.writePdf(projectedScan, destination, request.reportType);
+      await this.writePdf(projectedScan, destination, request.reportType, request.managementContext);
       return destination;
     }
     throw new Error(`Unsupported export format: ${request.format}`);
@@ -1599,7 +1605,22 @@ export class ExportService {
     reportType: ExportRequest["reportType"],
     reportStyle?: ExportRequest["reportStyle"],
     role?: ExportRequest["role"],
+    managementContext?: ManagementReportContext,
   ): string {
+    const managementCacheKey =
+      reportType === "management" && managementContext
+        ? JSON.stringify({
+            portfolioSummary: managementContext.portfolioSummary || null,
+            scanHistory: (managementContext.scanHistory || []).map((item) => ({
+              scanId: item.scanId,
+              completedAt: item.completedAt,
+              totalFindings: item.totalFindings,
+              riskScore: item.riskScore,
+              reviewedFindings: item.reviewedFindings,
+              suppressedCount: item.suppressedCount,
+            })),
+          })
+        : "";
     const cacheKey = [
       scan.scanId,
       reportType,
@@ -1607,17 +1628,18 @@ export class ExportService {
       normalizeReportRole(role ?? resolveReportRole(scan)),
       scan.startedAt || "",
       scan.completedAt || "",
+      managementCacheKey,
     ].join("::");
     const cached = this.htmlCache.get(cacheKey);
     if (cached) {
       return cached;
     }
-    const html = this.toHtml(scan, reportType, reportStyle);
+    const html = this.toHtml(scan, reportType, reportStyle, managementContext);
     this.htmlCache.set(cacheKey, html);
     return html;
   }
 
-  private selectPayload(scan: ScanView, reportType: ExportRequest["reportType"]): unknown {
+  private selectPayload(scan: ScanView, reportType: ExportRequest["reportType"], managementContext?: ManagementReportContext): unknown {
     const projectionMetadata = scan.projection || (scan.report.role_aware_report?.metadata as Record<string, unknown> | undefined) || null;
     if (reportType === "existing") {
       return {
@@ -1708,6 +1730,14 @@ export class ExportService {
             rule_id: item.rule_id || "",
           })),
         },
+      };
+    }
+    if (reportType === "management") {
+      return {
+        scanner: scan.report.scanner,
+        projection_metadata: projectionMetadata,
+        executive_summary: scan.report.executive_summary,
+        management_report: buildManagementReportPayload(scan, managementContext),
       };
     }
     return {
@@ -1804,11 +1834,7 @@ export class ExportService {
     return chunks.length > 0 ? `${chunks.join("\n\n")}\n` : "# No patch previews available.\n";
   }
 
-  private toHtml(
-    scan: ScanView,
-    reportType: ExportRequest["reportType"],
-    reportStyle?: ExportRequest["reportStyle"],
-  ): string {
+  private toHtml(scan: ScanView, reportType: ExportRequest["reportType"], reportStyle?: ExportRequest["reportStyle"], managementContext?: ManagementReportContext): string {
     if (reportType === "existing") {
       return renderExistingHtml(scan);
     }
@@ -1820,6 +1846,9 @@ export class ExportService {
     }
     if (reportType === "finding_details") {
       return renderFindingDetailsHtml(scan);
+    }
+    if (reportType === "management") {
+      return renderManagementHtml(scan, managementContext);
     }
     return renderCombinedHtml(scan);
   }
@@ -1933,7 +1962,7 @@ export class ExportService {
     return `<?xml version="1.0" encoding="UTF-8"?>\n<codesentinelx_report>${body}</codesentinelx_report>\n`;
   }
 
-  private async writePdf(scan: ScanView, outputPath: string, reportType: ExportRequest["reportType"]): Promise<void> {
+  private async writePdf(scan: ScanView, outputPath: string, reportType: ExportRequest["reportType"], managementContext?: ManagementReportContext): Promise<void> {
     await new Promise<void>((resolve, reject) => {
       const doc = new PDFDocument({ margin: 32, size: "A4" });
       const stream = createWriteStream(outputPath);
@@ -1955,6 +1984,8 @@ export class ExportService {
         writeFixesPdf(doc, scan);
       } else if (reportType === "finding_details") {
         writeFindingDetailsPdf(doc, scan);
+      } else if (reportType === "management") {
+        writeManagementPdf(doc, scan, managementContext);
       } else {
         writeCombinedPdf(doc, scan);
       }
@@ -9519,6 +9550,876 @@ function slugify(value: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 80);
+}
+
+type ManagementTrendPoint = {
+  label: string;
+  completedAt: string;
+  totalFindings: number;
+  critical: number;
+  high: number;
+  riskScore: number;
+};
+
+type ManagementSlaRow = {
+  severity: string;
+  verifiedFixed: number;
+  stillVulnerable: number;
+  inconclusive: number;
+  notApplicable: number;
+};
+
+type ManagementDensityRow = {
+  label: string;
+  folder: string;
+  count: number;
+  critical: number;
+  high: number;
+  density: number;
+};
+
+type ManagementAttackSurfaceRow = {
+  module: string;
+  vulnerability: string;
+  cwe: string;
+  owasp: string;
+  fileName: string;
+  filePath: string;
+  line: number;
+  file: string;
+  severity: string;
+  count: number;
+};
+
+function resolveManagementSummaryData(scan: ScanView): Record<string, unknown> {
+  const executiveSummary = scan.report.executive_summary as unknown as Record<string, unknown>;
+  const vulnerabilitySummary = scan.report.vulnerability_fixed_code_report.summary as unknown as Record<string, unknown>;
+  return (
+    (executiveSummary.management_summary as Record<string, unknown> | undefined) ||
+    (vulnerabilitySummary.management_summary as Record<string, unknown> | undefined) ||
+    executiveSummary ||
+    vulnerabilitySummary
+  );
+}
+
+function collectManagementHistorySeries(scan: ScanView, context?: ManagementReportContext): ManagementTrendPoint[] {
+  const items = (context?.scanHistory || [])
+    .filter((item) => String(item.projectPath || "") === String(scan.projectPath || ""))
+    .slice()
+    .sort((left, right) => new Date(left.completedAt).getTime() - new Date(right.completedAt).getTime());
+  const series = items.map((item) => ({
+    label: formatDisplayTimestamp(item.completedAt || item.startedAt || "") || item.scanId,
+    completedAt: item.completedAt || item.startedAt || "",
+    totalFindings: Number(item.totalFindings || 0),
+    critical: Number(item.criticalFindings || 0),
+    high: Number(item.highFindings || 0),
+    riskScore: Number(item.riskScore || 0),
+  }));
+  const currentLabel = formatDisplayTimestamp(scan.completedAt || scan.report.executive_summary.generated_at || "") || scan.scanId;
+  if (!series.length || series.at(-1)?.completedAt !== scan.completedAt) {
+    series.push({
+      label: currentLabel,
+      completedAt: scan.completedAt || scan.report.executive_summary.generated_at || "",
+      totalFindings: Number(scan.report.executive_summary.deduplicated_vulnerabilities || scan.report.executive_summary.total_vulnerabilities || 0),
+      critical: Number(scan.report.executive_summary.severity_distribution?.Critical || 0),
+      high: Number(scan.report.executive_summary.severity_distribution?.High || 0),
+      riskScore: Number(scan.report.executive_summary.risk_score || 0),
+    });
+  }
+  return series.slice(-12);
+}
+
+function collectManagementSourceLines(rootPath: string): { files: number; lines: number; kloc: number } {
+  const codeExtensions = new Set([
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".mjs",
+    ".cjs",
+    ".py",
+    ".go",
+    ".java",
+    ".rb",
+    ".php",
+    ".cs",
+    ".rs",
+    ".kt",
+    ".kts",
+    ".tf",
+    ".yml",
+    ".yaml",
+    ".json",
+    ".xml",
+    ".html",
+    ".css",
+    ".scss",
+    ".sh",
+    ".sql",
+    ".toml",
+    ".ini",
+    ".md",
+  ]);
+  const stack: string[] = [rootPath];
+  let files = 0;
+  let lines = 0;
+  while (stack.length) {
+    const current = stack.pop();
+    if (!current || isNoisePath(current)) {
+      continue;
+    }
+    let entries: fsSync.Dirent[] = [];
+    try {
+      entries = fsSync.readdirSync(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const fullPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        if (!isNoisePath(fullPath)) {
+          stack.push(fullPath);
+        }
+        continue;
+      }
+      const basename = entry.name.toLowerCase();
+      const ext = path.extname(basename);
+      const shouldCount = codeExtensions.has(ext) || basename === "dockerfile" || basename.startsWith("dockerfile.");
+      if (!shouldCount || isNoisePath(fullPath)) {
+        continue;
+      }
+      try {
+        const content = fsSync.readFileSync(fullPath, "utf-8");
+        files += 1;
+        lines += content.split(/\r\n|\r|\n/).length;
+      } catch {
+        continue;
+      }
+    }
+  }
+  return { files, lines, kloc: Math.max(0.001, lines / 1000) };
+}
+
+function buildManagementSlaRows(findings: VulnerabilityFinding[]): ManagementSlaRow[] {
+  const rows: ManagementSlaRow[] = [];
+  for (const severity of SEVERITY_ORDER) {
+    const severityFindings = findings.filter((finding) => normalizeSeverityLabel(finding.severity) === severity);
+    let verifiedFixed = 0;
+    let stillVulnerable = 0;
+    let inconclusive = 0;
+    let notApplicable = 0;
+    for (const finding of severityFindings) {
+      const result = String(finding.fix_verification?.result || "").trim().toLowerCase();
+      if (result === "verified_fixed") {
+        verifiedFixed += 1;
+      } else if (result === "still_vulnerable" || result === "verification_failed") {
+        stillVulnerable += 1;
+      } else if (result === "inconclusive" || result === "manual_review_required" || result === "not_applicable") {
+        inconclusive += 1;
+        if (result === "not_applicable") {
+          notApplicable += 1;
+        }
+      }
+    }
+    rows.push({ severity, verifiedFixed, stillVulnerable, inconclusive, notApplicable });
+  }
+  return rows;
+}
+
+function buildManagementDensityRows(findings: VulnerabilityFinding[], kloc: number): ManagementDensityRow[] {
+  const grouped = new Map<string, ManagementDensityRow>();
+  for (const finding of findings) {
+    const folder = folderFromPath(finding.file_path);
+    const label = fileNameFromPath(finding.file_path);
+    const key = `${folder}::${label}`;
+    const current = grouped.get(key);
+    if (!current) {
+      grouped.set(key, {
+        label,
+        folder,
+        count: 1,
+        critical: normalizeSeverityLabel(finding.severity) === "Critical" ? 1 : 0,
+        high: normalizeSeverityLabel(finding.severity) === "High" ? 1 : 0,
+        density: 1 / kloc,
+      });
+      continue;
+    }
+    current.count += 1;
+    if (normalizeSeverityLabel(finding.severity) === "Critical") {
+      current.critical += 1;
+    }
+    if (normalizeSeverityLabel(finding.severity) === "High") {
+      current.high += 1;
+    }
+    current.density = current.count / kloc;
+  }
+  return Array.from(grouped.values())
+    .sort((a, b) => b.count - a.count || a.folder.localeCompare(b.folder) || a.label.localeCompare(b.label))
+    .slice(0, 12);
+}
+
+function buildManagementAttackSurfaceRows(findings: VulnerabilityFinding[], summary?: Record<string, unknown>): ManagementAttackSurfaceRow[] {
+  const groupedRows: ManagementAttackSurfaceRow[] = [];
+  const severityBreakdown = Array.isArray(summary?.severity_breakdown_groups) ? (summary?.severity_breakdown_groups as Array<Record<string, unknown>>) : [];
+
+  for (const severityGroup of severityBreakdown) {
+    const severity = normalizeSeverityLabel(String(severityGroup.severity || "Info"));
+    const groups = Array.isArray(severityGroup.groups) ? (severityGroup.groups as Array<Record<string, unknown>>) : [];
+    for (const group of groups) {
+      const instances = Array.isArray(group.instances) ? (group.instances as Array<Record<string, unknown>>) : [];
+      if (instances.length > 0) {
+        for (const instance of instances) {
+          groupedRows.push({
+            module: String(instance.module || group.module || "root"),
+            vulnerability: String(group.vulnerability || group.title || "Security finding"),
+            cwe: String(group.cwe || group.cwe_id || "N/A"),
+            owasp: String(group.owasp || group.owasp_mapping || "N/A"),
+            fileName: String(instance.file_name || fileNameFromPath(String(instance.file_path || "N/A")) || "N/A"),
+            filePath: normalizePath(String(instance.file_path || "N/A")),
+            line: Number(instance.line_number || group.line_number || 1),
+            file: String(instance.file_name || instance.file_path || group.file_name || group.file_path || "N/A"),
+            severity,
+            count: Number(group.count || instances.length || 1),
+          });
+        }
+      } else {
+        const topInstance = {};
+        groupedRows.push({
+          module: String(group.module || "root"),
+          vulnerability: String(group.vulnerability || group.title || "Security finding"),
+          cwe: String(group.cwe || group.cwe_id || "N/A"),
+          owasp: String(group.owasp || group.owasp_mapping || "N/A"),
+          fileName: String(group.file_name || "N/A"),
+          filePath: normalizePath(String(group.file_path || "N/A")),
+          line: Number(group.line_number || 1),
+          file: String(group.file_name || group.file_path || "N/A"),
+          severity,
+          count: Number(group.count || 1),
+        });
+      }
+    }
+  }
+
+  if (groupedRows.length > 0) {
+    return groupedRows.slice(0, 12);
+  }
+
+  return sortedFindings(findings)
+    .slice(0, 12)
+    .map((finding) => ({
+      module: folderFromPath(finding.file_path) || "root",
+      vulnerability: normalizedFindingTitle(finding),
+      cwe: String(finding.cwe_id || "N/A"),
+      owasp: String(finding.owasp_mapping || "N/A"),
+      fileName: fileNameFromPath(finding.file_path),
+      filePath: normalizePath(finding.file_path),
+      line: Number(finding.line_number || 1),
+      file: fileNameFromPath(finding.file_path),
+      severity: normalizeSeverityLabel(finding.severity),
+      count: 1,
+    }));
+}
+
+function buildManagementReportPayload(scan: ScanView, context?: ManagementReportContext): Record<string, unknown> {
+  const report = scan.report.vulnerability_fixed_code_report;
+  const findings = sortedFindings(report.findings || []);
+  const summary = resolveManagementSummaryData(scan);
+  const historySeries = collectManagementHistorySeries(scan, context);
+  const sourceLines = collectManagementSourceLines(scan.report.executive_summary.target_path);
+  const severityDistribution = normalizeSeverityDistribution(
+    (summary as Record<string, unknown>).severity_distribution ||
+      ((scan.report.executive_summary as unknown as Record<string, unknown>).severity_distribution as Record<string, unknown> | undefined) ||
+      report.summary.severity_distribution,
+  );
+  const severityTotal = SEVERITY_ORDER.reduce((total, severity) => total + Number(severityDistribution[severity] || 0), 0);
+  const totalFindings = Number(
+    (summary as Record<string, unknown>).deduplicated_vulnerabilities ||
+      (summary as Record<string, unknown>).total_findings ||
+      report.summary.total_findings ||
+      findings.length ||
+      0,
+  );
+  const resolvedCount = Number(
+    (summary as Record<string, unknown>).reviewed_findings ||
+      report.summary.reviewed_findings ||
+      0,
+  );
+  const ignoredCount = Number(
+    (summary as Record<string, unknown>).suppressed_findings ||
+      report.summary.suppressed_by_policy ||
+      scan.report.false_positive_report?.candidate_count ||
+      0,
+  );
+  const openCount = Math.max(0, totalFindings - resolvedCount - ignoredCount);
+  const riskScore = Number((summary as Record<string, unknown>).risk_score || scan.report.executive_summary.risk_score || report.summary.risk_score || 0);
+  const riskRating = String((summary as Record<string, unknown>).risk_rating || scan.report.executive_summary.risk_rating || report.summary.risk_rating || "");
+  const densityPerKloc = Number((totalFindings / Math.max(0.001, sourceLines.kloc)).toFixed(2));
+  const affectedFiles = Array.isArray((summary as Record<string, unknown>).affected_files)
+    ? ((summary as Record<string, unknown>).affected_files as Array<{ file: string; folder: string; count: number; critical: number; high: number }>).slice(0, 12)
+    : [];
+  const affectedModules = Array.isArray((summary as Record<string, unknown>).affected_modules)
+    ? ((summary as Record<string, unknown>).affected_modules as Array<{ module: string; count: number; critical: number; high: number }>).slice(0, 12)
+    : [];
+  const topVulnerabilityTypes = Array.isArray((summary as Record<string, unknown>).top_vulnerability_types)
+    ? ((summary as Record<string, unknown>).top_vulnerability_types as Array<{ type: string; count: number }>).slice(0, 8)
+    : [];
+  const topOwaspCategories = Array.isArray((summary as Record<string, unknown>).top_owasp_categories)
+    ? ((summary as Record<string, unknown>).top_owasp_categories as Array<{ owasp_category: string; count: number }>).slice(0, 8)
+    : [];
+  const slaRows = buildManagementSlaRows(findings);
+  const compliance =
+    scan.report.profile_compliance ||
+    ((scan.report.executive_summary as unknown as Record<string, unknown>).profile_compliance as ProfileComplianceReport | undefined) ||
+    null;
+  const qualityBenchmark =
+    scan.report.executive_summary.data_quality?.quality_benchmark ||
+    scan.report.executive_summary.enterprise_assurance?.quality_benchmark ||
+    scan.report.vulnerability_fixed_code_report.summary.data_quality?.quality_benchmark ||
+    scan.report.vulnerability_fixed_code_report.summary.enterprise_assurance?.quality_benchmark ||
+    null;
+  const falsePositiveRate = qualityBenchmark && qualityBenchmark.configured
+    ? Number(qualityBenchmark.false_positive_rate_percent || 0)
+    : totalFindings > 0
+      ? Number((((scan.report.false_positive_report?.candidate_count || 0) / totalFindings) * 100).toFixed(2))
+      : 0;
+
+  return {
+    title: "CodeSentinelX Management Risk Dashboard",
+    target_path: scan.report.executive_summary.target_path,
+    generated_at: resolveReportGeneratedAt(scan, "management"),
+    summary: {
+      severity_distribution: severityDistribution,
+      total_findings: totalFindings,
+      open_findings: openCount,
+      reviewed_findings: resolvedCount,
+      ignored_findings: ignoredCount,
+      risk_score: riskScore,
+      risk_rating: riskRating,
+      source_files_count: sourceLines.files,
+      source_lines_count: sourceLines.lines,
+      source_kloc: sourceLines.kloc,
+      density_per_kloc: densityPerKloc,
+      history_points: historySeries.length,
+    },
+    severity_distribution: severityDistribution,
+    trend_over_time: historySeries,
+    vulnerabilities_by_category: topVulnerabilityTypes,
+    owasp_categories: topOwaspCategories,
+    file_module_heatmap: buildManagementDensityRows(findings, sourceLines.kloc),
+    top_vulnerable_files: affectedFiles,
+    top_vulnerable_components: affectedModules,
+    vulnerability_density: {
+      source_files_count: sourceLines.files,
+      source_lines_count: sourceLines.lines,
+      kloc: sourceLines.kloc,
+      per_kloc: densityPerKloc,
+    },
+    remediation_sla: slaRows,
+    open_fixed_ignored: {
+      open: openCount,
+      fixed: resolvedCount,
+      ignored: ignoredCount,
+    },
+    compliance_mapping: compliance,
+    attack_surface: buildManagementAttackSurfaceRows(findings, summary as Record<string, unknown>),
+    false_positive_rate: falsePositiveRate,
+    risk_score_dashboard: {
+      total_vulnerabilities: totalFindings,
+      critical_issues: Number(severityDistribution.Critical || 0),
+      high_issues: Number(severityDistribution.High || 0),
+      risk_score: riskScore,
+      risk_rating: riskRating,
+      resolved_percent: totalFindings > 0 ? Number(((resolvedCount / totalFindings) * 100).toFixed(2)) : 0,
+    },
+    executive_metrics: {
+      total_findings: totalFindings,
+      critical: Number(severityDistribution.Critical || 0),
+      high: Number(severityDistribution.High || 0),
+      medium: Number(severityDistribution.Medium || 0),
+      low: Number(severityDistribution.Low || 0),
+      info: Number(severityDistribution.Info || 0),
+      risk_score: riskScore,
+      risk_rating: riskRating,
+      open_findings: openCount,
+      reviewed_findings: resolvedCount,
+      ignored_findings: ignoredCount,
+      resolved_percent: totalFindings > 0 ? Number(((resolvedCount / totalFindings) * 100).toFixed(2)) : 0,
+    },
+  };
+}
+
+function renderManagementLineChart(points: ManagementTrendPoint[]): string {
+  if (!points.length) {
+    return `<p class="muted">No historical scan data is available yet for this repository.</p>`;
+  }
+  const width = 880;
+  const height = 240;
+  const padding = 24;
+  const maxValue = Math.max(1, ...points.map((item) => Number(item.totalFindings || 0)));
+  const criticalMax = Math.max(1, ...points.map((item) => Number(item.critical || 0)));
+  const step = points.length > 1 ? (width - padding * 2) / (points.length - 1) : 0;
+  const buildSeries = (selector: (point: ManagementTrendPoint) => number, scaleMax: number): string => {
+    return points
+      .map((point, index) => {
+        const x = points.length > 1 ? padding + index * step : width / 2;
+        const y = height - padding - (selector(point) / scaleMax) * (height - padding * 2);
+        return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
+      })
+      .join(" ");
+  };
+  const totalPath = buildSeries((point) => Number(point.totalFindings || 0), maxValue);
+  const criticalPath = buildSeries((point) => Number(point.critical || 0), criticalMax);
+  return `
+    <div class="management-line-chart">
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Management trend over time">
+        <defs>
+          <linearGradient id="mgTrendTotal" x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0%" stop-color="#5eead4"/>
+            <stop offset="100%" stop-color="#38bdf8"/>
+          </linearGradient>
+          <linearGradient id="mgTrendCritical" x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0%" stop-color="#ef4444"/>
+            <stop offset="100%" stop-color="#f97316"/>
+          </linearGradient>
+        </defs>
+        <line x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}" stroke="rgba(120,168,205,.28)" />
+        <line x1="${padding}" y1="${padding}" x2="${padding}" y2="${height - padding}" stroke="rgba(120,168,205,.18)" />
+        <path d="${totalPath}" fill="none" stroke="url(#mgTrendTotal)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+        <path d="${criticalPath}" fill="none" stroke="url(#mgTrendCritical)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" />
+        ${points
+          .map((point, index) => {
+            const x = points.length > 1 ? padding + index * step : width / 2;
+            const y = height - padding - (Number(point.totalFindings || 0) / maxValue) * (height - padding * 2);
+            return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="4.5" fill="#38bdf8" />`;
+          })
+          .join("")}
+      </svg>
+      <div class="trend-legend">
+        ${points
+          .map(
+            (point, index) => `<div class="trend-item"><strong>${index + 1}.</strong> ${escapeHtml(point.label)} <span>${Number(point.totalFindings || 0)} findings | ${Number(point.riskScore || 0).toFixed(2)} risk</span></div>`,
+          )
+          .join("")}
+      </div>
+    </div>`;
+}
+
+function renderManagementBarRows<T extends { count: number; label: string }>(items: T[], maxWidth = 100): string {
+  const max = Math.max(1, ...items.map((item) => Number(item.count || 0)));
+  return items
+    .map((item) => {
+      const width = Math.max(2, Math.round((Number(item.count || 0) / max) * maxWidth));
+      return `<div class="mg-bar-row"><div class="mg-bar-label">${escapeHtml(item.label)}</div><div class="mg-bar-track"><div class="mg-bar-fill" style="width:${width}%"></div></div><div class="mg-bar-value">${Number(item.count || 0)}</div></div>`;
+    })
+    .join("");
+}
+
+function renderManagementHeatmapRows(rows: ManagementDensityRow[]): string {
+  const max = Math.max(1, ...rows.map((row) => Number(row.count || 0)));
+  return rows
+    .map((row) => {
+      const intensity = Math.min(0.9, Number(row.count || 0) / max);
+      return `<tr>
+        <td>${escapeHtml(row.folder)}</td>
+        <td>${escapeHtml(row.label)}</td>
+        <td align="center" style="background:rgba(239,68,68,${intensity * 0.55});font-weight:700">${Number(row.count || 0)}</td>
+        <td align="center">${Number(row.critical || 0)}</td>
+        <td align="center">${Number(row.high || 0)}</td>
+        <td align="center">${Number(row.density || 0).toFixed(2)}</td>
+      </tr>`;
+    })
+    .join("");
+}
+
+function renderManagementHtml(scan: ScanView, context?: ManagementReportContext): string {
+  const payload = buildManagementReportPayload(scan, context);
+  const summary = payload.summary as Record<string, unknown>;
+  const severityDistribution = normalizeSeverityDistribution(summary.severity_distribution);
+  const severityGradient = buildSeverityGradient(severityDistribution);
+  const historySeries = Array.isArray(payload.trend_over_time) ? (payload.trend_over_time as ManagementTrendPoint[]) : [];
+  const categories = Array.isArray(payload.vulnerabilities_by_category) ? (payload.vulnerabilities_by_category as Array<{ type: string; count: number }>) : [];
+  const owasp = Array.isArray(payload.owasp_categories) ? (payload.owasp_categories as Array<{ owasp_category: string; count: number }>) : [];
+  const heatmapRows = Array.isArray(payload.file_module_heatmap) ? (payload.file_module_heatmap as ManagementDensityRow[]) : [];
+  const topFiles = Array.isArray(payload.top_vulnerable_files) ? (payload.top_vulnerable_files as Array<{ file: string; folder: string; count: number; critical: number; high: number }>) : [];
+  const topModules = Array.isArray(payload.top_vulnerable_components) ? (payload.top_vulnerable_components as Array<{ module: string; count: number; critical: number; high: number }>) : [];
+  const slaRows = Array.isArray(payload.remediation_sla) ? (payload.remediation_sla as ManagementSlaRow[]) : [];
+  const attackSurface = Array.isArray(payload.attack_surface) ? (payload.attack_surface as ManagementAttackSurfaceRow[]) : [];
+  const compliance = (payload.compliance_mapping as ProfileComplianceReport | null) || scan.report.profile_compliance || null;
+  const riskScoreDashboard = payload.risk_score_dashboard as Record<string, unknown>;
+  const executiveMetrics = payload.executive_metrics as Record<string, unknown>;
+  const falsePositiveRate = Number(payload.false_positive_rate || 0);
+  const resolvedPercent = Number(executiveMetrics.resolved_percent || 0);
+  const sourceKloc = Number(summary.source_kloc || 0);
+  const densityPerKloc = Number(summary.density_per_kloc || 0);
+  const trendChart = renderManagementLineChart(historySeries);
+  const complianceRows = compliance
+    ? (compliance.frameworks || [])
+        .map((framework) => {
+          const summaryRow = framework.summary;
+          return `<tr>
+            <td>${escapeHtml(framework.label)}</td>
+            <td>${Number(summaryRow.covered || 0)}</td>
+            <td>${Number(summaryRow.gap || 0)}</td>
+            <td>${Number(summaryRow.not_applicable || 0)}</td>
+            <td>${Number(summaryRow.mapped_findings || 0)}</td>
+          </tr>`;
+        })
+        .join("")
+    : `<tr><td colspan="5">No compliance mapping available.</td></tr>`;
+  const attackRows = attackSurface
+    .map(
+      (item) => `<tr>
+        <td>${escapeHtml(item.module)}</td>
+        <td>${escapeHtml(item.vulnerability)}</td>
+        <td>${escapeHtml(item.cwe)}</td>
+        <td>${escapeHtml(item.owasp)}</td>
+        <td>${escapeHtml(item.fileName)}</td>
+        <td>${escapeHtml(item.filePath)}</td>
+        <td align="center">${Number(item.line || 0)}</td>
+        <td><span class="sev sev-${escapeHtml(item.severity)}">${escapeHtml(item.severity)}</span></td>
+        <td align="center">${Number(item.count || 0)}</td>
+      </tr>`,
+    )
+    .join("");
+  const slaRowsHtml = slaRows
+    .map(
+      (row) => `<tr>
+        <td>${escapeHtml(row.severity)}</td>
+        <td align="center">${Number(row.verifiedFixed || 0)}</td>
+        <td align="center">${Number(row.stillVulnerable || 0)}</td>
+        <td align="center">${Number(row.inconclusive || 0)}</td>
+        <td align="center">${Number(row.notApplicable || 0)}</td>
+      </tr>`,
+    )
+    .join("");
+  const topFileRows = topFiles
+    .map((item) => {
+      const width = Math.max(2, Math.min(100, Math.round((Number(item.count || 0) / Math.max(1, Number(topFiles[0]?.count || 1))) * 100)));
+      return `<tr>
+        <td>${escapeHtml(item.folder)}</td>
+        <td>${escapeHtml(item.file)}</td>
+        <td><div class="bar-track"><div class="bar-fill" style="width:${width}%"></div></div></td>
+        <td align="center">${Number(item.count || 0)}</td>
+        <td align="center">${Number(item.critical || 0)}</td>
+        <td align="center">${Number(item.high || 0)}</td>
+      </tr>`;
+    })
+    .join("");
+  const topModuleRows = topModules
+    .map(
+      (item) => `<tr>
+        <td>${escapeHtml(item.module)}</td>
+        <td align="center">${Number(item.count || 0)}</td>
+        <td align="center">${Number(item.critical || 0)}</td>
+        <td align="center">${Number(item.high || 0)}</td>
+      </tr>`,
+    )
+    .join("");
+  const severityLegend = SEVERITY_ORDER.map((severity) => `<div class="legend-item"><span class="dot" style="background:${severityColorHex(severity)}"></span><span>${escapeHtml(severity)}: ${Number(severityDistribution[severity] || 0)}</span></div>`).join("");
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CodeSentinelX Management Risk Dashboard</title>
+  <style>${exportThemeCss(`
+    .management-report .mg-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+    .management-report .mg-card{border:1px solid rgba(120,168,205,.22);border-radius:16px;background:rgba(6,18,33,.78);padding:14px}
+    .management-report .mg-card h2,.management-report .mg-card h3{margin:0 0 10px}
+    .management-report .mg-card p.muted{color:var(--muted);margin:0 0 10px}
+    .management-report .mg-wide{grid-column:1 / -1}
+    .management-report .mg-ring-wrap{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+    .management-report .management-ring{width:220px;height:220px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--accent) 0 0);border:1px solid rgba(120,168,205,.2);box-shadow:inset 0 0 0 22px rgba(255,255,255,.02)}
+    .management-report .management-ring-center{width:160px;height:160px;border-radius:50%;display:grid;place-items:center;background:rgba(3,12,24,.96);border:1px solid rgba(120,168,205,.15);text-align:center}
+    .management-report .management-ring-value{font-size:34px;font-weight:800;line-height:1}
+    .management-report .management-ring-label{color:var(--muted);font-weight:700}
+    .management-report .legend-item{display:flex;align-items:center;gap:8px;margin:6px 0;color:var(--text)}
+    .management-report .legend-item .dot{width:10px;height:10px;border-radius:50%}
+    .management-report .bar-track{height:12px;background:rgba(120,168,205,.12);border-radius:999px;overflow:hidden}
+    .management-report .bar-fill{height:100%;background:linear-gradient(90deg,#38bdf8,#5eead4);border-radius:999px}
+    .management-report .mg-bar-row{display:grid;grid-template-columns:minmax(180px,1.2fr) 3fr 64px;gap:10px;align-items:center;margin:8px 0}
+    .management-report .mg-bar-label{font-size:13px}
+    .management-report .mg-bar-value{text-align:right;font-weight:700}
+    .management-report .management-line-chart svg{width:100%;height:auto;display:block}
+    .management-report .trend-legend{display:grid;gap:8px;margin-top:10px}
+    .management-report .trend-item{display:flex;justify-content:space-between;gap:12px;padding:8px 10px;border:1px solid rgba(120,168,205,.15);border-radius:10px;background:rgba(255,255,255,.02)}
+    .management-report table.management-table td,.management-report table.management-table th{padding:8px 10px}
+  `)}</style>
+</head>
+<body>
+  <main class="report-shell management-report">
+    <section class="hero">
+      <h1>CodeSentinelX Management Risk Dashboard</h1>
+      <div class="hero-meta">
+        <div class="meta-pill"><strong>Target:</strong> ${escapeHtml(scan.projectPath)}</div>
+        <div class="meta-pill"><strong>Generated:</strong> ${escapeHtml(formatDisplayTimestamp(String(payload.generated_at || "")))}</div>
+        <div class="meta-pill"><strong>Risk Score:</strong> ${escapeHtml(Number(riskScoreDashboard.risk_score || 0).toFixed(2))} (${escapeHtml(String(riskScoreDashboard.risk_rating || ""))})</div>
+        <div class="meta-pill"><strong>Resolved:</strong> ${escapeHtml(`${resolvedPercent.toFixed(2)}%`)}</div>
+      </div>
+      <div class="callout" style="margin-top:14px">
+        <strong>Management report coverage:</strong> Vulnerability Severity Distribution, Trend Over Time, Vulnerabilities by Category, File/Module Risk Heatmap, Top Vulnerable Files / Components, Vulnerability Density, Time to Fix / Remediation SLA, Open vs Fixed vs Ignored, Compliance Mapping, Attack Surface / Data Flow Visualization, False Positive Rate, and Risk Score Dashboard.
+      </div>
+    </section>
+
+    ${renderProjectionAuditSection(scan)}
+
+    <section class="mg-grid">
+      <div class="mg-card">
+        <h2>1. Vulnerability Severity Distribution (Bar / Pie Chart)</h2>
+        <p class="muted">Shows counts of Critical, High, Medium, Low issues. Gives an instant risk snapshot. Helps answer: How bad is the situation overall?</p>
+        <div class="mg-ring-wrap">
+          <div class="management-ring"${severityGradient ? ` style="background:conic-gradient(${severityGradient});"` : ""}>
+            <div class="management-ring-center">
+              <div class="management-ring-value">${Number(summary.total_findings || 0)}</div>
+              <div class="management-ring-label">Findings</div>
+            </div>
+          </div>
+          <div>${severityLegend}</div>
+        </div>
+      </div>
+      <div class="mg-card">
+        <h2>2. Trend Over Time (Line Graph)</h2>
+        <p class="muted">Tracks vulnerabilities across builds/releases. Can show total issues over time and Critical issues trend. Helps answer: Are we improving or getting worse?</p>
+        ${trendChart}
+      </div>
+
+      <div class="mg-card">
+        <h2>3. Vulnerabilities by Category (Bar Chart)</h2>
+        <p class="muted">Group by types like Injection, Authentication flaws, Misconfigurations. Often mapped to OWASP Top 10 categories. Helps answer: What kind of issues dominate?</p>
+        ${renderManagementBarRows(categories.map((item) => ({ label: item.type, count: Number(item.count || 0) })))}
+      </div>
+      <div class="mg-card">
+        <h2>4. File/Module Risk Heatmap</h2>
+        <p class="muted">Heatmap of codebase showing risk density. Darker areas = more vulnerabilities. Helps answer: Where should developers focus first?</p>
+        <div class="table-frame table-scroll">
+          <table class="management-table">
+            <thead><tr><th>Folder</th><th>File / Component</th><th>Count</th><th>Critical</th><th>High</th><th>Density</th></tr></thead>
+            <tbody>${renderManagementHeatmapRows(heatmapRows)}</tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="mg-card">
+        <h2>5. Top Vulnerable Files / Components (Horizontal Bar Chart)</h2>
+        <p class="muted">Highlights worst offenders in codebase. Helps prioritize remediation at module level.</p>
+        <div class="table-frame table-scroll">
+          <table class="management-table">
+            <thead><tr><th>Folder</th><th>File</th><th>Risk Bar</th><th>Count</th><th>Critical</th><th>High</th></tr></thead>
+            <tbody>${topFileRows || `<tr><td colspan="6">No file-level risk data available.</td></tr>`}</tbody>
+          </table>
+        </div>
+        <div class="table-frame table-scroll" style="margin-top:10px">
+          <table class="management-table">
+            <thead><tr><th>Module</th><th>Count</th><th>Critical</th><th>High</th></tr></thead>
+            <tbody>${topModuleRows || `<tr><td colspan="4">No module-level risk data available.</td></tr>`}</tbody>
+          </table>
+        </div>
+      </div>
+      <div class="mg-card">
+        <h2>6. Vulnerability Density (Scatter Plot or Bar)</h2>
+        <p class="muted">Vulnerabilities per KLOC (thousand lines of code). Helps normalize risk across projects of different sizes. Helps answer: Which project is riskier relative to its size?</p>
+        <div class="table-frame table-scroll">
+          <table class="management-table">
+            <tbody>
+              <tr><td>Source files counted</td><td align="center">${Number(summary.source_files_count || 0)}</td></tr>
+              <tr><td>Source lines counted</td><td align="center">${Number(summary.source_lines_count || 0)}</td></tr>
+              <tr><td>KLOC</td><td align="center">${sourceKloc.toFixed(2)}</td></tr>
+              <tr><td>Vulnerabilities per KLOC</td><td align="center">${densityPerKloc.toFixed(2)}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="mg-card">
+        <h2>7. Time to Fix / Remediation SLA (Box Plot / Bar)</h2>
+        <p class="muted">Average time taken to resolve vulnerabilities, broken down by severity. Helps answer: Are we fixing issues fast enough?</p>
+        <div class="table-frame table-scroll">
+          <table class="management-table">
+            <thead><tr><th>Severity</th><th>Verified Fixed</th><th>Still Vulnerable</th><th>Inconclusive</th><th>Not Applicable</th></tr></thead>
+            <tbody>${slaRowsHtml || `<tr><td colspan="5">No remediation SLA data available.</td></tr>`}</tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="mg-card">
+        <h2>8. Open vs Fixed vs Ignored (Stacked Bar Chart)</h2>
+        <p class="muted">Tracks status of vulnerabilities. Helps answer: How many are unresolved? Are we accumulating tech debt?</p>
+        <div class="mg-bar-row"><div class="mg-bar-label">Open</div><div class="bar-track"><div class="bar-fill" style="width:${Math.max(2, Math.round((Number(summary.open_findings || 0) / Math.max(1, Number(summary.total_findings || 1))) * 100))}%"></div></div><div class="mg-bar-value">${Number(summary.open_findings || 0)}</div></div>
+        <div class="mg-bar-row"><div class="mg-bar-label">Fixed</div><div class="bar-track"><div class="bar-fill" style="width:${Math.max(2, Math.round((Number(summary.reviewed_findings || 0) / Math.max(1, Number(summary.total_findings || 1))) * 100))}%"></div></div><div class="mg-bar-value">${Number(summary.reviewed_findings || 0)}</div></div>
+        <div class="mg-bar-row"><div class="mg-bar-label">Ignored</div><div class="bar-track"><div class="bar-fill" style="width:${Math.max(2, Math.round((Number(summary.ignored_findings || 0) / Math.max(1, Number(summary.total_findings || 1))) * 100))}%"></div></div><div class="mg-bar-value">${Number(summary.ignored_findings || 0)}</div></div>
+      </div>
+
+      <div class="mg-card">
+        <h2>9. Compliance Mapping (Matrix / Table Visualization)</h2>
+        <p class="muted">Map findings to standards like OWASP and NIST. Helps stakeholders understand regulatory impact.</p>
+        <div class="table-frame table-scroll">
+          <table class="management-table">
+            <thead><tr><th>Framework</th><th>Covered</th><th>Gap</th><th>N/A</th><th>Mapped Findings</th></tr></thead>
+            <tbody>${complianceRows}</tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="mg-card">
+        <h2>10. Attack Surface / Data Flow Visualization</h2>
+        <p class="muted">Shows how vulnerabilities connect across components. Useful for complex applications. Helps answer: How exploitable is this in real scenarios?</p>
+        <div class="table-frame table-scroll">
+          <table class="management-table">
+            <thead><tr><th>Module</th><th>Vulnerability</th><th>CWE</th><th>OWASP</th><th>File Name</th><th>File / Path</th><th>Line</th><th>Severity</th><th>Count</th></tr></thead>
+            <tbody>${attackRows || `<tr><td colspan="9">No attack surface data available.</td></tr>`}</tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="mg-card">
+        <h2>11. False Positive Rate (Gauge / Pie Chart)</h2>
+        <p class="muted">Shows accuracy of the SAST tool. Helps build trust in the report.</p>
+        <div class="table-frame table-scroll">
+          <table class="management-table">
+            <tbody>
+              <tr><td>False Positive Rate</td><td align="center">${falsePositiveRate.toFixed(2)}%</td></tr>
+              <tr><td>Verified Findings</td><td align="center">${Number(riskScoreDashboard.critical_issues || 0) + Number(riskScoreDashboard.high_issues || 0)}</td></tr>
+              <tr><td>Benchmark Rating</td><td align="center">${escapeHtml(String(riskScoreDashboard.risk_rating || summary.risk_rating || ""))}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="mg-card">
+        <h2>12. Risk Score Dashboard (KPI Tiles)</h2>
+        <p class="muted">High-level metrics like total vulnerabilities, critical issues, risk score, and % resolved. Ideal for executives.</p>
+        ${renderStatGrid([
+          { label: "Total Vulnerabilities", value: Number(riskScoreDashboard.total_vulnerabilities || 0), tone: "accent", sub: "Deduplicated scan findings" },
+          { label: "Critical Issues", value: Number(riskScoreDashboard.critical_issues || 0), tone: "critical", sub: "Highest-priority exposure" },
+          { label: "High Issues", value: Number(riskScoreDashboard.high_issues || 0), tone: "high", sub: "Near-term remediation" },
+          { label: "Risk Score", value: Number(riskScoreDashboard.risk_score || 0).toFixed(2), tone: "medium", sub: String(riskScoreDashboard.risk_rating || "") },
+          { label: "% Resolved", value: `${Number(riskScoreDashboard.resolved_percent || 0).toFixed(2)}%`, tone: "info", sub: "Reviewed or closed items" },
+        ])}
+      </div>
+    </section>
+  </main>
+</body>
+</html>`;
+}
+
+function writeManagementPdf(doc: PDFKit.PDFDocument, scan: ScanView, context?: ManagementReportContext): void {
+  const payload = buildManagementReportPayload(scan, context);
+  const summary = payload.summary as Record<string, unknown>;
+  const severityDistribution = normalizeSeverityDistribution(summary.severity_distribution);
+  const historySeries = Array.isArray(payload.trend_over_time) ? (payload.trend_over_time as ManagementTrendPoint[]) : [];
+  const categories = Array.isArray(payload.vulnerabilities_by_category) ? (payload.vulnerabilities_by_category as Array<{ type: string; count: number }>) : [];
+  const heatmapRows = Array.isArray(payload.file_module_heatmap) ? (payload.file_module_heatmap as ManagementDensityRow[]) : [];
+  const topFiles = Array.isArray(payload.top_vulnerable_files) ? (payload.top_vulnerable_files as Array<{ file: string; folder: string; count: number; critical: number; high: number }>) : [];
+  const compliance = (payload.compliance_mapping as ProfileComplianceReport | null) || scan.report.profile_compliance || null;
+  const attackSurface = Array.isArray(payload.attack_surface) ? (payload.attack_surface as ManagementAttackSurfaceRow[]) : [];
+  const slaRows = Array.isArray(payload.remediation_sla) ? (payload.remediation_sla as ManagementSlaRow[]) : [];
+  const riskScoreDashboard = payload.risk_score_dashboard as Record<string, unknown>;
+  const sourceKloc = Number(summary.source_kloc || 0);
+  const densityPerKloc = Number(summary.density_per_kloc || 0);
+  const falsePositiveRate = Number(payload.false_positive_rate || 0);
+  const exportedAt = formatDisplayTimestamp(String(payload.generated_at || ""));
+
+  writePdfHero(doc, "CodeSentinelX Management Risk Dashboard", [
+    `Target: ${scan.report.executive_summary.target_path}`,
+    `Generated: ${exportedAt}`,
+    `Risk Score: ${Number(riskScoreDashboard.risk_score || 0).toFixed(2)} (${String(riskScoreDashboard.risk_rating || "")})`,
+  ]);
+  writeProjectionPdfSection(doc, scan);
+  writePdfMetricStrip(doc, [
+    { label: "Total Vulnerabilities", value: String(Number(riskScoreDashboard.total_vulnerabilities || 0)), tone: "accent" },
+    { label: "Critical", value: String(Number(riskScoreDashboard.critical_issues || 0)), tone: "critical" },
+    { label: "High", value: String(Number(riskScoreDashboard.high_issues || 0)), tone: "high" },
+  ]);
+
+  writePdfSectionHeader(doc, "1. Vulnerability Severity Distribution (Bar / Pie Chart)");
+  writePdfKeyValueTable(doc, [
+    { key: "Critical", value: String(Number(severityDistribution.Critical || 0)) },
+    { key: "High", value: String(Number(severityDistribution.High || 0)) },
+    { key: "Medium", value: String(Number(severityDistribution.Medium || 0)) },
+    { key: "Low", value: String(Number(severityDistribution.Low || 0)) },
+    { key: "Info", value: String(Number(severityDistribution.Info || 0)) },
+  ]);
+
+  writePdfSectionHeader(doc, "2. Trend Over Time (Line Graph)");
+  if (!historySeries.length) {
+    writeWrapped(doc, "No historical scan data is available yet for this repository.", 9);
+  } else {
+    for (const point of historySeries) {
+      writeWrapped(doc, `- ${point.label}: total=${point.totalFindings}, critical=${point.critical}, risk=${Number(point.riskScore || 0).toFixed(2)}`, 8);
+    }
+  }
+
+  writePdfSectionHeader(doc, "3. Vulnerabilities by Category (Bar Chart)");
+  for (const item of categories.slice(0, 8)) {
+    writeWrapped(doc, `- ${item.type}: ${item.count}`, 9);
+  }
+
+  writePdfSectionHeader(doc, "4. File/Module Risk Heatmap");
+  for (const row of heatmapRows.slice(0, 12)) {
+    writeWrapped(doc, `- ${row.folder}/${row.label}: count=${row.count}, critical=${row.critical}, high=${row.high}, density=${Number(row.density || 0).toFixed(2)}`, 8);
+  }
+
+  writePdfSectionHeader(doc, "5. Top Vulnerable Files / Components (Horizontal Bar Chart)");
+  for (const item of topFiles.slice(0, 12)) {
+    writeWrapped(doc, `- ${item.folder}/${item.file}: ${item.count} (${item.critical} critical, ${item.high} high)`, 8);
+  }
+
+  writePdfSectionHeader(doc, "6. Vulnerability Density (Scatter Plot or Bar)");
+  writePdfKeyValueTable(doc, [
+    { key: "Source files counted", value: String(Number(summary.source_files_count || 0)) },
+    { key: "Source lines counted", value: String(Number(summary.source_lines_count || 0)) },
+    { key: "KLOC", value: Number(sourceKloc || 0).toFixed(2) },
+    { key: "Vulnerabilities per KLOC", value: Number(densityPerKloc || 0).toFixed(2) },
+  ]);
+
+  writePdfSectionHeader(doc, "7. Time to Fix / Remediation SLA (Box Plot / Bar)");
+  for (const row of slaRows) {
+    writeWrapped(doc, `- ${row.severity}: verified_fixed=${row.verifiedFixed}, still_vulnerable=${row.stillVulnerable}, inconclusive=${row.inconclusive}`, 8);
+  }
+
+  writePdfSectionHeader(doc, "8. Open vs Fixed vs Ignored (Stacked Bar Chart)");
+  writePdfKeyValueTable(doc, [
+    { key: "Open", value: String(Number(summary.open_findings || 0)) },
+    { key: "Fixed", value: String(Number(summary.reviewed_findings || 0)) },
+    { key: "Ignored", value: String(Number(summary.ignored_findings || 0)) },
+  ]);
+
+  writePdfSectionHeader(doc, "9. Compliance Mapping (Matrix / Table Visualization)");
+  if (compliance?.frameworks?.length) {
+    for (const framework of compliance.frameworks.slice(0, 12)) {
+      writeWrapped(
+        doc,
+        `- ${framework.label}: covered=${framework.summary.covered}, gap=${framework.summary.gap}, n/a=${framework.summary.not_applicable}, mapped_findings=${framework.summary.mapped_findings}`,
+        8,
+      );
+    }
+  } else {
+    writeWrapped(doc, "- No compliance mapping available.", 8);
+  }
+
+  writePdfSectionHeader(doc, "10. Attack Surface / Data Flow Visualization");
+  for (const row of attackSurface.slice(0, 12)) {
+    writeWrapped(
+      doc,
+      `- ${row.module} -> ${row.vulnerability} (${row.cwe}, ${row.owasp}) -> ${row.fileName} | ${row.filePath}:${row.line} [${row.severity}] x${row.count}`,
+      8,
+    );
+  }
+
+  writePdfSectionHeader(doc, "11. False Positive Rate (Gauge / Pie Chart)");
+  writePdfKeyValueTable(doc, [
+    { key: "False Positive Rate", value: `${Number(falsePositiveRate || 0).toFixed(2)}%` },
+    { key: "Resolved %", value: `${Number(riskScoreDashboard.resolved_percent || 0).toFixed(2)}%` },
+  ]);
+
+  writePdfSectionHeader(doc, "12. Risk Score Dashboard (KPI Tiles)");
+  writePdfKeyValueTable(doc, [
+    { key: "Total Vulnerabilities", value: String(Number(riskScoreDashboard.total_vulnerabilities || 0)) },
+    { key: "Critical Issues", value: String(Number(riskScoreDashboard.critical_issues || 0)) },
+    { key: "High Issues", value: String(Number(riskScoreDashboard.high_issues || 0)) },
+    { key: "Risk Score", value: Number(riskScoreDashboard.risk_score || 0).toFixed(2) },
+    { key: "% Resolved", value: `${Number(riskScoreDashboard.resolved_percent || 0).toFixed(2)}%` },
+  ]);
 }
 
 

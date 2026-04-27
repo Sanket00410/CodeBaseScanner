@@ -37,9 +37,29 @@ export interface ScanControlActionResult {
 export interface ExportRequest {
   scanId: string;
   role?: UserRole;
-  reportType: "existing" | "vulnerability" | "fixes" | "finding_details" | "combined";
+  reportType: "existing" | "vulnerability" | "fixes" | "finding_details" | "combined" | "management";
   format: "json" | "xml" | "html" | "pdf" | "sarif" | "csv" | "patch";
   reportStyle?: "classic" | "modern";
+  managementContext?: ManagementReportContext;
+}
+
+export interface ManagementReportContext {
+  portfolioSummary?: PortfolioSummary | null;
+  scanHistory?: Array<{
+    scanId: string;
+    projectPath: string;
+    startedAt: string;
+    completedAt: string;
+    riskScore?: number;
+    totalFindings: number;
+    criticalFindings?: number;
+    highFindings?: number;
+    mediumFindings?: number;
+    lowFindings?: number;
+    infoFindings?: number;
+    reviewedFindings?: number;
+    suppressedCount?: number;
+  }>;
 }
 
 export interface CanonicalScanSummary {
@@ -705,6 +725,11 @@ export interface ScanHistoryItem {
   risk: string;
   riskScore?: number;
   totalFindings: number;
+  criticalFindings?: number;
+  highFindings?: number;
+  mediumFindings?: number;
+  lowFindings?: number;
+  infoFindings?: number;
   reviewedFindings?: number;
   suppressedCount?: number;
   topModule?: string;

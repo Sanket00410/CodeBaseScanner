@@ -378,25 +378,27 @@ function assertReportLinksResolve(html, label) {
     assertReportLinksResolve(auditorHtml, "Auditor existing report");
   }
 
-  const managementHtml = exportService.renderReportHtml(rawStoredScan, "combined", undefined, "Management");
-  assert.match(managementHtml, /Management Snapshot/);
+  const managementHtml = exportService.renderReportHtml(rawStoredScan, "management", undefined, "Management");
+  assert.match(managementHtml, /CodeSentinelX Management Risk Dashboard/);
   assert.match(managementHtml, /Role Projection/);
-  assert.match(managementHtml, /Management projection includes executive counts/);
+  assert.match(managementHtml, /Management report coverage:/);
+  assert.match(managementHtml, /Trend Over Time/);
   assert.match(managementHtml, /Critical:\s*1/);
   assert.doesNotMatch(managementHtml, /secret = true/);
 
   const managementJsonPath = await exportService.exportReport(rawStoredScan, {
     scanId: "scan-1",
     role: "Management",
-    reportType: "combined",
+    reportType: "management",
     format: "json",
   });
-  assert.match(managementJsonPath, /Management[\\/]+Executive_Summary_Reports/);
+  assert.match(managementJsonPath, /Management[\\/]+Management_Risk_Dashboard_Reports/);
   const managementPayload = JSON.parse(fs.readFileSync(managementJsonPath, "utf-8"));
   assert.equal(managementPayload.projection_metadata.role, "Management");
   assert.match(managementPayload.projection_metadata.redaction_policy, /hides raw finding rows/);
   assert.equal(managementPayload.executive_summary.scan_role, "Management");
-  assert.equal(managementPayload.vulnerability_fixed_code_report.findings.length, 0);
+  assert.equal(managementPayload.management_report.summary.total_findings, 2);
+  assert.equal(managementPayload.management_report.summary.severity_distribution.Critical, 1);
   assert.equal(managementPayload.executive_summary.severity_distribution.Critical, 1);
 
   const developerJsonPath = await exportService.exportReport(rawStoredScan, {
@@ -440,7 +442,8 @@ function assertReportLinksResolve(html, label) {
   assert.equal(zeroSummaryManagement.report.executive_summary.severity_distribution.High, 1);
   assert.equal(zeroSummaryManagement.report.executive_summary.management_summary.severity_breakdown_groups.length, 2);
 
-  const zeroSummaryManagementHtml = exportService.renderReportHtml(store.getScanView("scan-2"), "combined", undefined, "Management");
+  const zeroSummaryManagementHtml = exportService.renderReportHtml(store.getScanView("scan-2"), "management", undefined, "Management");
+  assert.match(zeroSummaryManagementHtml, /CodeSentinelX Management Risk Dashboard/);
   assert.match(zeroSummaryManagementHtml, /Critical:\s*1/);
   assert.match(zeroSummaryManagementHtml, /High:\s*1/);
   assert.match(zeroSummaryManagementHtml, /conic-gradient/);
@@ -477,7 +480,8 @@ function assertReportLinksResolve(html, label) {
   assert.equal(criticalGroup.groups[0].count, 2);
   assert.equal(criticalGroup.groups[0].instances.length, 2);
   assert.deepEqual(criticalGroup.groups[0].modules, ["api"]);
-  const mixedManagementHtml = exportService.renderReportHtml(store.getScanView("scan-3"), "combined", undefined, "Management");
+  const mixedManagementHtml = exportService.renderReportHtml(store.getScanView("scan-3"), "management", undefined, "Management");
+  assert.match(mixedManagementHtml, /CodeSentinelX Management Risk Dashboard/);
   assert.match(mixedManagementHtml, /Critical:\s*2/);
   assert.match(mixedManagementHtml, /High:\s*1/);
   assert.match(mixedManagementHtml, /Medium:\s*1/);

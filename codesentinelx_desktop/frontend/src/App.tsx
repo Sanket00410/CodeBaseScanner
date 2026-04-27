@@ -6,6 +6,7 @@ import {
   AuditLogEntry,
   EnterpriseAssuranceSummary,
   PortfolioSummary,
+  ManagementReportContext,
   ProfileComplianceReport,
   ReportHistoryItem,
   ResetLocalStateCacheResult,
@@ -28,7 +29,7 @@ import {
 
 type AppTab = "dashboard" | "existing" | "vulnerabilities" | "compliance" | "history" | "tools" | "help";
 type ExportFormat = "json" | "xml" | "html" | "pdf" | "sarif" | "csv" | "patch";
-type ExportType = "existing" | "vulnerability" | "fixes" | "finding_details" | "combined";
+type ExportType = "existing" | "vulnerability" | "fixes" | "finding_details" | "combined" | "management";
 type ReportStyle = "classic" | "modern";
 type DashboardSection = "overview" | "toolchain" | "assets" | "operations";
 type ExistingSection = "summary" | "controls" | "compliance";
@@ -315,20 +316,20 @@ const ROLE_EXPORT_PRESETS: Record<UserRole, RoleExportPreset> = {
     ],
   },
   Management: {
-    title: "Executive Summary Export",
-    description: "Board-level summary with risk and assurance only.",
-    reportType: "combined",
-    previewLabel: "Preview Executive Summary",
-    scopeLabel: "Executive",
+    title: "Management Risk Dashboard",
+    description: "A board-facing management report with charts, trend lines, compliance mapping, and risk posture summaries.",
+    reportType: "management",
+    previewLabel: "Preview Dashboard",
+    scopeLabel: "Management",
     scopeDetails: [
-      "Board-facing summary",
+      "Management-only dashboard report",
       "HTML, PDF, JSON",
       "Backend enforces management-only scope",
     ],
     formats: [
-      { format: "html", label: "HTML", helper: "Open the executive summary in a browser." },
-      { format: "pdf", label: "PDF", helper: "Generate a board-ready PDF." },
-      { format: "json", label: "JSON", helper: "Export structured board data." },
+      { format: "html", label: "HTML", helper: "Open the management dashboard in a browser." },
+      { format: "pdf", label: "PDF", helper: "Generate a board-ready management PDF." },
+      { format: "json", label: "JSON", helper: "Export structured management dashboard data." },
     ],
   },
 };
@@ -1761,6 +1762,47 @@ export default function App(): React.JSX.Element {
       setStatusText("No scan loaded for export.");
       return;
     }
+    const managementContext: ManagementReportContext | undefined =
+      selectedRoleExport.reportType === "management"
+        ? {
+            portfolioSummary,
+            scanHistory: [
+              ...history
+                .filter((item) => item.projectPath === scan.projectPath)
+                .sort((left, right) => new Date(left.completedAt).getTime() - new Date(right.completedAt).getTime())
+                .map((item) => ({
+                  scanId: item.scanId,
+                  projectPath: item.projectPath,
+                  startedAt: item.startedAt,
+                  completedAt: item.completedAt,
+                  riskScore: item.riskScore,
+                  totalFindings: item.totalFindings,
+                  criticalFindings: item.criticalFindings,
+                  highFindings: item.highFindings,
+                  mediumFindings: item.mediumFindings,
+                  lowFindings: item.lowFindings,
+                  infoFindings: item.infoFindings,
+                  reviewedFindings: item.reviewedFindings,
+                  suppressedCount: item.suppressedCount,
+                })),
+              {
+                scanId: scan.scanId,
+                projectPath: scan.projectPath,
+                startedAt: scan.startedAt,
+                completedAt: scan.completedAt,
+                riskScore: Number(scan.report.executive_summary.risk_score || 0),
+                totalFindings: Number(scan.report.executive_summary.deduplicated_vulnerabilities || scan.report.executive_summary.total_vulnerabilities || 0),
+                criticalFindings: Number(scan.report.executive_summary.severity_distribution?.Critical || 0),
+                highFindings: Number(scan.report.executive_summary.severity_distribution?.High || 0),
+                mediumFindings: Number(scan.report.executive_summary.severity_distribution?.Medium || 0),
+                lowFindings: Number(scan.report.executive_summary.severity_distribution?.Low || 0),
+                infoFindings: Number(scan.report.executive_summary.severity_distribution?.Info || 0),
+                reviewedFindings: Number(scan.report.vulnerability_fixed_code_report.summary.reviewed_findings || 0),
+                suppressedCount: Number(scan.report.false_positive_report?.candidate_count || scan.report.vulnerability_fixed_code_report.summary.suppressed_by_policy || 0),
+              },
+            ],
+          }
+        : undefined;
     setIsExporting(true);
     const reportType = selectedRoleExport.reportType;
     const styleLabel = reportType === "vulnerability" ? ` (${vulnerabilityReportStyle})` : "";
@@ -1773,6 +1815,7 @@ export default function App(): React.JSX.Element {
         reportType,
         format,
         reportStyle: reportType === "vulnerability" ? vulnerabilityReportStyle : undefined,
+        managementContext,
       });
       setLastExport(output);
       setStatusText(`Exported ${selectedRoleExport.title} as ${format}${styleLabel}`);
@@ -1787,6 +1830,47 @@ export default function App(): React.JSX.Element {
       setStatusText("Run a scan before previewing reports.");
       return;
     }
+    const managementContext: ManagementReportContext | undefined =
+      selectedRoleExport.reportType === "management"
+        ? {
+            portfolioSummary,
+            scanHistory: [
+              ...history
+                .filter((item) => item.projectPath === scan.projectPath)
+                .sort((left, right) => new Date(left.completedAt).getTime() - new Date(right.completedAt).getTime())
+                .map((item) => ({
+                  scanId: item.scanId,
+                  projectPath: item.projectPath,
+                  startedAt: item.startedAt,
+                  completedAt: item.completedAt,
+                  riskScore: item.riskScore,
+                  totalFindings: item.totalFindings,
+                  criticalFindings: item.criticalFindings,
+                  highFindings: item.highFindings,
+                  mediumFindings: item.mediumFindings,
+                  lowFindings: item.lowFindings,
+                  infoFindings: item.infoFindings,
+                  reviewedFindings: item.reviewedFindings,
+                  suppressedCount: item.suppressedCount,
+                })),
+              {
+                scanId: scan.scanId,
+                projectPath: scan.projectPath,
+                startedAt: scan.startedAt,
+                completedAt: scan.completedAt,
+                riskScore: Number(scan.report.executive_summary.risk_score || 0),
+                totalFindings: Number(scan.report.executive_summary.deduplicated_vulnerabilities || scan.report.executive_summary.total_vulnerabilities || 0),
+                criticalFindings: Number(scan.report.executive_summary.severity_distribution?.Critical || 0),
+                highFindings: Number(scan.report.executive_summary.severity_distribution?.High || 0),
+                mediumFindings: Number(scan.report.executive_summary.severity_distribution?.Medium || 0),
+                lowFindings: Number(scan.report.executive_summary.severity_distribution?.Low || 0),
+                infoFindings: Number(scan.report.executive_summary.severity_distribution?.Info || 0),
+                reviewedFindings: Number(scan.report.vulnerability_fixed_code_report.summary.reviewed_findings || 0),
+                suppressedCount: Number(scan.report.false_positive_report?.candidate_count || scan.report.vulnerability_fixed_code_report.summary.suppressed_by_policy || 0),
+              },
+            ],
+          }
+        : undefined;
     setIsPreviewLoading(true);
     const reportType = selectedRoleExport.reportType;
     setPreviewReportType(reportType);
@@ -1796,6 +1880,7 @@ export default function App(): React.JSX.Element {
         role,
         reportType,
         reportStyle: reportType === "vulnerability" ? vulnerabilityReportStyle : undefined,
+        managementContext,
       });
       setReportPreviewSrc(previewSrc);
       const styleLabel = reportType === "vulnerability" ? ` (${vulnerabilityReportStyle})` : "";

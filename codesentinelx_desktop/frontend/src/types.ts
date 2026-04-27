@@ -12,6 +12,25 @@ export interface ScmDiffContext {
   changedLinesJson?: string;
 }
 
+export interface ManagementReportContext {
+  portfolioSummary?: PortfolioSummary | null;
+  scanHistory?: Array<{
+    scanId: string;
+    projectPath: string;
+    startedAt: string;
+    completedAt: string;
+    riskScore?: number;
+    totalFindings: number;
+    criticalFindings?: number;
+    highFindings?: number;
+    mediumFindings?: number;
+    lowFindings?: number;
+    infoFindings?: number;
+    reviewedFindings?: number;
+    suppressedCount?: number;
+  }>;
+}
+
 export interface ExistingControl {
   control_id: string;
   name: string;
@@ -601,6 +620,11 @@ export interface ScanHistoryItem {
   risk: string;
   riskScore?: number;
   totalFindings: number;
+  criticalFindings?: number;
+  highFindings?: number;
+  mediumFindings?: number;
+  lowFindings?: number;
+  infoFindings?: number;
   reviewedFindings?: number;
   suppressedCount?: number;
   topModule?: string;
