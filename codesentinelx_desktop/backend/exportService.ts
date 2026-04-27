@@ -9882,6 +9882,11 @@ function buildManagementReportPayload(scan: ScanView, context?: ManagementReport
     : totalFindings > 0
       ? Number((((scan.report.false_positive_report?.candidate_count || 0) / totalFindings) * 100).toFixed(2))
       : 0;
+  const falsePositiveRateSource = qualityBenchmark && qualityBenchmark.configured
+    ? `Benchmark configured: ${Number(qualityBenchmark.false_positive_rate_percent || 0).toFixed(2)}%`
+    : totalFindings > 0
+      ? `Derived estimate from false-positive candidates (${Number(scan.report.false_positive_report?.candidate_count || 0)} / ${totalFindings})`
+      : "Not available";
 
   return {
     title: "CodeSentinelX Management Risk Dashboard",
@@ -9923,6 +9928,7 @@ function buildManagementReportPayload(scan: ScanView, context?: ManagementReport
     compliance_mapping: compliance,
     attack_surface: buildManagementAttackSurfaceRows(findings, summary as Record<string, unknown>),
     false_positive_rate: falsePositiveRate,
+    false_positive_rate_source: falsePositiveRateSource,
     risk_score_dashboard: {
       total_vulnerabilities: totalFindings,
       critical_issues: Number(severityDistribution.Critical || 0),
@@ -10050,6 +10056,46 @@ function renderManagementBarRows<T extends { count: number; label: string }>(ite
     .join("");
 }
 
+function renderManagementCategoryBarChart(items: Array<{ label: string; count: number }>): string {
+  if (!items.length) {
+    return `<p class="muted">No category data available yet.</p>`;
+  }
+  const width = 920;
+  const height = Math.max(180, items.length * 34 + 34);
+  const paddingLeft = 176;
+  const paddingRight = 24;
+  const paddingTop = 18;
+  const paddingBottom = 20;
+  const max = Math.max(1, ...items.map((item) => Number(item.count || 0)));
+  const availableWidth = width - paddingLeft - paddingRight;
+  const availableHeight = height - paddingTop - paddingBottom;
+  const rowHeight = availableHeight / items.length;
+  return `
+    <svg viewBox="0 0 ${width} ${height}" class="management-category-chart" role="img" aria-label="Vulnerability category bar chart">
+      <line x1="${paddingLeft}" y1="${paddingTop}" x2="${paddingLeft}" y2="${height - paddingBottom}" stroke="rgba(120,168,205,.22)" />
+      <line x1="${paddingLeft}" y1="${height - paddingBottom}" x2="${width - paddingRight}" y2="${height - paddingBottom}" stroke="rgba(120,168,205,.22)" />
+      ${items
+        .map((item, index) => {
+          const y = paddingTop + index * rowHeight;
+          const barHeight = Math.max(16, rowHeight * 0.62);
+          const barY = y + (rowHeight - barHeight) / 2;
+          const barWidth = Math.max(2, (Number(item.count || 0) / max) * availableWidth);
+          return `
+            <text x="0" y="${(barY + barHeight * 0.72).toFixed(2)}" class="chart-label">${escapeHtml(item.label)}</text>
+            <rect x="${paddingLeft}" y="${barY.toFixed(2)}" rx="10" ry="10" width="${barWidth.toFixed(2)}" height="${barHeight.toFixed(2)}" fill="url(#mgCategory${index})" />
+            <defs>
+              <linearGradient id="mgCategory${index}" x1="0" x2="1">
+                <stop offset="0%" stop-color="hsl(${208 - index * 12}, 85%, 58%)" />
+                <stop offset="100%" stop-color="hsl(${165 - index * 8}, 78%, 53%)" />
+              </linearGradient>
+            </defs>
+            <text x="${(paddingLeft + barWidth + 12).toFixed(2)}" y="${(barY + barHeight * 0.72).toFixed(2)}" class="chart-value">${Number(item.count || 0)}</text>
+          `;
+        })
+        .join("")}
+    </svg>`;
+}
+
 function renderManagementScatterPlot(rows: ManagementDensityRow[]): string {
   if (!rows.length) {
     return `<p class="muted">No density scatter data available yet.</p>`;
@@ -10169,11 +10215,13 @@ function renderManagementHtml(scan: ScanView, context?: ManagementReportContext)
   const riskScoreDashboard = payload.risk_score_dashboard as Record<string, unknown>;
   const executiveMetrics = payload.executive_metrics as Record<string, unknown>;
   const falsePositiveRate = Number(payload.false_positive_rate || 0);
+  const falsePositiveRateSource = String(payload.false_positive_rate_source || "Not available");
   const resolvedPercent = Number(executiveMetrics.resolved_percent || 0);
   const sourceKloc = Number(summary.source_kloc || 0);
   const densityPerKloc = Number(summary.density_per_kloc || 0);
   const trendChart = renderManagementLineChart(historySeries);
   const donutChart = renderManagementDonutChart(severityDistribution);
+  const categoryChart = renderManagementCategoryBarChart(categories.map((item) => ({ label: item.type, count: Number(item.count || 0) })));
   const scatterChart = renderManagementScatterPlot(heatmapRows);
   const complianceRows = compliance
     ? (compliance.frameworks || [])
@@ -10268,6 +10316,9 @@ function renderManagementHtml(scan: ScanView, context?: ManagementReportContext)
     .management-report .trend-legend{display:grid;gap:8px;margin-top:10px}
     .management-report .trend-item{display:flex;justify-content:space-between;gap:12px;padding:8px 10px;border:1px solid rgba(120,168,205,.15);border-radius:10px;background:rgba(255,255,255,.02)}
     .management-report table.management-table td,.management-report table.management-table th{padding:8px 10px}
+    .management-report .management-category-chart{width:100%;height:auto;display:block}
+    .management-report .chart-label{fill:var(--text);font-size:12px;font-weight:700}
+    .management-report .chart-value{fill:var(--muted);font-size:12px;font-weight:700}
     .management-report .management-donut{width:240px;height:240px;display:block}
     .management-report .donut-value{fill:var(--text);font-size:34px;font-weight:800}
     .management-report .donut-label{fill:var(--muted);font-size:14px;font-weight:700}
@@ -10327,7 +10378,7 @@ function renderManagementHtml(scan: ScanView, context?: ManagementReportContext)
       <div class="mg-card">
         <h2>3. Vulnerabilities by Category (Bar Chart)</h2>
         <p class="muted">Group by types like Injection, Authentication flaws, Misconfigurations. Often mapped to OWASP Top 10 categories. Helps answer: What kind of issues dominate?</p>
-        ${renderManagementBarRows(categories.map((item) => ({ label: item.type, count: Number(item.count || 0) })))}
+        ${categoryChart}
       </div>
       <div class="mg-card">
         <h2>4. File/Module Risk Heatmap</h2>
@@ -10411,7 +10462,7 @@ function renderManagementHtml(scan: ScanView, context?: ManagementReportContext)
 
       <div class="mg-card">
         <h2>11. False Positive Rate (Gauge / Pie Chart)</h2>
-        <p class="muted">Shows accuracy of the SAST tool. Helps build trust in the report.</p>
+        <p class="muted">Shows accuracy of the SAST tool. Helps build trust in the report. Source: ${escapeHtml(falsePositiveRateSource)}</p>
         <div class="gauge-wrap">
           <svg viewBox="0 0 260 180" class="gauge-svg" role="img" aria-label="False positive rate gauge">
             <defs>
@@ -10430,6 +10481,7 @@ function renderManagementHtml(scan: ScanView, context?: ManagementReportContext)
               <tbody>
                 <tr><td>Verified Findings</td><td align="center">${Number(riskScoreDashboard.critical_issues || 0) + Number(riskScoreDashboard.high_issues || 0)}</td></tr>
                 <tr><td>Benchmark Rating</td><td align="center">${escapeHtml(String(riskScoreDashboard.risk_rating || summary.risk_rating || ""))}</td></tr>
+                <tr><td>Rate Source</td><td align="center">${escapeHtml(falsePositiveRateSource)}</td></tr>
               </tbody>
             </table>
           </div>
@@ -10465,9 +10517,17 @@ function writeManagementPdf(doc: PDFKit.PDFDocument, scan: ScanView, context?: M
   const attackSurface = Array.isArray(payload.attack_surface) ? (payload.attack_surface as ManagementAttackSurfaceRow[]) : [];
   const slaRows = Array.isArray(payload.remediation_sla) ? (payload.remediation_sla as ManagementSlaRow[]) : [];
   const riskScoreDashboard = payload.risk_score_dashboard as Record<string, unknown>;
+  const qualityBenchmark =
+    scan.report.executive_summary.data_quality?.quality_benchmark ||
+    scan.report.executive_summary.enterprise_assurance?.quality_benchmark ||
+    scan.report.vulnerability_fixed_code_report.summary.data_quality?.quality_benchmark ||
+    scan.report.vulnerability_fixed_code_report.summary.enterprise_assurance?.quality_benchmark ||
+    null;
+  const totalFindings = Number(summary.total_findings || riskScoreDashboard.total_vulnerabilities || 0);
   const sourceKloc = Number(summary.source_kloc || 0);
   const densityPerKloc = Number(summary.density_per_kloc || 0);
   const falsePositiveRate = Number(payload.false_positive_rate || 0);
+  const falsePositiveRateSource = String(payload.false_positive_rate_source || "Not available");
   const exportedAt = formatDisplayTimestamp(String(payload.generated_at || ""));
 
   writePdfHero(doc, "CodeSentinelX Management Risk Dashboard", [
@@ -10561,6 +10621,7 @@ function writeManagementPdf(doc: PDFKit.PDFDocument, scan: ScanView, context?: M
   writePdfKeyValueTable(doc, [
     { key: "False Positive Rate", value: `${Number(falsePositiveRate || 0).toFixed(2)}%` },
     { key: "Resolved %", value: `${Number(riskScoreDashboard.resolved_percent || 0).toFixed(2)}%` },
+    { key: "Rate Source", value: qualityBenchmark && qualityBenchmark.configured ? `Benchmark configured: ${Number(qualityBenchmark.false_positive_rate_percent || 0).toFixed(2)}%` : totalFindings > 0 ? `Derived estimate from false-positive candidates (${Number(scan.report.false_positive_report?.candidate_count || 0)} / ${totalFindings})` : "Not available" },
   ]);
 
   writePdfSectionHeader(doc, "12. Risk Score Dashboard (KPI Tiles)");
