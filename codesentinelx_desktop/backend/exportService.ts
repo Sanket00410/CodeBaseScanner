@@ -10214,8 +10214,6 @@ function renderManagementHtml(scan: ScanView, context?: ManagementReportContext)
   const compliance = (payload.compliance_mapping as ProfileComplianceReport | null) || scan.report.profile_compliance || null;
   const riskScoreDashboard = payload.risk_score_dashboard as Record<string, unknown>;
   const executiveMetrics = payload.executive_metrics as Record<string, unknown>;
-  const falsePositiveRate = Number(payload.false_positive_rate || 0);
-  const falsePositiveRateSource = String(payload.false_positive_rate_source || "Not available");
   const resolvedPercent = Number(executiveMetrics.resolved_percent || 0);
   const sourceKloc = Number(summary.source_kloc || 0);
   const densityPerKloc = Number(summary.density_per_kloc || 0);
@@ -10354,7 +10352,7 @@ function renderManagementHtml(scan: ScanView, context?: ManagementReportContext)
         <div class="meta-pill"><strong>Resolved:</strong> ${escapeHtml(`${resolvedPercent.toFixed(2)}%`)}</div>
       </div>
       <div class="callout" style="margin-top:14px">
-        <strong>Management report coverage:</strong> Vulnerability Severity Distribution, Trend Over Time, Vulnerabilities by Category, File/Module Risk Heatmap, Top Vulnerable Files / Components, Vulnerability Density, Time to Fix / Remediation SLA, Open vs Fixed vs Ignored, Compliance Mapping, Attack Surface / Data Flow Visualization, False Positive Rate, and Risk Score Dashboard.
+        <strong>Management report coverage:</strong> Vulnerability Severity Distribution, Trend Over Time, Vulnerabilities by Category, File/Module Risk Heatmap, Top Vulnerable Files / Components, Vulnerability Density, Time to Fix / Remediation SLA, Open vs Fixed vs Ignored, Compliance Mapping, Attack Surface / Data Flow Visualization, and Risk Score Dashboard.
       </div>
     </section>
 
@@ -10369,39 +10367,48 @@ function renderManagementHtml(scan: ScanView, context?: ManagementReportContext)
           <div>${severityLegend}</div>
         </div>
       </div>
+      ${historySeries.length ? `
       <div class="mg-card">
         <h2>2. Trend Over Time (Line Graph)</h2>
         <p class="muted">Tracks vulnerabilities across builds/releases. Can show total issues over time and Critical issues trend. Helps answer: Are we improving or getting worse?</p>
         ${trendChart}
-      </div>
+      </div>` : ""}
 
+      ${categories.length ? `
       <div class="mg-card">
         <h2>3. Vulnerabilities by Category (Bar Chart)</h2>
         <p class="muted">Group by types like Injection, Authentication flaws, Misconfigurations. Often mapped to OWASP Top 10 categories. Helps answer: What kind of issues dominate?</p>
         ${categoryChart}
-      </div>
+      </div>` : ""}
+
+      ${heatmapRows.length ? `
       <div class="mg-card">
         <h2>4. File/Module Risk Heatmap</h2>
         <p class="muted">Heatmap of codebase showing risk density. Darker areas = more vulnerabilities. Helps answer: Where should developers focus first?</p>
         ${renderManagementHeatmapGrid(heatmapRows)}
-      </div>
+      </div>` : ""}
 
+      ${(topFiles.length || topModules.length) ? `
       <div class="mg-card">
         <h2>5. Top Vulnerable Files / Components (Horizontal Bar Chart)</h2>
         <p class="muted">Highlights worst offenders in codebase. Helps prioritize remediation at module level.</p>
+        ${topFiles.length ? `
         <div class="table-frame table-scroll">
           <table class="management-table">
             <thead><tr><th>Folder</th><th>File</th><th>Risk Bar</th><th>Count</th><th>Critical</th><th>High</th></tr></thead>
-            <tbody>${topFileRows || `<tr><td colspan="6">No file-level risk data available.</td></tr>`}</tbody>
+            <tbody>${topFileRows}</tbody>
           </table>
-        </div>
+        </div>` : ""}
+        ${topModules.length ? `
         <div class="table-frame table-scroll" style="margin-top:10px">
           <table class="management-table">
             <thead><tr><th>Module</th><th>Count</th><th>Critical</th><th>High</th></tr></thead>
-            <tbody>${topModuleRows || `<tr><td colspan="4">No module-level risk data available.</td></tr>`}</tbody>
+            <tbody>${topModuleRows}</tbody>
           </table>
-        </div>
-      </div>
+        </div>` : ""}
+      </div>` : ""}
+
+      ${(sourceKloc > 0 || densityPerKloc > 0 || Number(summary.source_files_count || 0) > 0 || Number(summary.source_lines_count || 0) > 0) ? `
       <div class="mg-card">
         <h2>6. Vulnerability Density (Scatter Plot or Bar)</h2>
         <p class="muted">Vulnerabilities per KLOC (thousand lines of code). Helps normalize risk across projects of different sizes. Helps answer: Which project is riskier relative to its size?</p>
@@ -10416,27 +10423,30 @@ function renderManagementHtml(scan: ScanView, context?: ManagementReportContext)
             </tbody>
           </table>
         </div>
-      </div>
+      </div>` : ""}
 
+      ${slaRows.length ? `
       <div class="mg-card">
         <h2>7. Time to Fix / Remediation SLA (Box Plot / Bar)</h2>
         <p class="muted">Average time taken to resolve vulnerabilities, broken down by severity. Helps answer: Are we fixing issues fast enough?</p>
         <div class="table-frame table-scroll">
           <table class="management-table">
             <thead><tr><th>Severity</th><th>Verified Fixed</th><th>Still Vulnerable</th><th>Inconclusive</th><th>Not Applicable</th></tr></thead>
-            <tbody>${slaRowsHtml || `<tr><td colspan="5">No remediation SLA data available.</td></tr>`}</tbody>
+            <tbody>${slaRowsHtml}</tbody>
           </table>
         </div>
-      </div>
+      </div>` : ""}
 
+      ${(Number(summary.open_findings || 0) > 0 || Number(summary.reviewed_findings || 0) > 0 || Number(summary.ignored_findings || 0) > 0) ? `
       <div class="mg-card">
         <h2>8. Open vs Fixed vs Ignored (Stacked Bar Chart)</h2>
         <p class="muted">Tracks status of vulnerabilities. Helps answer: How many are unresolved? Are we accumulating tech debt?</p>
         <div class="mg-bar-row"><div class="mg-bar-label">Open</div><div class="bar-track"><div class="bar-fill" style="width:${Math.max(2, Math.round((Number(summary.open_findings || 0) / Math.max(1, Number(summary.total_findings || 1))) * 100))}%"></div></div><div class="mg-bar-value">${Number(summary.open_findings || 0)}</div></div>
         <div class="mg-bar-row"><div class="mg-bar-label">Fixed</div><div class="bar-track"><div class="bar-fill" style="width:${Math.max(2, Math.round((Number(summary.reviewed_findings || 0) / Math.max(1, Number(summary.total_findings || 1))) * 100))}%"></div></div><div class="mg-bar-value">${Number(summary.reviewed_findings || 0)}</div></div>
         <div class="mg-bar-row"><div class="mg-bar-label">Ignored</div><div class="bar-track"><div class="bar-fill" style="width:${Math.max(2, Math.round((Number(summary.ignored_findings || 0) / Math.max(1, Number(summary.total_findings || 1))) * 100))}%"></div></div><div class="mg-bar-value">${Number(summary.ignored_findings || 0)}</div></div>
-      </div>
+      </div>` : ""}
 
+      ${compliance?.frameworks?.length ? `
       <div class="mg-card">
         <h2>9. Compliance Mapping (Matrix / Table Visualization)</h2>
         <p class="muted">Map findings to standards like OWASP and NIST. Helps stakeholders understand regulatory impact.</p>
@@ -10447,46 +10457,19 @@ function renderManagementHtml(scan: ScanView, context?: ManagementReportContext)
             <tbody>${complianceRows}</tbody>
           </table>
         </div>
-      </div>
+      </div>` : ""}
 
+      ${attackSurface.length ? `
       <div class="mg-card">
         <h2>10. Attack Surface / Data Flow Visualization</h2>
         <p class="muted">Shows how vulnerabilities connect across components. Useful for complex applications. Helps answer: How exploitable is this in real scenarios?</p>
         <div class="table-frame table-scroll">
           <table class="management-table">
             <thead><tr><th>Module</th><th>Vulnerability</th><th>CWE</th><th>OWASP</th><th>File Name</th><th>File / Path</th><th>Line</th><th>Severity</th><th>Count</th></tr></thead>
-            <tbody>${attackRows || `<tr><td colspan="9">No attack surface data available.</td></tr>`}</tbody>
+            <tbody>${attackRows}</tbody>
           </table>
         </div>
-      </div>
-
-      <div class="mg-card">
-        <h2>11. False Positive Rate (Gauge / Pie Chart)</h2>
-        <p class="muted">Shows accuracy of the SAST tool. Helps build trust in the report. Source: ${escapeHtml(falsePositiveRateSource)}</p>
-        <div class="gauge-wrap">
-          <svg viewBox="0 0 260 180" class="gauge-svg" role="img" aria-label="False positive rate gauge">
-            <defs>
-              <linearGradient id="mgGaugeTrack" x1="0" x2="1">
-                <stop offset="0%" stop-color="#1d4ed8" />
-                <stop offset="100%" stop-color="#22c55e" />
-              </linearGradient>
-            </defs>
-            <path d="M 30 150 A 100 100 0 0 1 230 150" fill="none" stroke="rgba(120,168,205,.18)" stroke-width="18" stroke-linecap="round" />
-            <path d="M 30 150 A 100 100 0 0 1 230 150" fill="none" stroke="url(#mgGaugeTrack)" stroke-width="18" stroke-linecap="round" stroke-dasharray="${Math.max(5, Math.round(314 * (1 - Math.min(1, falsePositiveRate / 100))))} 314" />
-            <text x="130" y="122" text-anchor="middle" class="gauge-value">${falsePositiveRate.toFixed(2)}%</text>
-            <text x="130" y="144" text-anchor="middle" class="gauge-label">False Positive Rate</text>
-          </svg>
-          <div class="table-frame table-scroll">
-            <table class="management-table">
-              <tbody>
-                <tr><td>Verified Findings</td><td align="center">${Number(riskScoreDashboard.critical_issues || 0) + Number(riskScoreDashboard.high_issues || 0)}</td></tr>
-                <tr><td>Benchmark Rating</td><td align="center">${escapeHtml(String(riskScoreDashboard.risk_rating || summary.risk_rating || ""))}</td></tr>
-                <tr><td>Rate Source</td><td align="center">${escapeHtml(falsePositiveRateSource)}</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
+      </div>` : ""}
 
       <div class="mg-card">
         <h2>12. Risk Score Dashboard (KPI Tiles)</h2>
@@ -10517,17 +10500,8 @@ function writeManagementPdf(doc: PDFKit.PDFDocument, scan: ScanView, context?: M
   const attackSurface = Array.isArray(payload.attack_surface) ? (payload.attack_surface as ManagementAttackSurfaceRow[]) : [];
   const slaRows = Array.isArray(payload.remediation_sla) ? (payload.remediation_sla as ManagementSlaRow[]) : [];
   const riskScoreDashboard = payload.risk_score_dashboard as Record<string, unknown>;
-  const qualityBenchmark =
-    scan.report.executive_summary.data_quality?.quality_benchmark ||
-    scan.report.executive_summary.enterprise_assurance?.quality_benchmark ||
-    scan.report.vulnerability_fixed_code_report.summary.data_quality?.quality_benchmark ||
-    scan.report.vulnerability_fixed_code_report.summary.enterprise_assurance?.quality_benchmark ||
-    null;
-  const totalFindings = Number(summary.total_findings || riskScoreDashboard.total_vulnerabilities || 0);
   const sourceKloc = Number(summary.source_kloc || 0);
   const densityPerKloc = Number(summary.density_per_kloc || 0);
-  const falsePositiveRate = Number(payload.false_positive_rate || 0);
-  const falsePositiveRateSource = String(payload.false_positive_rate_source || "Not available");
   const exportedAt = formatDisplayTimestamp(String(payload.generated_at || ""));
 
   writePdfHero(doc, "CodeSentinelX Management Risk Dashboard", [
@@ -10551,52 +10525,62 @@ function writeManagementPdf(doc: PDFKit.PDFDocument, scan: ScanView, context?: M
     { key: "Info", value: String(Number(severityDistribution.Info || 0)) },
   ]);
 
-  writePdfSectionHeader(doc, "2. Trend Over Time (Line Graph)");
-  if (!historySeries.length) {
-    writeWrapped(doc, "No historical scan data is available yet for this repository.", 9);
-  } else {
+  if (historySeries.length) {
+    writePdfSectionHeader(doc, "2. Trend Over Time (Line Graph)");
     for (const point of historySeries) {
       writeWrapped(doc, `- ${point.label}: total=${point.totalFindings}, critical=${point.critical}, risk=${Number(point.riskScore || 0).toFixed(2)}`, 8);
     }
   }
 
-  writePdfSectionHeader(doc, "3. Vulnerabilities by Category (Bar Chart)");
-  for (const item of categories.slice(0, 8)) {
-    writeWrapped(doc, `- ${item.type}: ${item.count}`, 9);
+  if (categories.length) {
+    writePdfSectionHeader(doc, "3. Vulnerabilities by Category (Bar Chart)");
+    for (const item of categories.slice(0, 8)) {
+      writeWrapped(doc, `- ${item.type}: ${item.count}`, 9);
+    }
   }
 
-  writePdfSectionHeader(doc, "4. File/Module Risk Heatmap");
-  for (const row of heatmapRows.slice(0, 12)) {
-    writeWrapped(doc, `- ${row.folder}/${row.label}: count=${row.count}, critical=${row.critical}, high=${row.high}, density=${Number(row.density || 0).toFixed(2)}`, 8);
+  if (heatmapRows.length) {
+    writePdfSectionHeader(doc, "4. File/Module Risk Heatmap");
+    for (const row of heatmapRows.slice(0, 12)) {
+      writeWrapped(doc, `- ${row.folder}/${row.label}: count=${row.count}, critical=${row.critical}, high=${row.high}, density=${Number(row.density || 0).toFixed(2)}`, 8);
+    }
   }
 
-  writePdfSectionHeader(doc, "5. Top Vulnerable Files / Components (Horizontal Bar Chart)");
-  for (const item of topFiles.slice(0, 12)) {
-    writeWrapped(doc, `- ${item.folder}/${item.file}: ${item.count} (${item.critical} critical, ${item.high} high)`, 8);
+  if (topFiles.length) {
+    writePdfSectionHeader(doc, "5. Top Vulnerable Files / Components (Horizontal Bar Chart)");
+    for (const item of topFiles.slice(0, 12)) {
+      writeWrapped(doc, `- ${item.folder}/${item.file}: ${item.count} (${item.critical} critical, ${item.high} high)`, 8);
+    }
   }
 
-  writePdfSectionHeader(doc, "6. Vulnerability Density (Scatter Plot or Bar)");
-  writePdfKeyValueTable(doc, [
-    { key: "Source files counted", value: String(Number(summary.source_files_count || 0)) },
-    { key: "Source lines counted", value: String(Number(summary.source_lines_count || 0)) },
-    { key: "KLOC", value: Number(sourceKloc || 0).toFixed(2) },
-    { key: "Vulnerabilities per KLOC", value: Number(densityPerKloc || 0).toFixed(2) },
-  ]);
-
-  writePdfSectionHeader(doc, "7. Time to Fix / Remediation SLA (Box Plot / Bar)");
-  for (const row of slaRows) {
-    writeWrapped(doc, `- ${row.severity}: verified_fixed=${row.verifiedFixed}, still_vulnerable=${row.stillVulnerable}, inconclusive=${row.inconclusive}`, 8);
+  if (sourceKloc > 0 || densityPerKloc > 0 || Number(summary.source_files_count || 0) > 0 || Number(summary.source_lines_count || 0) > 0) {
+    writePdfSectionHeader(doc, "6. Vulnerability Density (Scatter Plot or Bar)");
+    writePdfKeyValueTable(doc, [
+      { key: "Source files counted", value: String(Number(summary.source_files_count || 0)) },
+      { key: "Source lines counted", value: String(Number(summary.source_lines_count || 0)) },
+      { key: "KLOC", value: Number(sourceKloc || 0).toFixed(2) },
+      { key: "Vulnerabilities per KLOC", value: Number(densityPerKloc || 0).toFixed(2) },
+    ]);
   }
 
-  writePdfSectionHeader(doc, "8. Open vs Fixed vs Ignored (Stacked Bar Chart)");
-  writePdfKeyValueTable(doc, [
-    { key: "Open", value: String(Number(summary.open_findings || 0)) },
-    { key: "Fixed", value: String(Number(summary.reviewed_findings || 0)) },
-    { key: "Ignored", value: String(Number(summary.ignored_findings || 0)) },
-  ]);
+  if (slaRows.length) {
+    writePdfSectionHeader(doc, "7. Time to Fix / Remediation SLA (Box Plot / Bar)");
+    for (const row of slaRows) {
+      writeWrapped(doc, `- ${row.severity}: verified_fixed=${row.verifiedFixed}, still_vulnerable=${row.stillVulnerable}, inconclusive=${row.inconclusive}`, 8);
+    }
+  }
 
-  writePdfSectionHeader(doc, "9. Compliance Mapping (Matrix / Table Visualization)");
+  if (Number(summary.open_findings || 0) > 0 || Number(summary.reviewed_findings || 0) > 0 || Number(summary.ignored_findings || 0) > 0) {
+    writePdfSectionHeader(doc, "8. Open vs Fixed vs Ignored (Stacked Bar Chart)");
+    writePdfKeyValueTable(doc, [
+      { key: "Open", value: String(Number(summary.open_findings || 0)) },
+      { key: "Fixed", value: String(Number(summary.reviewed_findings || 0)) },
+      { key: "Ignored", value: String(Number(summary.ignored_findings || 0)) },
+    ]);
+  }
+
   if (compliance?.frameworks?.length) {
+    writePdfSectionHeader(doc, "9. Compliance Mapping (Matrix / Table Visualization)");
     for (const framework of compliance.frameworks.slice(0, 12)) {
       writeWrapped(
         doc,
@@ -10604,25 +10588,18 @@ function writeManagementPdf(doc: PDFKit.PDFDocument, scan: ScanView, context?: M
         8,
       );
     }
-  } else {
-    writeWrapped(doc, "- No compliance mapping available.", 8);
   }
 
-  writePdfSectionHeader(doc, "10. Attack Surface / Data Flow Visualization");
-  for (const row of attackSurface.slice(0, 12)) {
-    writeWrapped(
-      doc,
-      `- ${row.module} -> ${row.vulnerability} (${row.cwe}, ${row.owasp}) -> ${row.fileName} | ${row.filePath}:${row.line} [${row.severity}] x${row.count}`,
-      8,
-    );
+  if (attackSurface.length) {
+    writePdfSectionHeader(doc, "10. Attack Surface / Data Flow Visualization");
+    for (const row of attackSurface.slice(0, 12)) {
+      writeWrapped(
+        doc,
+        `- ${row.module} -> ${row.vulnerability} (${row.cwe}, ${row.owasp}) -> ${row.fileName} | ${row.filePath}:${row.line} [${row.severity}] x${row.count}`,
+        8,
+      );
+    }
   }
-
-  writePdfSectionHeader(doc, "11. False Positive Rate (Gauge / Pie Chart)");
-  writePdfKeyValueTable(doc, [
-    { key: "False Positive Rate", value: `${Number(falsePositiveRate || 0).toFixed(2)}%` },
-    { key: "Resolved %", value: `${Number(riskScoreDashboard.resolved_percent || 0).toFixed(2)}%` },
-    { key: "Rate Source", value: qualityBenchmark && qualityBenchmark.configured ? `Benchmark configured: ${Number(qualityBenchmark.false_positive_rate_percent || 0).toFixed(2)}%` : totalFindings > 0 ? `Derived estimate from false-positive candidates (${Number(scan.report.false_positive_report?.candidate_count || 0)} / ${totalFindings})` : "Not available" },
-  ]);
 
   writePdfSectionHeader(doc, "12. Risk Score Dashboard (KPI Tiles)");
   writePdfKeyValueTable(doc, [
