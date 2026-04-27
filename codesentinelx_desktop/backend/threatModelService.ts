@@ -452,6 +452,7 @@ function buildThreats(
   externalIntegrations: string[],
 ): ThreatModelThreat[] {
   const threats: ThreatModelThreat[] = [];
+  const nextId = () => `TM-${threats.length + 1}`;
   const joined = samples.map((sample) => sample.content).join("\n").toLowerCase();
   const hasPrivilegedHandlers = entryPoints.some((item) => /scan:|tools:|reset|export|audit|threat:model/i.test(item.name));
   const hasRecursiveTraversal = joined.includes("readdir") || joined.includes("rglob") || joined.includes("recursive");
@@ -462,6 +463,7 @@ function buildThreats(
 
   if (hasAuth || hasPrivilegedHandlers) {
     threats.push({
+      threat_id: nextId(),
       title: "Renderer or caller can influence privileged operations",
       component: components.includes("Electron main process") ? "Electron main process IPC" : "Backend route handling",
       stride_category: "Spoofing",
@@ -476,6 +478,7 @@ function buildThreats(
 
   if (hasExports || externalIntegrations.includes("Filesystem") || externalIntegrations.includes("Local report/export folder")) {
     threats.push({
+      threat_id: nextId(),
       title: "Path-controlled exports can tamper with local artifacts",
       component: "Report exporter / filesystem writer",
       stride_category: "Tampering",
@@ -490,6 +493,7 @@ function buildThreats(
 
   if (hasLogs || joined.includes("history") || joined.includes("audit")) {
     threats.push({
+      threat_id: nextId(),
       title: "Local audit trail can be cleared or bypassed",
       component: "Audit logging and history management",
       stride_category: "Repudiation",
@@ -504,6 +508,7 @@ function buildThreats(
 
   if (hasSecrets || hasExports || joined.includes("snippet") || joined.includes("evidence")) {
     threats.push({
+      threat_id: nextId(),
       title: "Reports can disclose code, paths, and secrets",
       component: "Threat model / report rendering pipeline",
       stride_category: "Information Disclosure",
@@ -518,6 +523,7 @@ function buildThreats(
 
   if (hasRecursiveTraversal) {
     threats.push({
+      threat_id: nextId(),
       title: "Large repository traversal can exhaust local resources",
       component: "Source discovery and analysis engine",
       stride_category: "Denial of Service",
@@ -532,6 +538,7 @@ function buildThreats(
 
   if (components.includes("Electron main process") || components.includes("Analysis engine") || hasPrivilegedHandlers) {
     threats.push({
+      threat_id: nextId(),
       title: "Privileged desktop handlers can elevate access if authorization drifts",
       component: "Electron main process / backend service",
       stride_category: "Elevation of Privilege",
@@ -545,6 +552,23 @@ function buildThreats(
   }
 
   return threats;
+}
+
+function summarizeStrideCounts(threats: ThreatModelThreat[]): Record<ThreatModelThreat["stride_category"], number> {
+  return threats.reduce(
+    (acc, threat) => {
+      acc[threat.stride_category] += 1;
+      return acc;
+    },
+    {
+      Spoofing: 0,
+      Tampering: 0,
+      Repudiation: 0,
+      "Information Disclosure": 0,
+      "Denial of Service": 0,
+      "Elevation of Privilege": 0,
+    } as Record<ThreatModelThreat["stride_category"], number>,
+  );
 }
 
 function buildMermaidDiagram(report: ThreatModelReport): string {
@@ -613,6 +637,7 @@ function renderThreatHtml(report: ThreatModelReport): string {
   const threatRows = report.threats
     .map(
       (item) => `<tr>
+        <td>${escapeHtml(item.threat_id || "")}</td>
         <td><strong>${escapeHtml(item.title)}</strong></td>
         <td>${escapeHtml(item.component)}</td>
         <td>${escapeHtml(item.stride_category)}</td>
@@ -622,6 +647,24 @@ function renderThreatHtml(report: ThreatModelReport): string {
         <td>${escapeHtml(item.abuse_case)}</td>
         <td>${escapeHtml(item.mitigation)}</td>
       </tr>`,
+    )
+    .join("");
+  const strideCounts = summarizeStrideCounts(report.threats);
+  const threatCards = report.threats
+    .map(
+      (item, index) => `<article class="threat-card" id="threat-${index + 1}">
+        <div class="threat-head">
+          <div>
+            <p class="eyebrow">${escapeHtml(item.threat_id || `TM-${index + 1}`)}</p>
+            <h3>${escapeHtml(item.title)}</h3>
+          </div>
+          <span class="stride">${escapeHtml(item.stride_category)}</span>
+        </div>
+        <p><strong>Component:</strong> ${escapeHtml(item.component)}</p>
+        <p><strong>Impact:</strong> ${escapeHtml(item.impact)} | <strong>Likelihood:</strong> ${escapeHtml(item.likelihood)} | <strong>Exposure:</strong> ${escapeHtml(item.exposure)}</p>
+        <p><strong>Abuse case:</strong> ${escapeHtml(item.abuse_case)}</p>
+        <p><strong>Mitigation:</strong> ${escapeHtml(item.mitigation)}</p>
+      </article>`,
     )
     .join("");
 
@@ -648,6 +691,14 @@ function renderThreatHtml(report: ThreatModelReport): string {
     .muted { color:#9ab0c8; }
     .two-col { display:grid; grid-template-columns:1.1fr .9fr; gap:12px; }
     .code-box { min-height:220px; }
+    .threat-index { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px; margin-top:14px; }
+    .index-card { border:1px solid rgba(120,168,205,.18); border-radius:14px; padding:12px; background:rgba(255,255,255,.03); }
+    .index-card .count { font-size:1.6rem; font-weight:700; margin:4px 0 0; }
+    .threat-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:12px; margin-top:12px; }
+    .threat-card { border:1px solid rgba(120,168,205,.18); border-radius:14px; padding:14px; background:#0a1421; }
+    .threat-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; margin-bottom:10px; }
+    .eyebrow { margin:0; color:#9ab0c8; font-size:.78rem; letter-spacing:.08em; text-transform:uppercase; }
+    .stride { display:inline-flex; align-items:center; border:1px solid rgba(120,168,205,.25); border-radius:999px; padding:6px 10px; background:rgba(255,255,255,.04); white-space:nowrap; }
   </style>
 </head>
 <body>
@@ -662,6 +713,15 @@ function renderThreatHtml(report: ThreatModelReport): string {
         <div class="pill"><strong>Source files analyzed:</strong> ${report.summary.source_files_analyzed}</div>
         <div class="pill"><strong>Entry points:</strong> ${report.summary.entry_points}</div>
         <div class="pill"><strong>Threats:</strong> ${report.summary.threats}</div>
+      </div>
+      <div class="threat-index">
+        <div class="index-card"><div>TM-1 to TM-${report.threats.length}</div><div class="count">${report.summary.threats}</div><div class="muted">Total threats</div></div>
+        <div class="index-card"><div>Spoofing</div><div class="count">${strideCounts.Spoofing}</div></div>
+        <div class="index-card"><div>Tampering</div><div class="count">${strideCounts.Tampering}</div></div>
+        <div class="index-card"><div>Repudiation</div><div class="count">${strideCounts.Repudiation}</div></div>
+        <div class="index-card"><div>Information Disclosure</div><div class="count">${strideCounts["Information Disclosure"]}</div></div>
+        <div class="index-card"><div>Denial of Service</div><div class="count">${strideCounts["Denial of Service"]}</div></div>
+        <div class="index-card"><div>Elevation of Privilege</div><div class="count">${strideCounts["Elevation of Privilege"]}</div></div>
       </div>
     </section>
 
@@ -709,9 +769,13 @@ function renderThreatHtml(report: ThreatModelReport): string {
 
     <section class="card">
       <h2>Threats</h2>
+      <div class="threat-list">
+        ${threatCards || "<div class='muted'>No threats detected from the available source code.</div>"}
+      </div>
+      <h3 style="margin-top:18px;">Threat Table</h3>
       <table>
-        <thead><tr><th>Title</th><th>Component</th><th>STRIDE</th><th>Impact</th><th>Likelihood</th><th>Exposure</th><th>Abuse Case</th><th>Mitigation</th></tr></thead>
-        <tbody>${threatRows || "<tr><td colspan='8'>No threats detected from the available source code.</td></tr>"}</tbody>
+        <thead><tr><th>ID</th><th>Title</th><th>Component</th><th>STRIDE</th><th>Impact</th><th>Likelihood</th><th>Exposure</th><th>Abuse Case</th><th>Mitigation</th></tr></thead>
+        <tbody>${threatRows || "<tr><td colspan='9'>No threats detected from the available source code.</td></tr>"}</tbody>
       </table>
     </section>
 

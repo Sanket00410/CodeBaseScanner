@@ -80,6 +80,7 @@ export interface ThreatModelDataFlow {
 }
 
 export interface ThreatModelThreat {
+  threat_id?: string;
   title: string;
   component: string;
   stride_category: "Spoofing" | "Tampering" | "Repudiation" | "Information Disclosure" | "Denial of Service" | "Elevation of Privilege";

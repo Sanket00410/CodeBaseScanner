@@ -16,6 +16,7 @@ import {
   ScanView,
   ScanPreset,
   ThreatModelResult,
+  ThreatModelReport,
   Severity,
   ToolCatalogItem,
   ToolchainExecutionSummary,
@@ -1528,8 +1529,9 @@ export default function App(): React.JSX.Element {
       setLastThreatModelHtml(result.htmlPath);
       setLastThreatModelJson(result.jsonPath);
       setLastThreatModelMermaid(result.mermaidPath);
+      const threatIds = result.report.threats.map((threat, index) => threat.threat_id || `TM-${index + 1}`).join(", ");
       setThreatModelStatus(
-        `Threat model completed: ${result.report.summary.threats} threats from ${result.report.summary.source_files_analyzed} source files.`,
+        `Threat model completed: ${result.report.summary.threats} threats from ${result.report.summary.source_files_analyzed} source files. Threat IDs: ${threatIds || "none"}.`,
       );
     } catch (error) {
       setThreatModelStatus(error instanceof Error ? error.message : String(error));
@@ -3008,6 +3010,29 @@ export default function App(): React.JSX.Element {
   const renderThreatModel = (): React.JSX.Element => {
     const report = threatModel?.report;
     const jsonText = report ? JSON.stringify(report, null, 2) : "";
+    const strideCounts = report
+      ? report.threats.reduce(
+          (acc, threat) => {
+            acc[threat.stride_category] += 1;
+            return acc;
+          },
+          {
+            Spoofing: 0,
+            Tampering: 0,
+            Repudiation: 0,
+            "Information Disclosure": 0,
+            "Denial of Service": 0,
+            "Elevation of Privilege": 0,
+          } as Record<ThreatModelReport["threats"][number]["stride_category"], number>,
+        )
+      : {
+          Spoofing: 0,
+          Tampering: 0,
+          Repudiation: 0,
+          "Information Disclosure": 0,
+          "Denial of Service": 0,
+          "Elevation of Privilege": 0,
+        };
 
     return (
       <section className="panel stack-gap">
@@ -3187,9 +3212,37 @@ export default function App(): React.JSX.Element {
 
             <div className="subpanel">
               <h3>Threats (STRIDE)</h3>
+              <div className="metric-grid">
+                <MetricCard label="Total Threats" value={String(report.threats.length)} />
+                <MetricCard label="Spoofing" value={String(strideCounts.Spoofing)} />
+                <MetricCard label="Tampering" value={String(strideCounts.Tampering)} />
+                <MetricCard label="Repudiation" value={String(strideCounts.Repudiation)} />
+                <MetricCard label="Information Disclosure" value={String(strideCounts["Information Disclosure"])} />
+                <MetricCard label="Denial of Service" value={String(strideCounts["Denial of Service"])} />
+                <MetricCard label="Elevation of Privilege" value={String(strideCounts["Elevation of Privilege"])} />
+              </div>
+              <div className="threat-model-card-grid">
+                {report.threats.map((threat, index) => (
+                  <article key={`${threat.threat_id || index}-${threat.title}`} className="subpanel threat-model-card">
+                    <div className="threat-model-card-header">
+                      <div>
+                        <p className="eyebrow">Threat {threat.threat_id || `TM-${index + 1}`}</p>
+                        <h4>{threat.title}</h4>
+                      </div>
+                      <span className="stride-pill">{threat.stride_category}</span>
+                    </div>
+                    <p><strong>Component:</strong> {threat.component}</p>
+                    <p><strong>Impact:</strong> {threat.impact} | <strong>Likelihood:</strong> {threat.likelihood} | <strong>Exposure:</strong> {threat.exposure}</p>
+                    <p><strong>Description:</strong> {threat.description}</p>
+                    <p><strong>Abuse Case:</strong> {threat.abuse_case}</p>
+                    <p><strong>Mitigation:</strong> {threat.mitigation}</p>
+                  </article>
+                ))}
+              </div>
               <table className="simple-table">
                 <thead>
                   <tr>
+                    <th>ID</th>
                     <th>Title</th>
                     <th>Component</th>
                     <th>STRIDE</th>
@@ -3203,6 +3256,7 @@ export default function App(): React.JSX.Element {
                 <tbody>
                   {report.threats.map((threat, index) => (
                     <tr key={`${threat.title}-${index}`}>
+                      <td>{threat.threat_id || `TM-${index + 1}`}</td>
                       <td>{threat.title}</td>
                       <td>{threat.component}</td>
                       <td>{threat.stride_category}</td>
@@ -3215,7 +3269,7 @@ export default function App(): React.JSX.Element {
                   ))}
                   {report.threats.length === 0 && (
                     <tr>
-                      <td colSpan={8}>No high-confidence STRIDE threats were inferred from the code.</td>
+                      <td colSpan={9}>No high-confidence STRIDE threats were inferred from the code.</td>
                     </tr>
                   )}
                 </tbody>
