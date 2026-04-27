@@ -10004,6 +10004,42 @@ function renderManagementLineChart(points: ManagementTrendPoint[]): string {
     </div>`;
 }
 
+function renderManagementDonutChart(severityDistribution: Record<string, number>): string {
+  const rows = SEVERITY_ORDER.map((severity) => ({
+    severity,
+    count: Number(severityDistribution[severity] || 0),
+    color: severityColorHex(severity),
+  })).filter((item) => item.count > 0);
+  const total = rows.reduce((sum, item) => sum + item.count, 0);
+  if (!total) {
+    return `<p class="muted">No severity distribution data available yet.</p>`;
+  }
+  const size = 240;
+  const radius = 86;
+  const stroke = 26;
+  const cx = size / 2;
+  const cy = size / 2;
+  let cursor = 0;
+  const segments = rows
+    .map((item) => {
+      const portion = item.count / total;
+      const dash = portion * Math.PI * (radius * 2);
+      const dashArray = `${dash.toFixed(2)} ${(Math.PI * (radius * 2) - dash).toFixed(2)}`;
+      const dashOffset = -cursor;
+      cursor += dash;
+      return `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="transparent" stroke="${item.color}" stroke-width="${stroke}" stroke-dasharray="${dashArray}" stroke-dashoffset="${dashOffset.toFixed(2)}" transform="rotate(-90 ${cx} ${cy})" />`;
+    })
+    .join("");
+  return `
+    <svg viewBox="0 0 ${size} ${size}" class="management-donut" role="img" aria-label="Severity distribution pie chart">
+      <circle cx="${cx}" cy="${cy}" r="${radius}" fill="transparent" stroke="rgba(120,168,205,.16)" stroke-width="${stroke}" />
+      ${segments}
+      <circle cx="${cx}" cy="${cy}" r="${radius - stroke / 2 - 3}" fill="rgba(3,12,24,.98)" />
+      <text x="${cx}" y="${cy - 2}" text-anchor="middle" class="donut-value">${total}</text>
+      <text x="${cx}" y="${cy + 24}" text-anchor="middle" class="donut-label">Findings</text>
+    </svg>`;
+}
+
 function renderManagementBarRows<T extends { count: number; label: string }>(items: T[], maxWidth = 100): string {
   const max = Math.max(1, ...items.map((item) => Number(item.count || 0)));
   return items
@@ -10012,6 +10048,91 @@ function renderManagementBarRows<T extends { count: number; label: string }>(ite
       return `<div class="mg-bar-row"><div class="mg-bar-label">${escapeHtml(item.label)}</div><div class="mg-bar-track"><div class="mg-bar-fill" style="width:${width}%"></div></div><div class="mg-bar-value">${Number(item.count || 0)}</div></div>`;
     })
     .join("");
+}
+
+function renderManagementScatterPlot(rows: ManagementDensityRow[]): string {
+  if (!rows.length) {
+    return `<p class="muted">No density scatter data available yet.</p>`;
+  }
+  const width = 900;
+  const height = 260;
+  const padding = 32;
+  const maxDensity = Math.max(1, ...rows.map((row) => Number(row.density || 0)));
+  const maxCount = Math.max(1, ...rows.map((row) => Number(row.count || 0)));
+  return `
+    <svg viewBox="0 0 ${width} ${height}" class="management-scatter" role="img" aria-label="Vulnerability density scatter plot">
+      <line x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}" stroke="rgba(120,168,205,.22)" />
+      <line x1="${padding}" y1="${padding}" x2="${padding}" y2="${height - padding}" stroke="rgba(120,168,205,.16)" />
+      ${rows
+        .slice(0, 12)
+        .map((row, index) => {
+          const x = padding + ((index + 1) / (Math.min(rows.length, 12) + 1)) * (width - padding * 2);
+          const density = Number(row.density || 0);
+          const y = height - padding - (density / maxDensity) * (height - padding * 2);
+          const radius = 5 + (Number(row.count || 0) / maxCount) * 9;
+          return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${radius.toFixed(2)}" fill="rgba(56,189,248,.85)" stroke="rgba(255,255,255,.3)" />
+            <text x="${x.toFixed(2)}" y="${Math.max(18, y - radius - 6).toFixed(2)}" text-anchor="middle" class="scatter-label">${escapeHtml(row.label)}</text>`;
+        })
+        .join("")}
+    </svg>`;
+}
+
+function renderManagementHeatmapGrid(rows: ManagementDensityRow[]): string {
+  if (!rows.length) {
+    return `<p class="muted">No heatmap data available yet.</p>`;
+  }
+  const max = Math.max(1, ...rows.map((row) => Number(row.count || 0)));
+  return `<div class="heatmap-grid">${rows
+    .slice(0, 18)
+    .map((row) => {
+      const intensity = Math.min(1, Number(row.count || 0) / max);
+      const alpha = 0.18 + intensity * 0.62;
+      return `<div class="heatmap-cell" style="background:linear-gradient(180deg, rgba(56,189,248,${alpha}), rgba(239,68,68,${alpha * 0.7}));">
+        <div class="heatmap-title">${escapeHtml(row.label)}</div>
+        <div class="heatmap-folder">${escapeHtml(row.folder)}</div>
+        <div class="heatmap-metrics">
+          <span><strong>${Number(row.count || 0)}</strong> issues</span>
+          <span>${Number(row.critical || 0)} critical</span>
+          <span>${Number(row.high || 0)} high</span>
+          <span>density ${Number(row.density || 0).toFixed(2)}</span>
+        </div>
+      </div>`;
+    })
+    .join("")}</div>`;
+}
+
+function renderManagementComplianceMatrix(compliance: ProfileComplianceReport | null): string {
+  if (!compliance) {
+    return `<p class="muted">No compliance mapping available.</p>`;
+  }
+  const frameworks = compliance.frameworks || [];
+  const cells = frameworks
+    .map((framework) => {
+      const summary = framework.summary;
+      const covered = Number(summary.covered || 0);
+      const gap = Number(summary.gap || 0);
+      const na = Number(summary.not_applicable || 0);
+      const mapped = Number(summary.mapped_findings || 0);
+      const total = Math.max(1, covered + gap + na);
+      const coveredWidth = Math.round((covered / total) * 100);
+      const gapWidth = Math.round((gap / total) * 100);
+      const naWidth = Math.max(0, 100 - coveredWidth - gapWidth);
+      return `<div class="matrix-card">
+        <div class="matrix-head"><strong>${escapeHtml(framework.label)}</strong><span>${mapped} mapped findings</span></div>
+        <div class="matrix-bar">
+          <span class="matrix-covered" style="width:${coveredWidth}%"></span>
+          <span class="matrix-gap" style="width:${gapWidth}%"></span>
+          <span class="matrix-na" style="width:${naWidth}%"></span>
+        </div>
+        <div class="matrix-legend">
+          <span>Covered ${covered}</span>
+          <span>Gap ${gap}</span>
+          <span>N/A ${na}</span>
+        </div>
+      </div>`;
+    })
+    .join("");
+  return `<div class="compliance-matrix">${cells}</div>`;
 }
 
 function renderManagementHeatmapRows(rows: ManagementDensityRow[]): string {
@@ -10052,6 +10173,8 @@ function renderManagementHtml(scan: ScanView, context?: ManagementReportContext)
   const sourceKloc = Number(summary.source_kloc || 0);
   const densityPerKloc = Number(summary.density_per_kloc || 0);
   const trendChart = renderManagementLineChart(historySeries);
+  const donutChart = renderManagementDonutChart(severityDistribution);
+  const scatterChart = renderManagementScatterPlot(heatmapRows);
   const complianceRows = compliance
     ? (compliance.frameworks || [])
         .map((framework) => {
@@ -10066,6 +10189,7 @@ function renderManagementHtml(scan: ScanView, context?: ManagementReportContext)
         })
         .join("")
     : `<tr><td colspan="5">No compliance mapping available.</td></tr>`;
+  const complianceMatrix = renderManagementComplianceMatrix(compliance);
   const attackRows = attackSurface
     .map(
       (item) => `<tr>
@@ -10144,6 +10268,28 @@ function renderManagementHtml(scan: ScanView, context?: ManagementReportContext)
     .management-report .trend-legend{display:grid;gap:8px;margin-top:10px}
     .management-report .trend-item{display:flex;justify-content:space-between;gap:12px;padding:8px 10px;border:1px solid rgba(120,168,205,.15);border-radius:10px;background:rgba(255,255,255,.02)}
     .management-report table.management-table td,.management-report table.management-table th{padding:8px 10px}
+    .management-report .management-donut{width:240px;height:240px;display:block}
+    .management-report .donut-value{fill:var(--text);font-size:34px;font-weight:800}
+    .management-report .donut-label{fill:var(--muted);font-size:14px;font-weight:700}
+    .management-report .management-scatter{width:100%;height:auto;display:block}
+    .management-report .scatter-label{fill:var(--muted);font-size:11px;font-weight:700}
+    .management-report .heatmap-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+    .management-report .heatmap-cell{min-height:120px;border-radius:14px;padding:12px;border:1px solid rgba(255,255,255,.08);box-shadow:inset 0 0 0 1px rgba(255,255,255,.03)}
+    .management-report .heatmap-title{font-size:13px;font-weight:800;margin-bottom:4px}
+    .management-report .heatmap-folder{color:var(--muted);font-size:12px;margin-bottom:10px}
+    .management-report .heatmap-metrics{display:grid;gap:4px;font-size:12px}
+    .management-report .compliance-matrix{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+    .management-report .matrix-card{border:1px solid rgba(120,168,205,.18);border-radius:14px;padding:12px;background:rgba(255,255,255,.02)}
+    .management-report .matrix-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:10px}
+    .management-report .matrix-bar{height:14px;border-radius:999px;overflow:hidden;display:flex;background:rgba(120,168,205,.12)}
+    .management-report .matrix-covered{background:linear-gradient(90deg,#67e8f9,#22c55e)}
+    .management-report .matrix-gap{background:linear-gradient(90deg,#f59e0b,#ef4444)}
+    .management-report .matrix-na{background:linear-gradient(90deg,#334155,#475569)}
+    .management-report .matrix-legend{display:flex;justify-content:space-between;gap:8px;margin-top:8px;font-size:11px;color:var(--muted);flex-wrap:wrap}
+    .management-report .gauge-wrap{display:grid;place-items:center;gap:10px}
+    .management-report .gauge-svg{width:260px;height:180px;display:block}
+    .management-report .gauge-value{fill:var(--text);font-size:24px;font-weight:800}
+    .management-report .gauge-label{fill:var(--muted);font-size:12px;font-weight:700}
   `)}</style>
 </head>
 <body>
@@ -10168,12 +10314,7 @@ function renderManagementHtml(scan: ScanView, context?: ManagementReportContext)
         <h2>1. Vulnerability Severity Distribution (Bar / Pie Chart)</h2>
         <p class="muted">Shows counts of Critical, High, Medium, Low issues. Gives an instant risk snapshot. Helps answer: How bad is the situation overall?</p>
         <div class="mg-ring-wrap">
-          <div class="management-ring"${severityGradient ? ` style="background:conic-gradient(${severityGradient});"` : ""}>
-            <div class="management-ring-center">
-              <div class="management-ring-value">${Number(summary.total_findings || 0)}</div>
-              <div class="management-ring-label">Findings</div>
-            </div>
-          </div>
+          ${donutChart}
           <div>${severityLegend}</div>
         </div>
       </div>
@@ -10191,12 +10332,7 @@ function renderManagementHtml(scan: ScanView, context?: ManagementReportContext)
       <div class="mg-card">
         <h2>4. File/Module Risk Heatmap</h2>
         <p class="muted">Heatmap of codebase showing risk density. Darker areas = more vulnerabilities. Helps answer: Where should developers focus first?</p>
-        <div class="table-frame table-scroll">
-          <table class="management-table">
-            <thead><tr><th>Folder</th><th>File / Component</th><th>Count</th><th>Critical</th><th>High</th><th>Density</th></tr></thead>
-            <tbody>${renderManagementHeatmapRows(heatmapRows)}</tbody>
-          </table>
-        </div>
+        ${renderManagementHeatmapGrid(heatmapRows)}
       </div>
 
       <div class="mg-card">
@@ -10218,7 +10354,8 @@ function renderManagementHtml(scan: ScanView, context?: ManagementReportContext)
       <div class="mg-card">
         <h2>6. Vulnerability Density (Scatter Plot or Bar)</h2>
         <p class="muted">Vulnerabilities per KLOC (thousand lines of code). Helps normalize risk across projects of different sizes. Helps answer: Which project is riskier relative to its size?</p>
-        <div class="table-frame table-scroll">
+        ${scatterChart}
+        <div class="table-frame table-scroll" style="margin-top:10px">
           <table class="management-table">
             <tbody>
               <tr><td>Source files counted</td><td align="center">${Number(summary.source_files_count || 0)}</td></tr>
@@ -10252,7 +10389,8 @@ function renderManagementHtml(scan: ScanView, context?: ManagementReportContext)
       <div class="mg-card">
         <h2>9. Compliance Mapping (Matrix / Table Visualization)</h2>
         <p class="muted">Map findings to standards like OWASP and NIST. Helps stakeholders understand regulatory impact.</p>
-        <div class="table-frame table-scroll">
+        ${complianceMatrix}
+        <div class="table-frame table-scroll" style="margin-top:10px">
           <table class="management-table">
             <thead><tr><th>Framework</th><th>Covered</th><th>Gap</th><th>N/A</th><th>Mapped Findings</th></tr></thead>
             <tbody>${complianceRows}</tbody>
@@ -10274,14 +10412,27 @@ function renderManagementHtml(scan: ScanView, context?: ManagementReportContext)
       <div class="mg-card">
         <h2>11. False Positive Rate (Gauge / Pie Chart)</h2>
         <p class="muted">Shows accuracy of the SAST tool. Helps build trust in the report.</p>
-        <div class="table-frame table-scroll">
-          <table class="management-table">
-            <tbody>
-              <tr><td>False Positive Rate</td><td align="center">${falsePositiveRate.toFixed(2)}%</td></tr>
-              <tr><td>Verified Findings</td><td align="center">${Number(riskScoreDashboard.critical_issues || 0) + Number(riskScoreDashboard.high_issues || 0)}</td></tr>
-              <tr><td>Benchmark Rating</td><td align="center">${escapeHtml(String(riskScoreDashboard.risk_rating || summary.risk_rating || ""))}</td></tr>
-            </tbody>
-          </table>
+        <div class="gauge-wrap">
+          <svg viewBox="0 0 260 180" class="gauge-svg" role="img" aria-label="False positive rate gauge">
+            <defs>
+              <linearGradient id="mgGaugeTrack" x1="0" x2="1">
+                <stop offset="0%" stop-color="#1d4ed8" />
+                <stop offset="100%" stop-color="#22c55e" />
+              </linearGradient>
+            </defs>
+            <path d="M 30 150 A 100 100 0 0 1 230 150" fill="none" stroke="rgba(120,168,205,.18)" stroke-width="18" stroke-linecap="round" />
+            <path d="M 30 150 A 100 100 0 0 1 230 150" fill="none" stroke="url(#mgGaugeTrack)" stroke-width="18" stroke-linecap="round" stroke-dasharray="${Math.max(5, Math.round(314 * (1 - Math.min(1, falsePositiveRate / 100))))} 314" />
+            <text x="130" y="122" text-anchor="middle" class="gauge-value">${falsePositiveRate.toFixed(2)}%</text>
+            <text x="130" y="144" text-anchor="middle" class="gauge-label">False Positive Rate</text>
+          </svg>
+          <div class="table-frame table-scroll">
+            <table class="management-table">
+              <tbody>
+                <tr><td>Verified Findings</td><td align="center">${Number(riskScoreDashboard.critical_issues || 0) + Number(riskScoreDashboard.high_issues || 0)}</td></tr>
+                <tr><td>Benchmark Rating</td><td align="center">${escapeHtml(String(riskScoreDashboard.risk_rating || summary.risk_rating || ""))}</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
