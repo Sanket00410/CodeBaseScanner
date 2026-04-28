@@ -2717,9 +2717,7 @@ export default function App(): React.JSX.Element {
                     </tr>
                   </tbody>
                 </table>
-                <p className="muted-text">
-                  {enterpriseAssurance?.recommendation || "No enterprise assurance summary available for this scan."}
-                </p>
+                {enterpriseAssurance?.recommendation && <p className="muted-text">{enterpriseAssurance.recommendation}</p>}
               </div>
 
               {((enterpriseAssurance?.blockers || []).length > 0 || (enterpriseAssurance?.advisories || []).length > 0) && (

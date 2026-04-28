@@ -9956,7 +9956,7 @@ function buildManagementReportPayload(scan: ScanView, context?: ManagementReport
 
 function renderManagementLineChart(points: ManagementTrendPoint[]): string {
   if (!points.length) {
-    return `<p class="muted">No historical scan data is available yet for this repository.</p>`;
+    return "";
   }
   const width = 880;
   const height = 240;
@@ -10018,7 +10018,7 @@ function renderManagementDonutChart(severityDistribution: Record<string, number>
   })).filter((item) => item.count > 0);
   const total = rows.reduce((sum, item) => sum + item.count, 0);
   if (!total) {
-    return `<p class="muted">No severity distribution data available yet.</p>`;
+    return "";
   }
   const size = 240;
   const radius = 86;
@@ -10058,7 +10058,7 @@ function renderManagementBarRows<T extends { count: number; label: string }>(ite
 
 function renderManagementCategoryBarChart(items: Array<{ label: string; count: number }>): string {
   if (!items.length) {
-    return `<p class="muted">No category data available yet.</p>`;
+    return "";
   }
   const width = 920;
   const height = Math.max(180, items.length * 34 + 34);
@@ -10098,7 +10098,7 @@ function renderManagementCategoryBarChart(items: Array<{ label: string; count: n
 
 function renderManagementScatterPlot(rows: ManagementDensityRow[]): string {
   if (!rows.length) {
-    return `<p class="muted">No density scatter data available yet.</p>`;
+    return "";
   }
   const width = 900;
   const height = 260;
@@ -10125,7 +10125,7 @@ function renderManagementScatterPlot(rows: ManagementDensityRow[]): string {
 
 function renderManagementHeatmapGrid(rows: ManagementDensityRow[]): string {
   if (!rows.length) {
-    return `<p class="muted">No heatmap data available yet.</p>`;
+    return "";
   }
   const max = Math.max(1, ...rows.map((row) => Number(row.count || 0)));
   return `<div class="heatmap-grid">${rows
@@ -10149,7 +10149,7 @@ function renderManagementHeatmapGrid(rows: ManagementDensityRow[]): string {
 
 function renderManagementComplianceMatrix(compliance: ProfileComplianceReport | null): string {
   if (!compliance) {
-    return `<p class="muted">No compliance mapping available.</p>`;
+    return "";
   }
   const frameworks = compliance.frameworks || [];
   const cells = frameworks
@@ -10234,7 +10234,7 @@ function renderManagementHtml(scan: ScanView, context?: ManagementReportContext)
           </tr>`;
         })
         .join("")
-    : `<tr><td colspan="5">No compliance mapping available.</td></tr>`;
+    : "";
   const complianceMatrix = renderManagementComplianceMatrix(compliance);
   const attackRows = attackSurface
     .map(
