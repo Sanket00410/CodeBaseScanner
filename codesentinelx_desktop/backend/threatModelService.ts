@@ -35,8 +35,6 @@ const SOURCE_EXTENSIONS = new Set([
   ".json",
   ".yml",
   ".yaml",
-  ".md",
-  ".txt",
   ".toml",
   ".ini",
   ".cfg",
@@ -146,6 +144,43 @@ async function safeReadText(filePath: string): Promise<string> {
     return "";
   }
   return fs.promises.readFile(filePath, "utf-8").catch(() => "");
+}
+
+function escapeRegExp(input: string): string {
+  return String(input || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function collectEvidence(
+  samples: FileSample[],
+  patterns: RegExp[],
+  maxItems = 3,
+): Array<{ file: string; line: number; excerpt: string }> {
+  const evidence: Array<{ file: string; line: number; excerpt: string }> = [];
+  const seen = new Set<string>();
+  for (const sample of samples) {
+    const lines = sample.content.split(/\r?\n/);
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index];
+      if (!patterns.some((pattern) => pattern.test(line))) {
+        continue;
+      }
+      const excerpt = line.trim().slice(0, 220);
+      const key = `${sample.relativePath}:${index + 1}:${excerpt}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      evidence.push({
+        file: sample.relativePath,
+        line: index + 1,
+        excerpt,
+      });
+      if (evidence.length >= maxItems) {
+        return evidence;
+      }
+    }
+  }
+  return evidence;
 }
 
 function uniqueValues(items: string[]): string[] {
@@ -618,8 +653,15 @@ function buildThreats(
   const hasAuth = joined.includes("token") || joined.includes("session") || joined.includes("auth") || joined.includes("otp") || joined.includes("mfa");
   const hasLogs = joined.includes("audit") || joined.includes("log");
   const hasSecrets = joined.includes("secret") || joined.includes("credential") || joined.includes("password") || joined.includes("api_key");
+  const privilegedEvidence = collectEvidence(samples, [/ipcMain/i, /\b(auth|login|session|token|role)\b/i, /scan|export|threat model/i]);
+  const exportEvidence = collectEvidence(samples, [/writeFile/i, /export/i, /resolveOutputPath/i, /pdfkit/i]);
+  const auditEvidence = collectEvidence(samples, [/audit/i, /history/i, /log/i]);
+  const disclosureEvidence = collectEvidence(samples, [/secret/i, /credential/i, /password/i, /token/i, /snippet/i, /evidence/i]);
+  const traversalEvidence = collectEvidence(samples, [/readdir/i, /rglob/i, /recursive/i, /collectFiles/i]);
+  const privilegeEvidence = collectEvidence(samples, [/ipcMain/i, /contextBridge/i, /main process/i, /renderer/i]);
 
   if (hasAuth || hasPrivilegedHandlers) {
+    const score = estimateThreatScore("High", "Medium", hasPrivilegedHandlers ? "Authenticated" : "Public");
     threats.push({
       threat_id: nextId(),
       title: "Renderer or caller can influence privileged operations",
@@ -630,14 +672,16 @@ function buildThreats(
       impact: "High",
       likelihood: "Medium",
       exposure: hasPrivilegedHandlers ? "Authenticated" : "Public",
-      risk_score: estimateThreatScore("High", "Medium", hasPrivilegedHandlers ? "Authenticated" : "Public"),
-      risk_level: scoreToLevel(estimateThreatScore("High", "Medium", hasPrivilegedHandlers ? "Authenticated" : "Public")),
+      risk_score: score,
+      risk_level: scoreToLevel(score),
       review_status: "Pending reviewer validation",
+      evidence: privilegedEvidence.length > 0 ? privilegedEvidence : collectEvidence(samples, [/auth/i, /token/i, /session/i]),
       mitigation: "Enforce authorization server-side for every privileged handler, derive identity from verified session state, and reject caller-supplied role claims.",
     });
   }
 
   if (hasExports || externalIntegrations.includes("Filesystem") || externalIntegrations.includes("Local report/export folder")) {
+    const score = estimateThreatScore("High", "Medium", "Authenticated");
     threats.push({
       threat_id: nextId(),
       title: "Path-controlled exports can tamper with local artifacts",
@@ -648,14 +692,16 @@ function buildThreats(
       impact: "High",
       likelihood: "Medium",
       exposure: "Authenticated",
-      risk_score: estimateThreatScore("High", "Medium", "Authenticated"),
-      risk_level: scoreToLevel(estimateThreatScore("High", "Medium", "Authenticated")),
+      risk_score: score,
+      risk_level: scoreToLevel(score),
       review_status: "Pending reviewer validation",
+      evidence: exportEvidence.length > 0 ? exportEvidence : collectEvidence(samples, [/export/i, /writeFile/i, /resolveOutputPath/i]),
       mitigation: "Canonicalize output paths, enforce a fixed export root, reject traversal segments, and ensure report names are sanitized before writing.",
     });
   }
 
   if (hasLogs || joined.includes("history") || joined.includes("audit")) {
+    const score = estimateThreatScore("Medium", "Medium", "Authenticated");
     threats.push({
       threat_id: nextId(),
       title: "Local audit trail can be cleared or bypassed",
@@ -666,14 +712,16 @@ function buildThreats(
       impact: "Medium",
       likelihood: "Medium",
       exposure: "Authenticated",
-      risk_score: estimateThreatScore("Medium", "Medium", "Authenticated"),
-      risk_level: scoreToLevel(estimateThreatScore("Medium", "Medium", "Authenticated")),
+      risk_score: score,
+      risk_level: scoreToLevel(score),
       review_status: "Pending reviewer validation",
+      evidence: auditEvidence.length > 0 ? auditEvidence : collectEvidence(samples, [/audit/i, /history/i, /log/i]),
       mitigation: "Use append-only audit logging, add integrity metadata or signing, and keep audit retention separate from regular user-managed history cleanup.",
     });
   }
 
   if (hasSecrets || hasExports || joined.includes("snippet") || joined.includes("evidence")) {
+    const score = estimateThreatScore("High", "High", "Authenticated");
     threats.push({
       threat_id: nextId(),
       title: "Reports can disclose code, paths, and secrets",
@@ -684,14 +732,16 @@ function buildThreats(
       impact: "High",
       likelihood: "High",
       exposure: "Authenticated",
-      risk_score: estimateThreatScore("High", "High", "Authenticated"),
-      risk_level: scoreToLevel(estimateThreatScore("High", "High", "Authenticated")),
+      risk_score: score,
+      risk_level: scoreToLevel(score),
       review_status: "Pending reviewer validation",
+      evidence: disclosureEvidence.length > 0 ? disclosureEvidence : collectEvidence(samples, [/secret/i, /credential/i, /password/i, /token/i, /snippet/i]),
       mitigation: "Apply role-based redaction consistently, hide sensitive evidence by default for executive views, and avoid exporting secrets or raw credential material.",
     });
   }
 
   if (hasRecursiveTraversal) {
+    const score = estimateThreatScore("Medium", "High", "Public");
     threats.push({
       threat_id: nextId(),
       title: "Large repository traversal can exhaust local resources",
@@ -702,14 +752,16 @@ function buildThreats(
       impact: "Medium",
       likelihood: "High",
       exposure: "Public",
-      risk_score: estimateThreatScore("Medium", "High", "Public"),
-      risk_level: scoreToLevel(estimateThreatScore("Medium", "High", "Public")),
+      risk_score: score,
+      risk_level: scoreToLevel(score),
       review_status: "Pending reviewer validation",
+      evidence: traversalEvidence.length > 0 ? traversalEvidence : collectEvidence(samples, [/readdir/i, /rglob/i, /recursive/i, /collectFiles/i]),
       mitigation: "Cap file counts, skip generated directories, bound per-file size, and use worker/time limits for discovery, parsing, and rendering.",
     });
   }
 
   if (components.includes("Electron main process") || components.includes("Analysis engine") || hasPrivilegedHandlers) {
+    const score = estimateThreatScore("High", "Medium", "Internal");
     threats.push({
       threat_id: nextId(),
       title: "Privileged desktop handlers can elevate access if authorization drifts",
@@ -720,9 +772,10 @@ function buildThreats(
       impact: "High",
       likelihood: "Medium",
       exposure: "Internal",
-      risk_score: estimateThreatScore("High", "Medium", "Internal"),
-      risk_level: scoreToLevel(estimateThreatScore("High", "Medium", "Internal")),
+      risk_score: score,
+      risk_level: scoreToLevel(score),
       review_status: "Pending reviewer validation",
+      evidence: privilegeEvidence.length > 0 ? privilegeEvidence : collectEvidence(samples, [/ipcMain/i, /contextBridge/i, /main process/i, /renderer/i]),
       mitigation: "Check authorization in the privileged layer, keep renderer claims advisory only, and restrict sensitive operations by validated session and role.",
     });
   }
@@ -863,6 +916,8 @@ function renderThreatHtml(report: ThreatModelReport): string {
           <p><strong>Risk score:</strong> ${escapeHtml(String(item.risk_score ?? ""))} (${escapeHtml(item.risk_level || "")})</p>
           <p><strong>Reviewer status:</strong> ${escapeHtml(item.review_status || "Pending reviewer validation")}</p>
           <p><strong>Description:</strong> ${escapeHtml(item.description)}</p>
+          <p><strong>Evidence:</strong></p>
+          <ul>${(item.evidence || []).map((hit) => `<li>${escapeHtml(hit.file)}:${Number(hit.line || 0)} - ${escapeHtml(hit.excerpt)}</li>`).join("") || "<li>No direct code evidence captured.</li>"}</ul>
           <p><strong>Abuse case:</strong> ${escapeHtml(item.abuse_case)}</p>
           <p><strong>Mitigation:</strong> ${escapeHtml(item.mitigation)}</p>
         </div>

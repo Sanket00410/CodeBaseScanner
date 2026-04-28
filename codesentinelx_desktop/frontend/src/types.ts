@@ -62,6 +62,11 @@ export interface ThreatModelThreat {
   risk_score?: number;
   risk_level?: "Critical" | "High" | "Medium" | "Low";
   review_status?: "Pending reviewer validation" | "Validated by reviewer" | "Not reviewed";
+  evidence?: Array<{
+    file: string;
+    line: number;
+    excerpt: string;
+  }>;
   mitigation: string;
 }
 

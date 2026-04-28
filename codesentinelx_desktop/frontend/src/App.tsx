@@ -3291,6 +3291,18 @@ export default function App(): React.JSX.Element {
                       <p><strong>Risk Score:</strong> {threat.risk_score ?? "N/A"} ({threat.risk_level || "N/A"})</p>
                       <p><strong>Reviewer Status:</strong> {threat.review_status || "Pending reviewer validation"}</p>
                       <p><strong>Description:</strong> {threat.description}</p>
+                      <p><strong>Evidence:</strong></p>
+                      <ul className="landing-story-list">
+                        {(threat.evidence || []).length > 0 ? (
+                          threat.evidence!.map((hit) => (
+                            <li key={`${hit.file}:${hit.line}`}>
+                              {hit.file}:{hit.line} - {hit.excerpt}
+                            </li>
+                          ))
+                        ) : (
+                          <li>No direct code evidence captured.</li>
+                        )}
+                      </ul>
                       <p><strong>Abuse Case:</strong> {threat.abuse_case}</p>
                       <p><strong>Mitigation:</strong> {threat.mitigation}</p>
                     </div>
