@@ -2722,25 +2722,30 @@ export default function App(): React.JSX.Element {
                 </p>
               </div>
 
-              <div className="subpanel">
-                <h3>Enterprise Blockers</h3>
-                <ul className="action-list">
-                  {(enterpriseAssurance?.blockers || []).slice(0, 12).map((item, index) => (
-                    <li key={`${index}-${item}`}>{item}</li>
-                  ))}
-                  {(enterpriseAssurance?.blockers || []).length === 0 && <li>No enterprise blockers detected.</li>}
-                </ul>
-                {(enterpriseAssurance?.advisories || []).length > 0 && (
-                  <>
-                    <h3>Coverage Notes</h3>
-                    <ul className="action-list">
-                      {(enterpriseAssurance?.advisories || []).slice(0, 10).map((item, index) => (
-                        <li key={`${index}-${item}`}>{item}</li>
-                      ))}
-                    </ul>
-                  </>
-                )}
-              </div>
+              {((enterpriseAssurance?.blockers || []).length > 0 || (enterpriseAssurance?.advisories || []).length > 0) && (
+                <div className="subpanel">
+                  {(enterpriseAssurance?.blockers || []).length > 0 && (
+                    <>
+                      <h3>Enterprise Blockers</h3>
+                      <ul className="action-list">
+                        {(enterpriseAssurance?.blockers || []).slice(0, 12).map((item, index) => (
+                          <li key={`${index}-${item}`}>{item}</li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                  {(enterpriseAssurance?.advisories || []).length > 0 && (
+                    <>
+                      <h3>Coverage Notes</h3>
+                      <ul className="action-list">
+                        {(enterpriseAssurance?.advisories || []).slice(0, 10).map((item, index) => (
+                          <li key={`${index}-${item}`}>{item}</li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </>
         )}
@@ -3045,8 +3050,21 @@ export default function App(): React.JSX.Element {
               {threatId}: {threat.title}
             </button>
           );
-        })
+      })
       : [];
+    const hasOverviewComponents = Boolean(report && report.system_overview.main_components.length > 0);
+    const hasExternalIntegrations = Boolean(report && report.system_overview.external_integrations.length > 0);
+    const hasAssets = Boolean(report && report.assets.length > 0);
+    const hasSecurityObjectives = Boolean(report && report.security_objectives.length > 0);
+    const hasAttackSurface = Boolean(report && report.entry_points.length > 0);
+    const hasTrustBoundaries = Boolean(report && report.trust_boundaries.length > 0);
+    const hasDataFlows = Boolean(report && report.data_flows.length > 0);
+    const hasThreats = Boolean(report && report.threats.length > 0);
+    const hasCodeMappings = Boolean(report && report.code_mappings.length > 0);
+    const hasValidationPlan = Boolean(report && report.validation_plan.length > 0);
+    const hasTraceability = Boolean(report && report.traceability.length > 0);
+    const hasResidualRisk = Boolean(report && report.residual_risk.length > 0);
+    const hasAssumptions = Boolean(report && report.assumptions.length > 0);
 
     return (
       <section className="panel stack-gap">
@@ -3111,244 +3129,372 @@ export default function App(): React.JSX.Element {
                   <h4>{report.summary.threats}</h4>
                 </div>
               </div>
-              <div className="table-split-grid">
-                <div>
-                  <h4>Main Components</h4>
-                  <ul className="landing-story-list">
-                    {report.system_overview.main_components.length > 0 ? (
-                      report.system_overview.main_components.map((item) => <li key={item}>{item}</li>)
-                    ) : (
-                      <li>No components detected.</li>
-                    )}
-                  </ul>
-                </div>
-                <div>
-                  <h4>External Integrations</h4>
-                  <ul className="landing-story-list">
-                    {report.system_overview.external_integrations.length > 0 ? (
-                      report.system_overview.external_integrations.map((item) => <li key={item}>{item}</li>)
-                    ) : (
-                      <li>No external integrations detected.</li>
-                    )}
-                  </ul>
-                </div>
-              </div>
-            </div>
-
-            <div className="subpanel">
-              <h3>Asset Inventory</h3>
-              <table className="simple-table">
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Name</th>
-                    <th>Category</th>
-                    <th>Sensitivity</th>
-                    <th>Location</th>
-                    <th>Description</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {report.assets.map((asset) => (
-                    <tr key={asset.asset_id}>
-                      <td>{asset.asset_id}</td>
-                      <td>{asset.name}</td>
-                      <td>{asset.category}</td>
-                      <td>{asset.sensitivity}</td>
-                      <td>{asset.location}</td>
-                      <td>{asset.description}</td>
-                    </tr>
-                  ))}
-                  {report.assets.length === 0 && (
-                    <tr>
-                      <td colSpan={6}>No distinct assets were inferred from the selected source tree.</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="subpanel">
-              <h3>Entry Points</h3>
-              <table className="simple-table">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Type</th>
-                    <th>Exposure</th>
-                    <th>Location</th>
-                    <th>Details</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {report.entry_points.map((entry) => (
-                    <tr key={`${entry.file}:${entry.line}:${entry.name}`}>
-                      <td>{entry.name}</td>
-                      <td>{entry.type}</td>
-                      <td>{entry.exposure}</td>
-                      <td>
-                        <button type="button" onClick={() => void window.codeSentinelX.openPath(entry.file)}>
-                          {entry.file}:{entry.line}
-                        </button>
-                      </td>
-                      <td>{entry.details}</td>
-                    </tr>
-                  ))}
-                  {report.entry_points.length === 0 && (
-                    <tr>
-                      <td colSpan={5}>No entry points detected in the selected source tree.</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="subpanel">
-              <h3>Trust Boundaries</h3>
-              <table className="simple-table">
-                <thead>
-                  <tr>
-                    <th>From</th>
-                    <th>To</th>
-                    <th>Data</th>
-                    <th>Description</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {report.trust_boundaries.map((boundary, index) => (
-                    <tr key={`${boundary.from}-${boundary.to}-${index}`}>
-                      <td>{boundary.from}</td>
-                      <td>{boundary.to}</td>
-                      <td>{boundary.data.join(", ")}</td>
-                      <td>{boundary.description}</td>
-                    </tr>
-                  ))}
-                  {report.trust_boundaries.length === 0 && (
-                    <tr>
-                      <td colSpan={4}>No explicit trust boundaries were inferred from the selected code.</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="subpanel">
-              <h3>Data Flows</h3>
-              <table className="simple-table">
-                <thead>
-                  <tr>
-                    <th>Source</th>
-                    <th>Destination</th>
-                    <th>Data</th>
-                    <th>Description</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {report.data_flows.map((flow, index) => (
-                    <tr key={`${flow.source}-${flow.destination}-${index}`}>
-                      <td>{flow.source}</td>
-                      <td>{flow.destination}</td>
-                      <td>{flow.data}</td>
-                      <td>{flow.description}</td>
-                    </tr>
-                  ))}
-                  {report.data_flows.length === 0 && (
-                    <tr>
-                      <td colSpan={4}>No high-confidence data flows were inferred.</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="subpanel">
-              <h3>Threats (STRIDE)</h3>
-              <div className="metric-grid">
-                <MetricCard label="Total Threats" value={String(report.threats.length)} />
-                <MetricCard label="Spoofing" value={String(strideCounts.Spoofing)} />
-                <MetricCard label="Tampering" value={String(strideCounts.Tampering)} />
-                <MetricCard label="Repudiation" value={String(strideCounts.Repudiation)} />
-                <MetricCard label="Information Disclosure" value={String(strideCounts["Information Disclosure"])} />
-                <MetricCard label="Denial of Service" value={String(strideCounts["Denial of Service"])} />
-                <MetricCard label="Elevation of Privilege" value={String(strideCounts["Elevation of Privilege"])} />
-              </div>
-              <div className="threat-model-link-bar">
-                {threatLinks}
-              </div>
-              <div className="threat-model-card-grid">
-                {report.threats.map((threat, index) => (
-                  <details key={`${threat.threat_id || index}-${threat.title}`} className="subpanel threat-model-card" id={`threat-${threat.threat_id || `TM-${index + 1}`}`}>
-                    <summary className="threat-model-card-header">
-                      <div>
-                        <p className="eyebrow">Threat {threat.threat_id || `TM-${index + 1}`}</p>
-                        <h4>{threat.title}</h4>
-                      </div>
-                      <span className="stride-pill">{threat.stride_category}</span>
-                    </summary>
-                    <div className="threat-model-card-body">
-                      <p><strong>Component:</strong> {threat.component}</p>
-                      <p><strong>Impact:</strong> {threat.impact} | <strong>Likelihood:</strong> {threat.likelihood} | <strong>Exposure:</strong> {threat.exposure}</p>
-                      <p><strong>Risk Score:</strong> {threat.risk_score ?? "N/A"} ({threat.risk_level || "N/A"})</p>
-                      <p><strong>Reviewer Status:</strong> {threat.review_status || "Pending reviewer validation"}</p>
-                      <p><strong>Description:</strong> {threat.description}</p>
-                      <p><strong>Evidence:</strong></p>
+              {(hasOverviewComponents || hasExternalIntegrations) && (
+                <div className="table-split-grid">
+                  {hasOverviewComponents && (
+                    <div>
+                      <h4>Main Components</h4>
                       <ul className="landing-story-list">
-                        {(threat.evidence || []).length > 0 ? (
-                          threat.evidence!.map((hit) => (
-                            <li key={`${hit.file}:${hit.line}`}>
-                              {hit.file}:{hit.line} - {hit.excerpt}
-                            </li>
-                          ))
-                        ) : (
-                          <li>No direct code evidence captured.</li>
-                        )}
+                        {report.system_overview.main_components.map((item) => <li key={item}>{item}</li>)}
                       </ul>
-                      <p><strong>Abuse Case:</strong> {threat.abuse_case}</p>
-                      <p><strong>Mitigation:</strong> {threat.mitigation}</p>
                     </div>
-                  </details>
-                ))}
-              </div>
-              <table className="simple-table">
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Title</th>
-                    <th>Component</th>
-                    <th>STRIDE</th>
-                    <th>Impact</th>
-                    <th>Likelihood</th>
-                    <th>Exposure</th>
-                    <th>Risk</th>
-                    <th>Review Status</th>
-                    <th>Abuse Case</th>
-                    <th>Mitigation</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {report.threats.map((threat, index) => (
-                    <tr key={`${threat.title}-${index}`}>
-                      <td>{threat.threat_id || `TM-${index + 1}`}</td>
-                      <td>{threat.title}</td>
-                      <td>{threat.component}</td>
-                      <td>{threat.stride_category}</td>
-                      <td>{threat.impact}</td>
-                      <td>{threat.likelihood}</td>
-                      <td>{threat.exposure}</td>
-                      <td>{threat.risk_score ?? "N/A"} ({threat.risk_level || "N/A"})</td>
-                      <td>{threat.review_status || "Pending reviewer validation"}</td>
-                      <td>{threat.abuse_case}</td>
-                      <td>{threat.mitigation}</td>
-                    </tr>
-                  ))}
-                  {report.threats.length === 0 && (
-                    <tr>
-                      <td colSpan={11}>No high-confidence STRIDE threats were inferred from the code.</td>
-                    </tr>
                   )}
-                </tbody>
-              </table>
+                  {hasExternalIntegrations && (
+                    <div>
+                      <h4>External Integrations</h4>
+                      <ul className="landing-story-list">
+                        {report.system_overview.external_integrations.map((item) => <li key={item}>{item}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
+
+            {hasAssets && (
+              <div className="subpanel">
+                <h3>Asset Inventory</h3>
+                <table className="simple-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Name</th>
+                      <th>Category</th>
+                      <th>Sensitivity</th>
+                      <th>Location</th>
+                      <th>Evidence</th>
+                      <th>Description</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.assets.map((asset) => (
+                      <tr key={asset.asset_id}>
+                        <td>{asset.asset_id}</td>
+                        <td>{asset.name}</td>
+                        <td>{asset.category}</td>
+                        <td>{asset.sensitivity}</td>
+                        <td>{asset.location}</td>
+                        <td>
+                          <ul className="landing-story-list">
+                            {(asset.evidence || []).map((hit) => (
+                              <li key={`${asset.asset_id}-${hit.file}:${hit.line}`}>
+                                {hit.file}:{hit.line} - {hit.excerpt}
+                              </li>
+                            ))}
+                          </ul>
+                        </td>
+                        <td>{asset.description}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {hasSecurityObjectives && (
+              <div className="subpanel">
+                <h3>Assets & Security Objectives</h3>
+                <table className="simple-table">
+                  <thead>
+                    <tr>
+                      <th>Asset</th>
+                      <th>Confidentiality</th>
+                      <th>Integrity</th>
+                      <th>Availability</th>
+                      <th>Rationale</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.security_objectives.map((item) => (
+                      <tr key={item.asset_id}>
+                        <td>{item.asset_id}</td>
+                        <td>{item.confidentiality}</td>
+                        <td>{item.integrity}</td>
+                        <td>{item.availability}</td>
+                        <td>{item.rationale}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {hasAttackSurface && (
+              <div className="subpanel">
+                <h3>Attack Surface</h3>
+                <table className="simple-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Type</th>
+                      <th>Exposure</th>
+                      <th>Location</th>
+                      <th>Details</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.entry_points.map((entry) => (
+                      <tr key={`${entry.file}:${entry.line}:${entry.name}`}>
+                        <td>{entry.name}</td>
+                        <td>{entry.type}</td>
+                        <td>{entry.exposure}</td>
+                        <td>
+                          <button type="button" onClick={() => void window.codeSentinelX.openPath(entry.file)}>
+                            {entry.file}:{entry.line}
+                          </button>
+                        </td>
+                        <td>{entry.details}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {hasTrustBoundaries && (
+              <div className="subpanel">
+                <h3>Trust Boundaries</h3>
+                <table className="simple-table">
+                  <thead>
+                    <tr>
+                      <th>From</th>
+                      <th>To</th>
+                      <th>Data</th>
+                      <th>Description</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.trust_boundaries.map((boundary, index) => (
+                      <tr key={`${boundary.from}-${boundary.to}-${index}`}>
+                        <td>{boundary.from}</td>
+                        <td>{boundary.to}</td>
+                        <td>{boundary.data.join(", ")}</td>
+                        <td>{boundary.description}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {hasDataFlows && (
+              <div className="subpanel">
+                <h3>Data Flows</h3>
+                <table className="simple-table">
+                  <thead>
+                    <tr>
+                      <th>Source</th>
+                      <th>Destination</th>
+                      <th>Data</th>
+                      <th>Description</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.data_flows.map((flow, index) => (
+                      <tr key={`${flow.source}-${flow.destination}-${index}`}>
+                        <td>{flow.source}</td>
+                        <td>{flow.destination}</td>
+                        <td>{flow.data}</td>
+                        <td>{flow.description}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {hasThreats && (
+              <div className="subpanel">
+                <h3>Threats (STRIDE)</h3>
+                <div className="metric-grid">
+                  <MetricCard label="Total Threats" value={String(report.threats.length)} />
+                  <MetricCard label="Spoofing" value={String(strideCounts.Spoofing)} />
+                  <MetricCard label="Tampering" value={String(strideCounts.Tampering)} />
+                  <MetricCard label="Repudiation" value={String(strideCounts.Repudiation)} />
+                  <MetricCard label="Information Disclosure" value={String(strideCounts["Information Disclosure"])} />
+                  <MetricCard label="Denial of Service" value={String(strideCounts["Denial of Service"])} />
+                  <MetricCard label="Elevation of Privilege" value={String(strideCounts["Elevation of Privilege"])} />
+                </div>
+                <div className="threat-model-link-bar">
+                  {threatLinks}
+                </div>
+                <div className="threat-model-card-grid">
+                  {report.threats.map((threat, index) => {
+                    const threatId = threat.threat_id || `TM-${index + 1}`;
+                    const evidence = threat.evidence || [];
+                    return (
+                      <details key={`${threatId}-${threat.title}`} className="subpanel threat-model-card" id={`threat-${threatId}`}>
+                        <summary className="threat-model-card-header">
+                          <div>
+                            <p className="eyebrow">Threat {threatId}</p>
+                            <h4>{threat.title}</h4>
+                          </div>
+                          <span className="stride-pill">{threat.stride_category}</span>
+                        </summary>
+                        <div className="threat-model-card-body">
+                          <p><strong>Component:</strong> {threat.component}</p>
+                          <p><strong>Impact:</strong> {threat.impact} | <strong>Likelihood:</strong> {threat.likelihood} | <strong>Exposure:</strong> {threat.exposure}</p>
+                          <p><strong>Risk Score:</strong> {threat.risk_score ?? "N/A"} ({threat.risk_level || "N/A"})</p>
+                          <p><strong>Reviewer Status:</strong> {threat.review_status || "Pending reviewer validation"}</p>
+                          <p><strong>Description:</strong> {threat.description}</p>
+                          <p><strong>Evidence:</strong></p>
+                          {evidence.length > 0 ? (
+                            <ul className="landing-story-list">
+                              {evidence.map((hit) => (
+                                <li key={`${hit.file}:${hit.line}`}>
+                                  {hit.file}:{hit.line} - {hit.excerpt}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="muted-text">Needs reviewer validation.</p>
+                          )}
+                          <p><strong>Root Cause:</strong> {threat.root_cause || "Derived from direct code evidence."}</p>
+                          <p><strong>Abuse Case:</strong> {threat.abuse_case}</p>
+                          <p><strong>Mitigation:</strong> {threat.mitigation}</p>
+                        </div>
+                      </details>
+                    );
+                  })}
+                </div>
+                <table className="simple-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Title</th>
+                      <th>Component</th>
+                      <th>STRIDE</th>
+                      <th>Impact</th>
+                      <th>Likelihood</th>
+                      <th>Exposure</th>
+                      <th>Risk</th>
+                      <th>Review Status</th>
+                      <th>Root Cause</th>
+                      <th>Abuse Case</th>
+                      <th>Mitigation</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.threats.map((threat, index) => (
+                      <tr key={`${threat.title}-${index}`}>
+                        <td>{threat.threat_id || `TM-${index + 1}`}</td>
+                        <td>{threat.title}</td>
+                        <td>{threat.component}</td>
+                        <td>{threat.stride_category}</td>
+                        <td>{threat.impact}</td>
+                        <td>{threat.likelihood}</td>
+                        <td>{threat.exposure}</td>
+                        <td>{threat.risk_score ?? "N/A"} ({threat.risk_level || "N/A"})</td>
+                        <td>{threat.review_status || "Pending reviewer validation"}</td>
+                        <td>{threat.root_cause || "Derived from direct code evidence."}</td>
+                        <td>{threat.abuse_case}</td>
+                        <td>{threat.mitigation}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {hasCodeMappings && (
+              <div className="subpanel">
+                <h3>Vulnerabilities Mapped to Code</h3>
+                <table className="simple-table">
+                  <thead>
+                    <tr>
+                      <th>Threat</th>
+                      <th>Component</th>
+                      <th>File</th>
+                      <th>Line</th>
+                      <th>Root Cause</th>
+                      <th>CWE</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.code_mappings.map((item) => (
+                      <tr key={`${item.threat_id}-${item.file}:${item.line}`}>
+                        <td>{item.threat_id}</td>
+                        <td>{item.component}</td>
+                        <td>{item.file}</td>
+                        <td>{item.line}</td>
+                        <td>{item.root_cause}</td>
+                        <td>{item.cwe || ""}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {hasValidationPlan && (
+              <div className="subpanel">
+                <h3>Validation & Test Strategy</h3>
+                <table className="simple-table">
+                  <thead>
+                    <tr>
+                      <th>Threat</th>
+                      <th>Check</th>
+                      <th>Expected Verification</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.validation_plan.map((item) => (
+                      <tr key={item.threat_id}>
+                        <td>{item.threat_id}</td>
+                        <td>{item.check}</td>
+                        <td>{item.expected_verification}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {hasTraceability && (
+              <div className="subpanel">
+                <h3>Traceability</h3>
+                <table className="simple-table">
+                  <thead>
+                    <tr>
+                      <th>Threat</th>
+                      <th>Evidence</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.traceability.map((item) => (
+                      <tr key={item.threat_id}>
+                        <td>{item.threat_id}</td>
+                        <td>{item.evidence}</td>
+                        <td>{item.status}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {(hasResidualRisk || hasAssumptions) && (
+              <div className="subpanel">
+                <h3>Residual Risk & Assumptions</h3>
+                {hasResidualRisk && (
+                  <>
+                    <h4>Residual Risk</h4>
+                    <ul className="landing-story-list">
+                      {report.residual_risk.map((item) => <li key={item}>{item}</li>)}
+                    </ul>
+                  </>
+                )}
+                {hasAssumptions && (
+                  <>
+                    <h4>Assumptions</h4>
+                    <ul className="landing-story-list">
+                      {report.assumptions.map((item) => <li key={item}>{item}</li>)}
+                    </ul>
+                  </>
+                )}
+              </div>
+            )}
 
             <div className="subpanel">
               <h3>Mermaid Diagram</h3>

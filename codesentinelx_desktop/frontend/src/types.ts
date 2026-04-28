@@ -47,6 +47,19 @@ export interface ThreatModelAsset {
   description: string;
   location: string;
   sensitivity: "High" | "Medium" | "Low";
+  evidence?: Array<{
+    file: string;
+    line: number;
+    excerpt: string;
+  }>;
+}
+
+export interface ThreatModelSecurityObjective {
+  asset_id: string;
+  confidentiality: string;
+  integrity: string;
+  availability: string;
+  rationale: string;
 }
 
 export interface ThreatModelThreat {
@@ -62,12 +75,34 @@ export interface ThreatModelThreat {
   risk_score?: number;
   risk_level?: "Critical" | "High" | "Medium" | "Low";
   review_status?: "Pending reviewer validation" | "Validated by reviewer" | "Not reviewed";
+  root_cause?: string;
   evidence?: Array<{
     file: string;
     line: number;
     excerpt: string;
   }>;
   mitigation: string;
+}
+
+export interface ThreatModelCodeMapping {
+  threat_id: string;
+  component: string;
+  file: string;
+  line: number;
+  root_cause: string;
+  cwe?: string;
+}
+
+export interface ThreatModelValidationPlanItem {
+  threat_id: string;
+  check: string;
+  expected_verification: string;
+}
+
+export interface ThreatModelTraceabilityItem {
+  threat_id: string;
+  evidence: string;
+  status: string;
 }
 
 export interface ThreatModelReport {
@@ -77,10 +112,16 @@ export interface ThreatModelReport {
   generated_at: string;
   system_overview: ThreatModelSystemOverview;
   assets: ThreatModelAsset[];
+  security_objectives: ThreatModelSecurityObjective[];
   entry_points: ThreatModelEntryPoint[];
   trust_boundaries: ThreatModelTrustBoundary[];
   data_flows: ThreatModelDataFlow[];
+  code_mappings: ThreatModelCodeMapping[];
   threats: ThreatModelThreat[];
+  validation_plan: ThreatModelValidationPlanItem[];
+  traceability: ThreatModelTraceabilityItem[];
+  residual_risk: string[];
+  assumptions: string[];
   diagram: string;
   summary: {
     source_files_analyzed: number;
