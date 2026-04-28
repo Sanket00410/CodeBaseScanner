@@ -650,21 +650,31 @@ function renderThreatHtml(report: ThreatModelReport): string {
     )
     .join("");
   const strideCounts = summarizeStrideCounts(report.threats);
+  const threatLinks = report.threats
+    .map(
+      (item, index) => `<a class="threat-link" href="#threat-${escapeHtml(item.threat_id || `TM-${index + 1}`)}">
+        ${escapeHtml(item.threat_id || `TM-${index + 1}`)}: ${escapeHtml(item.title)}
+      </a>`,
+    )
+    .join("");
   const threatCards = report.threats
     .map(
-      (item, index) => `<article class="threat-card" id="threat-${index + 1}">
-        <div class="threat-head">
+      (item, index) => `<details class="threat-card" id="threat-${escapeHtml(item.threat_id || `TM-${index + 1}`)}">
+        <summary class="threat-head">
           <div>
             <p class="eyebrow">${escapeHtml(item.threat_id || `TM-${index + 1}`)}</p>
             <h3>${escapeHtml(item.title)}</h3>
           </div>
           <span class="stride">${escapeHtml(item.stride_category)}</span>
+        </summary>
+        <div class="threat-body">
+          <p><strong>Component:</strong> ${escapeHtml(item.component)}</p>
+          <p><strong>Impact:</strong> ${escapeHtml(item.impact)} | <strong>Likelihood:</strong> ${escapeHtml(item.likelihood)} | <strong>Exposure:</strong> ${escapeHtml(item.exposure)}</p>
+          <p><strong>Description:</strong> ${escapeHtml(item.description)}</p>
+          <p><strong>Abuse case:</strong> ${escapeHtml(item.abuse_case)}</p>
+          <p><strong>Mitigation:</strong> ${escapeHtml(item.mitigation)}</p>
         </div>
-        <p><strong>Component:</strong> ${escapeHtml(item.component)}</p>
-        <p><strong>Impact:</strong> ${escapeHtml(item.impact)} | <strong>Likelihood:</strong> ${escapeHtml(item.likelihood)} | <strong>Exposure:</strong> ${escapeHtml(item.exposure)}</p>
-        <p><strong>Abuse case:</strong> ${escapeHtml(item.abuse_case)}</p>
-        <p><strong>Mitigation:</strong> ${escapeHtml(item.mitigation)}</p>
-      </article>`,
+      </details>`,
     )
     .join("");
 
@@ -695,8 +705,14 @@ function renderThreatHtml(report: ThreatModelReport): string {
     .index-card { border:1px solid rgba(120,168,205,.18); border-radius:14px; padding:12px; background:rgba(255,255,255,.03); }
     .index-card .count { font-size:1.6rem; font-weight:700; margin:4px 0 0; }
     .threat-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:12px; margin-top:12px; }
-    .threat-card { border:1px solid rgba(120,168,205,.18); border-radius:14px; padding:14px; background:#0a1421; }
+    .threat-links { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+    .threat-link { display:inline-flex; align-items:center; padding:8px 10px; border-radius:999px; border:1px solid rgba(120,168,205,.18); background:rgba(255,255,255,.03); color:#d8e6f2; text-decoration:none; }
+    .threat-link:hover { border-color: rgba(120,168,205,.42); background:rgba(255,255,255,.06); }
+    .threat-card { border:1px solid rgba(120,168,205,.18); border-radius:14px; padding:0; background:#0a1421; overflow:hidden; }
     .threat-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; margin-bottom:10px; }
+    .threat-card > summary { cursor:pointer; list-style:none; padding:14px; }
+    .threat-card > summary::-webkit-details-marker { display:none; }
+    .threat-body { padding:0 14px 14px; }
     .eyebrow { margin:0; color:#9ab0c8; font-size:.78rem; letter-spacing:.08em; text-transform:uppercase; }
     .stride { display:inline-flex; align-items:center; border:1px solid rgba(120,168,205,.25); border-radius:999px; padding:6px 10px; background:rgba(255,255,255,.04); white-space:nowrap; }
   </style>
@@ -723,6 +739,7 @@ function renderThreatHtml(report: ThreatModelReport): string {
         <div class="index-card"><div>Denial of Service</div><div class="count">${strideCounts["Denial of Service"]}</div></div>
         <div class="index-card"><div>Elevation of Privilege</div><div class="count">${strideCounts["Elevation of Privilege"]}</div></div>
       </div>
+      <div class="threat-links">${threatLinks}</div>
     </section>
 
     <section class="grid">

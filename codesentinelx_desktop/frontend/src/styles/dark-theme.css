@@ -1326,6 +1326,23 @@ select optgroup {
   margin: 12px 0 16px;
 }
 
+.threat-model-link-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 2px;
+}
+
+.threat-model-link {
+  border: 1px solid rgba(109, 161, 209, 0.2);
+  border-radius: 999px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--text);
+  font-size: 12px;
+  text-align: left;
+}
+
 .threat-model-card {
   background: linear-gradient(180deg, rgba(14, 28, 44, 0.95), rgba(10, 20, 33, 0.98));
   border: 1px solid rgba(109, 161, 209, 0.22);
@@ -1339,9 +1356,22 @@ select optgroup {
   margin-bottom: 12px;
 }
 
+.threat-model-card > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.threat-model-card > summary::-webkit-details-marker {
+  display: none;
+}
+
 .threat-model-card-header h4 {
   margin: 4px 0 0;
   font-size: 18px;
+}
+
+.threat-model-card-body {
+  padding: 0 2px 2px;
 }
 
 .eyebrow {

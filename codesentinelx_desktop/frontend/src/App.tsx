@@ -3010,6 +3010,9 @@ export default function App(): React.JSX.Element {
   const renderThreatModel = (): React.JSX.Element => {
     const report = threatModel?.report;
     const jsonText = report ? JSON.stringify(report, null, 2) : "";
+    const jumpToThreat = (anchor: string): void => {
+      document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
     const strideCounts = report
       ? report.threats.reduce(
           (acc, threat) => {
@@ -3030,9 +3033,20 @@ export default function App(): React.JSX.Element {
           Tampering: 0,
           Repudiation: 0,
           "Information Disclosure": 0,
-          "Denial of Service": 0,
-          "Elevation of Privilege": 0,
+            "Denial of Service": 0,
+            "Elevation of Privilege": 0,
         };
+    const threatLinks = report
+      ? report.threats.map((threat, index) => {
+          const threatId = threat.threat_id || `TM-${index + 1}`;
+          const anchor = `threat-${threatId}`;
+          return (
+            <button key={anchor} type="button" className="threat-model-link" onClick={() => jumpToThreat(anchor)}>
+              {threatId}: {threat.title}
+            </button>
+          );
+        })
+      : [];
 
     return (
       <section className="panel stack-gap">
@@ -3221,22 +3235,27 @@ export default function App(): React.JSX.Element {
                 <MetricCard label="Denial of Service" value={String(strideCounts["Denial of Service"])} />
                 <MetricCard label="Elevation of Privilege" value={String(strideCounts["Elevation of Privilege"])} />
               </div>
+              <div className="threat-model-link-bar">
+                {threatLinks}
+              </div>
               <div className="threat-model-card-grid">
                 {report.threats.map((threat, index) => (
-                  <article key={`${threat.threat_id || index}-${threat.title}`} className="subpanel threat-model-card">
-                    <div className="threat-model-card-header">
+                  <details key={`${threat.threat_id || index}-${threat.title}`} className="subpanel threat-model-card" id={`threat-${threat.threat_id || `TM-${index + 1}`}`}>
+                    <summary className="threat-model-card-header">
                       <div>
                         <p className="eyebrow">Threat {threat.threat_id || `TM-${index + 1}`}</p>
                         <h4>{threat.title}</h4>
                       </div>
                       <span className="stride-pill">{threat.stride_category}</span>
+                    </summary>
+                    <div className="threat-model-card-body">
+                      <p><strong>Component:</strong> {threat.component}</p>
+                      <p><strong>Impact:</strong> {threat.impact} | <strong>Likelihood:</strong> {threat.likelihood} | <strong>Exposure:</strong> {threat.exposure}</p>
+                      <p><strong>Description:</strong> {threat.description}</p>
+                      <p><strong>Abuse Case:</strong> {threat.abuse_case}</p>
+                      <p><strong>Mitigation:</strong> {threat.mitigation}</p>
                     </div>
-                    <p><strong>Component:</strong> {threat.component}</p>
-                    <p><strong>Impact:</strong> {threat.impact} | <strong>Likelihood:</strong> {threat.likelihood} | <strong>Exposure:</strong> {threat.exposure}</p>
-                    <p><strong>Description:</strong> {threat.description}</p>
-                    <p><strong>Abuse Case:</strong> {threat.abuse_case}</p>
-                    <p><strong>Mitigation:</strong> {threat.mitigation}</p>
-                  </article>
+                  </details>
                 ))}
               </div>
               <table className="simple-table">
