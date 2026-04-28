@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import {
+  ThreatModelAsset,
   ThreatModelDataFlow,
   ThreatModelEntryPoint,
   ThreatModelReport,
@@ -445,6 +446,163 @@ function buildDataFlows(components: string[], entryPoints: ThreatModelEntryPoint
   return flows;
 }
 
+function estimateThreatScore(
+  impact: ThreatModelThreat["impact"],
+  likelihood: ThreatModelThreat["likelihood"],
+  exposure: ThreatModelThreat["exposure"],
+): number {
+  const impactWeight: Record<ThreatModelThreat["impact"], number> = { High: 4, Medium: 3, Low: 2 };
+  const likelihoodWeight: Record<ThreatModelThreat["likelihood"], number> = { High: 4, Medium: 3, Low: 1 };
+  const exposureWeight: Record<ThreatModelThreat["exposure"], number> = { Public: 2, Authenticated: 1, Internal: 0 };
+  return impactWeight[impact] + likelihoodWeight[likelihood] + exposureWeight[exposure];
+}
+
+function scoreToLevel(score: number): NonNullable<ThreatModelThreat["risk_level"]> {
+  if (score >= 9) {
+    return "Critical";
+  }
+  if (score >= 7) {
+    return "High";
+  }
+  if (score >= 5) {
+    return "Medium";
+  }
+  return "Low";
+}
+
+function buildAssets(
+  samples: FileSample[],
+  entryPoints: ThreatModelEntryPoint[],
+  components: string[],
+  externalIntegrations: string[],
+): ThreatModelAsset[] {
+  const assets: ThreatModelAsset[] = [];
+  const seen = new Set<string>();
+  const pushAsset = (asset: ThreatModelAsset) => {
+    const key = `${asset.category}:${asset.name}:${asset.location}`;
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    assets.push(asset);
+  };
+  const hasAuth = samples.some((sample) => /auth|login|logout|session|token|password|mfa|otp/i.test(sample.content));
+  const hasSecrets = samples.some((sample) => /secret|credential|api[_-]?key|private[_-]?key|token/i.test(sample.content));
+  const hasExports = samples.some((sample) => /export|report|pdfkit|writefile/i.test(sample.content));
+  const hasStore = components.includes("Local scan store") || externalIntegrations.includes("SQLite") || externalIntegrations.includes("PostgreSQL");
+  const hasIpc = components.includes("Electron main process") || components.includes("Preload bridge");
+
+  pushAsset({
+    asset_id: "AS-1",
+    name: "Source code repository",
+    category: "Repository contents",
+    description: "The target codebase itself is the primary asset and must be protected from unauthorized disclosure or modification.",
+    location: "Selected codebase path",
+    sensitivity: "High",
+  });
+
+  if (entryPoints.some((item) => item.type === "HTTP route")) {
+    pushAsset({
+      asset_id: `AS-${assets.length + 1}`,
+      name: "Public and authenticated API routes",
+      category: "Application entry points",
+      description: "HTTP routes define how callers reach business logic and should be protected with authorization and input validation.",
+      location: "Route handlers",
+      sensitivity: "High",
+    });
+  }
+
+  if (hasAuth) {
+    pushAsset({
+      asset_id: `AS-${assets.length + 1}`,
+      name: "Authentication and session state",
+      category: "Identity data",
+      description: "Session tokens, login state, and auth flows protect privileged operations and must be preserved from spoofing and tampering.",
+      location: "Auth/session logic",
+      sensitivity: "High",
+    });
+  }
+
+  if (hasSecrets) {
+    pushAsset({
+      asset_id: `AS-${assets.length + 1}`,
+      name: "Secrets and credentials",
+      category: "Sensitive material",
+      description: "Tokens, API keys, credentials, and related secrets require strong handling and redaction controls.",
+      location: "Config, environment, and code references",
+      sensitivity: "High",
+    });
+  }
+
+  if (hasExports) {
+    pushAsset({
+      asset_id: `AS-${assets.length + 1}`,
+      name: "Exported reports and artifacts",
+      category: "Generated output",
+      description: "Reports, HTML exports, PDFs, and generated artifacts may contain sensitive findings and need controlled access.",
+      location: "Report export pipeline",
+      sensitivity: "Medium",
+    });
+  }
+
+  if (hasStore) {
+    pushAsset({
+      asset_id: `AS-${assets.length + 1}`,
+      name: "Scan history and local persistence",
+      category: "Stored analysis data",
+      description: "Local databases or persisted scan history preserve prior findings and should be protected from tampering.",
+      location: "Local store or database layer",
+      sensitivity: "Medium",
+    });
+  }
+
+  if (hasIpc) {
+    pushAsset({
+      asset_id: `AS-${assets.length + 1}`,
+      name: "Renderer-to-main IPC boundary",
+      category: "Privilege boundary",
+      description: "Desktop IPC requests cross from untrusted renderer state into privileged logic and need strong validation.",
+      location: "Electron IPC bridge",
+      sensitivity: "High",
+    });
+  }
+
+  if (externalIntegrations.includes("Filesystem")) {
+    pushAsset({
+      asset_id: `AS-${assets.length + 1}`,
+      name: "Local filesystem and repository paths",
+      category: "Local system resource",
+      description: "The filesystem boundary contains source, generated reports, and other local artifacts that should not be traversed freely.",
+      location: "Selected path and export roots",
+      sensitivity: "Medium",
+    });
+  }
+
+  if (externalIntegrations.includes("SQLite") || externalIntegrations.includes("PostgreSQL")) {
+    pushAsset({
+      asset_id: `AS-${assets.length + 1}`,
+      name: "Database records",
+      category: "Persistence layer",
+      description: "Stored records and scan metadata require integrity and access control because they drive the displayed report state.",
+      location: "Database or local persistence",
+      sensitivity: "Medium",
+    });
+  }
+
+  if (externalIntegrations.includes("Ollama")) {
+    pushAsset({
+      asset_id: `AS-${assets.length + 1}`,
+      name: "AI prompt and remediation context",
+      category: "AI assistance data",
+      description: "Optional local AI workflows may include code snippets and prompt context that should not leak outside the workstation.",
+      location: "Local AI provider integration",
+      sensitivity: "Medium",
+    });
+  }
+
+  return assets;
+}
+
 function buildThreats(
   samples: FileSample[],
   entryPoints: ThreatModelEntryPoint[],
@@ -472,6 +630,9 @@ function buildThreats(
       impact: "High",
       likelihood: "Medium",
       exposure: hasPrivilegedHandlers ? "Authenticated" : "Public",
+      risk_score: estimateThreatScore("High", "Medium", hasPrivilegedHandlers ? "Authenticated" : "Public"),
+      risk_level: scoreToLevel(estimateThreatScore("High", "Medium", hasPrivilegedHandlers ? "Authenticated" : "Public")),
+      review_status: "Pending reviewer validation",
       mitigation: "Enforce authorization server-side for every privileged handler, derive identity from verified session state, and reject caller-supplied role claims.",
     });
   }
@@ -487,6 +648,9 @@ function buildThreats(
       impact: "High",
       likelihood: "Medium",
       exposure: "Authenticated",
+      risk_score: estimateThreatScore("High", "Medium", "Authenticated"),
+      risk_level: scoreToLevel(estimateThreatScore("High", "Medium", "Authenticated")),
+      review_status: "Pending reviewer validation",
       mitigation: "Canonicalize output paths, enforce a fixed export root, reject traversal segments, and ensure report names are sanitized before writing.",
     });
   }
@@ -502,6 +666,9 @@ function buildThreats(
       impact: "Medium",
       likelihood: "Medium",
       exposure: "Authenticated",
+      risk_score: estimateThreatScore("Medium", "Medium", "Authenticated"),
+      risk_level: scoreToLevel(estimateThreatScore("Medium", "Medium", "Authenticated")),
+      review_status: "Pending reviewer validation",
       mitigation: "Use append-only audit logging, add integrity metadata or signing, and keep audit retention separate from regular user-managed history cleanup.",
     });
   }
@@ -517,6 +684,9 @@ function buildThreats(
       impact: "High",
       likelihood: "High",
       exposure: "Authenticated",
+      risk_score: estimateThreatScore("High", "High", "Authenticated"),
+      risk_level: scoreToLevel(estimateThreatScore("High", "High", "Authenticated")),
+      review_status: "Pending reviewer validation",
       mitigation: "Apply role-based redaction consistently, hide sensitive evidence by default for executive views, and avoid exporting secrets or raw credential material.",
     });
   }
@@ -532,6 +702,9 @@ function buildThreats(
       impact: "Medium",
       likelihood: "High",
       exposure: "Public",
+      risk_score: estimateThreatScore("Medium", "High", "Public"),
+      risk_level: scoreToLevel(estimateThreatScore("Medium", "High", "Public")),
+      review_status: "Pending reviewer validation",
       mitigation: "Cap file counts, skip generated directories, bound per-file size, and use worker/time limits for discovery, parsing, and rendering.",
     });
   }
@@ -547,6 +720,9 @@ function buildThreats(
       impact: "High",
       likelihood: "Medium",
       exposure: "Internal",
+      risk_score: estimateThreatScore("High", "Medium", "Internal"),
+      risk_level: scoreToLevel(estimateThreatScore("High", "Medium", "Internal")),
+      review_status: "Pending reviewer validation",
       mitigation: "Check authorization in the privileged layer, keep renderer claims advisory only, and restrict sensitive operations by validated session and role.",
     });
   }
@@ -603,6 +779,18 @@ function renderThreatHtml(report: ThreatModelReport): string {
     ? report.system_overview.external_integrations.map((item) => `<li>${escapeHtml(item)}</li>`).join("")
     : "<li>No external integrations detected.</li>";
   const stackList = report.system_overview.technology_stack.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+  const assetRows = report.assets
+    .map(
+      (item) => `<tr>
+        <td>${escapeHtml(item.asset_id)}</td>
+        <td>${escapeHtml(item.name)}</td>
+        <td>${escapeHtml(item.category)}</td>
+        <td>${escapeHtml(item.sensitivity)}</td>
+        <td>${escapeHtml(item.location)}</td>
+        <td>${escapeHtml(item.description)}</td>
+      </tr>`,
+    )
+    .join("");
   const entryRows = report.entry_points
     .map(
       (item) => `<tr>
@@ -644,6 +832,8 @@ function renderThreatHtml(report: ThreatModelReport): string {
         <td>${escapeHtml(item.impact)}</td>
         <td>${escapeHtml(item.likelihood)}</td>
         <td>${escapeHtml(item.exposure)}</td>
+        <td>${escapeHtml(String(item.risk_score ?? ""))} (${escapeHtml(item.risk_level || "")})</td>
+        <td>${escapeHtml(item.review_status || "Pending reviewer validation")}</td>
         <td>${escapeHtml(item.abuse_case)}</td>
         <td>${escapeHtml(item.mitigation)}</td>
       </tr>`,
@@ -670,6 +860,8 @@ function renderThreatHtml(report: ThreatModelReport): string {
         <div class="threat-body">
           <p><strong>Component:</strong> ${escapeHtml(item.component)}</p>
           <p><strong>Impact:</strong> ${escapeHtml(item.impact)} | <strong>Likelihood:</strong> ${escapeHtml(item.likelihood)} | <strong>Exposure:</strong> ${escapeHtml(item.exposure)}</p>
+          <p><strong>Risk score:</strong> ${escapeHtml(String(item.risk_score ?? ""))} (${escapeHtml(item.risk_level || "")})</p>
+          <p><strong>Reviewer status:</strong> ${escapeHtml(item.review_status || "Pending reviewer validation")}</p>
           <p><strong>Description:</strong> ${escapeHtml(item.description)}</p>
           <p><strong>Abuse case:</strong> ${escapeHtml(item.abuse_case)}</p>
           <p><strong>Mitigation:</strong> ${escapeHtml(item.mitigation)}</p>
@@ -731,6 +923,7 @@ function renderThreatHtml(report: ThreatModelReport): string {
         <div class="pill"><strong>Threats:</strong> ${report.summary.threats}</div>
       </div>
       <div class="threat-index">
+        <div class="index-card"><div>Assets</div><div class="count">${report.summary.assets}</div><div class="muted">Inventory items</div></div>
         <div class="index-card"><div>TM-1 to TM-${report.threats.length}</div><div class="count">${report.summary.threats}</div><div class="muted">Total threats</div></div>
         <div class="index-card"><div>Spoofing</div><div class="count">${strideCounts.Spoofing}</div></div>
         <div class="index-card"><div>Tampering</div><div class="count">${strideCounts.Tampering}</div></div>
@@ -758,6 +951,14 @@ function renderThreatHtml(report: ThreatModelReport): string {
         <p class="muted">Mermaid flowchart for trust boundaries and high-level data movement.</p>
         <pre>${escapeHtml(report.diagram)}</pre>
       </article>
+    </section>
+
+    <section class="card">
+      <h2>Asset Inventory</h2>
+      <table>
+        <thead><tr><th>ID</th><th>Name</th><th>Category</th><th>Sensitivity</th><th>Location</th><th>Description</th></tr></thead>
+        <tbody>${assetRows || "<tr><td colspan='6'>No distinct assets were inferred from the source code.</td></tr>"}</tbody>
+      </table>
     </section>
 
     <section class="card">
@@ -791,8 +992,8 @@ function renderThreatHtml(report: ThreatModelReport): string {
       </div>
       <h3 style="margin-top:18px;">Threat Table</h3>
       <table>
-        <thead><tr><th>ID</th><th>Title</th><th>Component</th><th>STRIDE</th><th>Impact</th><th>Likelihood</th><th>Exposure</th><th>Abuse Case</th><th>Mitigation</th></tr></thead>
-        <tbody>${threatRows || "<tr><td colspan='9'>No threats detected from the available source code.</td></tr>"}</tbody>
+        <thead><tr><th>ID</th><th>Title</th><th>Component</th><th>STRIDE</th><th>Impact</th><th>Likelihood</th><th>Exposure</th><th>Risk</th><th>Review Status</th><th>Abuse Case</th><th>Mitigation</th></tr></thead>
+        <tbody>${threatRows || "<tr><td colspan='11'>No threats detected from the available source code.</td></tr>"}</tbody>
       </table>
     </section>
 
@@ -836,12 +1037,13 @@ export class ThreatModelService {
       });
     }
 
-    const entryPoints = extractEntryPoints(samples);
-    const mainComponents = detectMainComponents(samples);
-    const externalIntegrations = detectExternalIntegrations(samples);
-    const dataFlows = buildDataFlows(mainComponents, entryPoints);
-    const threats = buildThreats(samples, entryPoints, mainComponents, externalIntegrations);
-    const trustBoundaries = buildTrustBoundaries(entryPoints, mainComponents, externalIntegrations);
+  const entryPoints = extractEntryPoints(samples);
+  const mainComponents = detectMainComponents(samples);
+  const externalIntegrations = detectExternalIntegrations(samples);
+  const assets = buildAssets(samples, entryPoints, mainComponents, externalIntegrations);
+  const dataFlows = buildDataFlows(mainComponents, entryPoints);
+  const threats = buildThreats(samples, entryPoints, mainComponents, externalIntegrations);
+  const trustBoundaries = buildTrustBoundaries(entryPoints, mainComponents, externalIntegrations);
     const report: ThreatModelReport = {
       schema_version: "codesentinelx.threat_model.v1",
       target_path: resolved,
@@ -853,6 +1055,7 @@ export class ThreatModelService {
         external_integrations: externalIntegrations,
         technology_stack: detectTechnologyStack(samples),
       },
+      assets,
       entry_points: entryPoints,
       trust_boundaries: trustBoundaries,
       data_flows: dataFlows,
@@ -860,6 +1063,7 @@ export class ThreatModelService {
       diagram: "",
       summary: {
         source_files_analyzed: samples.length,
+        assets: assets.length,
         entry_points: entryPoints.length,
         threats: threats.length,
       },

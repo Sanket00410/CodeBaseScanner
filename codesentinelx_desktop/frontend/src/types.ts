@@ -40,6 +40,15 @@ export interface ThreatModelDataFlow {
   description: string;
 }
 
+export interface ThreatModelAsset {
+  asset_id: string;
+  name: string;
+  category: string;
+  description: string;
+  location: string;
+  sensitivity: "High" | "Medium" | "Low";
+}
+
 export interface ThreatModelThreat {
   threat_id?: string;
   title: string;
@@ -50,6 +59,9 @@ export interface ThreatModelThreat {
   impact: "High" | "Medium" | "Low";
   likelihood: "High" | "Medium" | "Low";
   exposure: "Public" | "Authenticated" | "Internal";
+  risk_score?: number;
+  risk_level?: "Critical" | "High" | "Medium" | "Low";
+  review_status?: "Pending reviewer validation" | "Validated by reviewer" | "Not reviewed";
   mitigation: string;
 }
 
@@ -59,6 +71,7 @@ export interface ThreatModelReport {
   target_type: "file" | "folder" | "unknown";
   generated_at: string;
   system_overview: ThreatModelSystemOverview;
+  assets: ThreatModelAsset[];
   entry_points: ThreatModelEntryPoint[];
   trust_boundaries: ThreatModelTrustBoundary[];
   data_flows: ThreatModelDataFlow[];
@@ -66,6 +79,7 @@ export interface ThreatModelReport {
   diagram: string;
   summary: {
     source_files_analyzed: number;
+    assets: number;
     entry_points: number;
     threats: number;
   };

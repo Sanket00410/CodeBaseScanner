@@ -3099,6 +3099,10 @@ export default function App(): React.JSX.Element {
                   <h4>{report.summary.source_files_analyzed}</h4>
                 </div>
                 <div className="metric-card">
+                  <p>Assets</p>
+                  <h4>{report.summary.assets}</h4>
+                </div>
+                <div className="metric-card">
                   <p>Entry Points</p>
                   <h4>{report.summary.entry_points}</h4>
                 </div>
@@ -3129,6 +3133,39 @@ export default function App(): React.JSX.Element {
                   </ul>
                 </div>
               </div>
+            </div>
+
+            <div className="subpanel">
+              <h3>Asset Inventory</h3>
+              <table className="simple-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Category</th>
+                    <th>Sensitivity</th>
+                    <th>Location</th>
+                    <th>Description</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.assets.map((asset) => (
+                    <tr key={asset.asset_id}>
+                      <td>{asset.asset_id}</td>
+                      <td>{asset.name}</td>
+                      <td>{asset.category}</td>
+                      <td>{asset.sensitivity}</td>
+                      <td>{asset.location}</td>
+                      <td>{asset.description}</td>
+                    </tr>
+                  ))}
+                  {report.assets.length === 0 && (
+                    <tr>
+                      <td colSpan={6}>No distinct assets were inferred from the selected source tree.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
 
             <div className="subpanel">
@@ -3251,6 +3288,8 @@ export default function App(): React.JSX.Element {
                     <div className="threat-model-card-body">
                       <p><strong>Component:</strong> {threat.component}</p>
                       <p><strong>Impact:</strong> {threat.impact} | <strong>Likelihood:</strong> {threat.likelihood} | <strong>Exposure:</strong> {threat.exposure}</p>
+                      <p><strong>Risk Score:</strong> {threat.risk_score ?? "N/A"} ({threat.risk_level || "N/A"})</p>
+                      <p><strong>Reviewer Status:</strong> {threat.review_status || "Pending reviewer validation"}</p>
                       <p><strong>Description:</strong> {threat.description}</p>
                       <p><strong>Abuse Case:</strong> {threat.abuse_case}</p>
                       <p><strong>Mitigation:</strong> {threat.mitigation}</p>
@@ -3268,6 +3307,8 @@ export default function App(): React.JSX.Element {
                     <th>Impact</th>
                     <th>Likelihood</th>
                     <th>Exposure</th>
+                    <th>Risk</th>
+                    <th>Review Status</th>
                     <th>Abuse Case</th>
                     <th>Mitigation</th>
                   </tr>
@@ -3282,13 +3323,15 @@ export default function App(): React.JSX.Element {
                       <td>{threat.impact}</td>
                       <td>{threat.likelihood}</td>
                       <td>{threat.exposure}</td>
+                      <td>{threat.risk_score ?? "N/A"} ({threat.risk_level || "N/A"})</td>
+                      <td>{threat.review_status || "Pending reviewer validation"}</td>
                       <td>{threat.abuse_case}</td>
                       <td>{threat.mitigation}</td>
                     </tr>
                   ))}
                   {report.threats.length === 0 && (
                     <tr>
-                      <td colSpan={9}>No high-confidence STRIDE threats were inferred from the code.</td>
+                      <td colSpan={11}>No high-confidence STRIDE threats were inferred from the code.</td>
                     </tr>
                   )}
                 </tbody>
