@@ -1,4 +1,4 @@
-ï»¿import { createWriteStream, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { promises as fs } from "node:fs";
 import fsSync from "node:fs";
 import path from "node:path";
@@ -560,7 +560,7 @@ function renderHelpGuideHtml(markdown: string, markdownPath: string, generatedAt
       <span class="eyebrow">CodeSentinelX Help Center</span>
       <h1>Documentation that matches the actual app flow</h1>
       <p>
-        This HTML guide is built to feel like a product page, not a plain document. It mirrors the appâ€™s role-based
+        This HTML guide is built to feel like a product page, not a plain document. It mirrors the app’s role-based
         scan flow, report structure, troubleshooting path, and technical term definitions so users can move from
         reading to action quickly.
       </p>
@@ -1450,7 +1450,7 @@ export class ExportService {
 
       const renderBullet = (text: string): void => {
         ensureSpace(16);
-        document.fillColor("#7fcfff").font("Helvetica-Bold").fontSize(10).text("â€¢", contentLeft, document.y, { width: 10 });
+        document.fillColor("#7fcfff").font("Helvetica-Bold").fontSize(10).text("•", contentLeft, document.y, { width: 10 });
         document.fillColor("#dce9f7").font("Helvetica").fontSize(9.2).text(text, contentLeft + 14, document.y, { width: width - 14, lineGap: 1.3 });
       };
 
@@ -4640,7 +4640,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
           <th data-sort-index="6" data-sort-type="number">Avg ms/Finding</th>
         </tr>
         </thead>
-        <tbody>${timingRows || "<tr><td colspan='7' class='muted'>No successful analyzer timing data available for this scan.</td></tr>"}</tbody>
+        <tbody>${timingRows || ""}</tbody>
       </table>
     </div>
   </section>` : ""}
@@ -5337,8 +5337,8 @@ function renderFixesHtml(scan: ScanView): string {
       }
       const plainLanguageBrief = plainLanguageSecurityBrief(finding as Partial<VulnerabilityFinding> & Record<string, unknown>);
       sectionWhatToChange.push(`<div class="plain-language-brief"><div class="fix-subtitle">Plain-Language Security Brief: ${escapeHtml(plainLanguageBrief.title)}</div><table class="results"><tbody>
-        <tr><th>Whatâ€™s happening here</th><td>${escapeHtml(plainLanguageBrief.what_is_happening)}</td></tr>
-        <tr><th>Why itâ€™s considered weak</th><td>${escapeHtml(plainLanguageBrief.why_it_is_weak)}</td></tr>
+        <tr><th>What’s happening here</th><td>${escapeHtml(plainLanguageBrief.what_is_happening)}</td></tr>
+        <tr><th>Why it’s considered weak</th><td>${escapeHtml(plainLanguageBrief.why_it_is_weak)}</td></tr>
         <tr><th>What you should use instead</th><td>${escapeHtml(plainLanguageBrief.what_to_use_instead)}</td></tr>
         <tr><th>Summary</th><td>${escapeHtml(plainLanguageBrief.summary)}</td></tr>
       </tbody></table></div>`);
@@ -5600,7 +5600,7 @@ function renderFixesHtml(scan: ScanView): string {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CodeSentinelX Developer Secure Coding Practices Report</title>
-  <style>${exportThemeCss(".fix-link{color:var(--accent);text-decoration:underline}.toolbar{display:flex;gap:8px;align-items:center;margin:6px 0 10px;flex-wrap:wrap}input{background:rgba(7,20,36,.14);border:1px solid rgba(120,168,205,.28);border-radius:8px;color:var(--text);padding:7px 10px;min-width:300px}.fix-detail{border:1px solid rgba(120,168,205,.24);border-radius:14px;background:rgba(8,21,36,.14);padding:12px;margin-bottom:10px}.fix-detail h3{margin-bottom:8px}.fix-detail h4{margin:10px 0 6px;font-size:12px;line-height:1.2;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}.fix-detail .results th,.fix-detail .results td{padding:8px 10px}.fix-detail .code-grid{gap:10px}.fix-detail .code-grid > div{min-width:0}.fix-detail .code-grid pre,.fix-detail pre.evidence-scroll,.fix-detail pre.evidence-full{margin:0}.fix-detail.is-active{outline:2px solid rgba(94,234,212,.38);box-shadow:0 0 0 1px rgba(94,234,212,.18),0 18px 32px rgba(15,23,42,.22)}.fix-subtitle{margin:8px 0 4px;font-size:11px;line-height:1.2;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700}.plain-language-brief{margin-top:10px}.plain-language-brief .results{margin-bottom:0}.plain-language-code{margin:0;white-space:pre-wrap;word-break:break-word;overflow:visible;max-height:none;background:rgba(7,19,34,.34);border:1px solid rgba(120,168,205,.16);border-radius:12px;padding:12px 14px}.fix-disclosure{border:1px solid rgba(120,168,205,.22);border-radius:12px;background:rgba(9,22,37,.1);margin:10px 0 0;overflow:hidden}.fix-disclosure>summary{cursor:pointer;list-style:none;padding:10px 12px;font-weight:700;color:var(--text);display:flex;align-items:center;justify-content:space-between;gap:12px}.fix-disclosure>summary::-webkit-details-marker{display:none}.fix-disclosure>summary::after{content:'+';color:var(--muted);font-size:16px;line-height:1}.fix-disclosure[open]>summary{border-bottom:1px solid rgba(120,168,205,.14)}.fix-disclosure[open]>summary::after{content:'â€“'}.fix-disclosure-body{padding:12px}.evidence-scroll{max-height:280px;overflow:auto;white-space:pre;word-break:normal;scrollbar-width:thin;scrollbar-color:rgba(128,169,196,.22) transparent}.evidence-full{max-height:none;overflow:visible;white-space:pre-wrap;word-break:break-word;scrollbar-width:thin;scrollbar-color:rgba(128,169,196,.22) transparent}.evidence-scroll::-webkit-scrollbar,.evidence-full::-webkit-scrollbar{height:8px;width:8px}.evidence-scroll::-webkit-scrollbar-track,.evidence-full::-webkit-scrollbar-track{background:transparent}.evidence-scroll::-webkit-scrollbar-thumb,.evidence-full::-webkit-scrollbar-thumb{background:rgba(128,169,196,.2);border-radius:999px}.evidence-scroll::-webkit-scrollbar-thumb:hover,.evidence-full::-webkit-scrollbar-thumb:hover{background:rgba(128,169,196,.32)}")}</style>
+  <style>${exportThemeCss(".fix-link{color:var(--accent);text-decoration:underline}.toolbar{display:flex;gap:8px;align-items:center;margin:6px 0 10px;flex-wrap:wrap}input{background:rgba(7,20,36,.14);border:1px solid rgba(120,168,205,.28);border-radius:8px;color:var(--text);padding:7px 10px;min-width:300px}.fix-detail{border:1px solid rgba(120,168,205,.24);border-radius:14px;background:rgba(8,21,36,.14);padding:12px;margin-bottom:10px}.fix-detail h3{margin-bottom:8px}.fix-detail h4{margin:10px 0 6px;font-size:12px;line-height:1.2;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}.fix-detail .results th,.fix-detail .results td{padding:8px 10px}.fix-detail .code-grid{gap:10px}.fix-detail .code-grid > div{min-width:0}.fix-detail .code-grid pre,.fix-detail pre.evidence-scroll,.fix-detail pre.evidence-full{margin:0}.fix-detail.is-active{outline:2px solid rgba(94,234,212,.38);box-shadow:0 0 0 1px rgba(94,234,212,.18),0 18px 32px rgba(15,23,42,.22)}.fix-subtitle{margin:8px 0 4px;font-size:11px;line-height:1.2;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700}.plain-language-brief{margin-top:10px}.plain-language-brief .results{margin-bottom:0}.plain-language-code{margin:0;white-space:pre-wrap;word-break:break-word;overflow:visible;max-height:none;background:rgba(7,19,34,.34);border:1px solid rgba(120,168,205,.16);border-radius:12px;padding:12px 14px}.fix-disclosure{border:1px solid rgba(120,168,205,.22);border-radius:12px;background:rgba(9,22,37,.1);margin:10px 0 0;overflow:hidden}.fix-disclosure>summary{cursor:pointer;list-style:none;padding:10px 12px;font-weight:700;color:var(--text);display:flex;align-items:center;justify-content:space-between;gap:12px}.fix-disclosure>summary::-webkit-details-marker{display:none}.fix-disclosure>summary::after{content:'+';color:var(--muted);font-size:16px;line-height:1}.fix-disclosure[open]>summary{border-bottom:1px solid rgba(120,168,205,.14)}.fix-disclosure[open]>summary::after{content:'–'}.fix-disclosure-body{padding:12px}.evidence-scroll{max-height:280px;overflow:auto;white-space:pre;word-break:normal;scrollbar-width:thin;scrollbar-color:rgba(128,169,196,.22) transparent}.evidence-full{max-height:none;overflow:visible;white-space:pre-wrap;word-break:break-word;scrollbar-width:thin;scrollbar-color:rgba(128,169,196,.22) transparent}.evidence-scroll::-webkit-scrollbar,.evidence-full::-webkit-scrollbar{height:8px;width:8px}.evidence-scroll::-webkit-scrollbar-track,.evidence-full::-webkit-scrollbar-track{background:transparent}.evidence-scroll::-webkit-scrollbar-thumb,.evidence-full::-webkit-scrollbar-thumb{background:rgba(128,169,196,.2);border-radius:999px}.evidence-scroll::-webkit-scrollbar-thumb:hover,.evidence-full::-webkit-scrollbar-thumb:hover{background:rgba(128,169,196,.32)}")}</style>
 </head>
 <body>
   <main class="report-shell">
@@ -6294,7 +6294,7 @@ function renderCombinedHtml(scan: ScanView): string {
                       return `<div class="diagram-bar-row"><div class="bar-label" title="${escapeHtml(label)}">${escapeHtml(label)}</div><div class="bar-track"><div class="bar-fill" style="width:${width}%"></div></div><div>${value}</div></div>`;
                     })
                     .join("")
-                : `<p class="muted">No vulnerability categories available.</p>`
+                : ""
             }
           </div>
         </div>
@@ -6312,7 +6312,7 @@ function renderCombinedHtml(scan: ScanView): string {
                       return `<div class="diagram-bar-row"><div class="bar-label" title="${escapeHtml(label)}">${escapeHtml(label)}</div><div class="bar-track"><div class="bar-fill" style="width:${width}%"></div></div><div>${value}</div></div>`;
                     })
                     .join("")
-                : `<p class="muted">No OWASP category data available.</p>`
+                : ""
             }
           </div>
         </div>
@@ -7132,13 +7132,13 @@ function renderDeveloperSecureCodingPracticesHtmlSection(findings: Vulnerability
         .map((card, index) => {
           const examples = card.examples.length
             ? `<ul>${card.examples.map((entry) => `<li>${escapeHtml(entry)}</li>`).join("")}</ul>`
-            : "<p class='muted'>No representative findings available for this practice group.</p>";
+            : "";
           const standards = card.standards.length
             ? `<ul>${card.standards.map((entry) => `<li>${escapeHtml(entry)}</li>`).join("")}</ul>`
-            : "<p class='muted'>No standards mapped.</p>";
+            : "";
           const practices = card.practices.length
             ? `<ul>${card.practices.map((entry) => `<li>${escapeHtml(entry)}</li>`).join("")}</ul>`
-            : "<p class='muted'>No practices mapped.</p>";
+            : "";
           return `<details class="report-disclosure practice-card"${index === 0 ? " open" : ""}>
             <summary><span>[${escapeHtml(card.severity)}]</span> ${escapeHtml(card.title)} <span class="muted">(${card.count} finding${card.count === 1 ? "" : "s"})</span></summary>
             <div class="section-body">
@@ -8648,7 +8648,7 @@ function plainLanguageSecurityBrief(finding: Partial<VulnerabilityFinding> & Rec
     return {
       title: "Cross-Site Scripting (XSS)",
       what_is_happening: "User-controlled data is reaching a browser rendering sink without enough escaping or context-aware encoding.",
-      why_it_is_weak: "That can let attacker-supplied script or markup execute in another userâ€™s browser and expose sessions, data, or actions.",
+      why_it_is_weak: "That can let attacker-supplied script or markup execute in another user’s browser and expose sessions, data, or actions.",
       what_to_use_instead: "Use framework templating, output encoding, and safe DOM APIs instead of directly injecting HTML or script content.",
       summary: recommendation || "Encode on output and avoid unsafe HTML rendering paths.",
       code_example: originalCode || "Render trusted markup only and escape untrusted values before display.",
@@ -9205,7 +9205,7 @@ function exportThemeCss(extra = ""): string {
     .report-disclosure>summary::-webkit-details-marker{display:none}
     .report-disclosure>summary::after{content:'+';color:var(--muted);font-size:16px;line-height:1}
     .report-disclosure[open]>summary{border-bottom:1px solid rgba(120,168,205,.12)}
-    .report-disclosure[open]>summary::after{content:'â€“'}
+    .report-disclosure[open]>summary::after{content:'–'}
     .report-disclosure .section-frame,.report-disclosure .table-frame{border:0;border-radius:0;background:transparent}
     .report-disclosure .section-body,.report-disclosure .table-body{padding:12px}
     .kpi-bars{display:grid;gap:8px}
@@ -10610,6 +10610,7 @@ function writeManagementPdf(doc: PDFKit.PDFDocument, scan: ScanView, context?: M
     { key: "% Resolved", value: `${Number(riskScoreDashboard.resolved_percent || 0).toFixed(2)}%` },
   ]);
 }
+
 
 
 
