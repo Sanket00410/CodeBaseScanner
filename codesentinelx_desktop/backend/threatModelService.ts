@@ -1127,37 +1127,41 @@ function summarizeStrideCounts(threats: ThreatModelThreat[]): Record<ThreatModel
 function buildMermaidDiagram(report: ThreatModelReport): string {
   const body = [
     "flowchart TD",
-    "  subgraph TB1[Trust boundary: User interface]",
-    "    user([Operator]) -->|selects target codebase| ui[Application UI]",
+    "  subgraph UI[Application layer]",
+    "    user([Operator]) --> ui[Application UI]",
+    "    ui --> bridge[Security bridge]",
     "  end",
-    "  subgraph TB2[Trust boundary: privileged analysis]",
-    "    ui -->|IPC request| bridge[Desktop service]",
-    "    bridge -->|path + methodology| engine[Analysis engine]",
-    "    engine -->|read source code| repo[(Target repository)]",
-    "    engine -->|write JSON / HTML / Mermaid| store[(Generated artifacts)]",
+    "  subgraph CORE[Privileged desktop services]",
+    "    bridge --> service[Desktop service]",
+    "    service --> engine[Analysis engine]",
+    "    engine --> exporter[Report exporter]",
+    "    service --> store[(Local scan store)]",
     "  end",
-    "  bridge -->|rendered model| ui",
+    "  subgraph EXT[External integrations]",
+    "    integrations[(External integrations)]",
+    "  end",
+    "  engine -->|analysis context| exporter",
+    "  engine -->|read source code| repo[(Target repository)]",
+    "  exporter -->|write JSON / HTML / Mermaid| store",
+    "  service -.->|runtime services| integrations",
+    "  engine -.->|optional enrichment| integrations",
   ];
   return body.join("\n");
 }
 
 function renderThreatDiagramPreview(report: ThreatModelReport): string {
   const frameworkLabel = threatModelFrameworkLabel(report.framework);
-  const componentSummary = report.system_overview.main_components.slice(0, 3).join(", ") || "Selected codebase";
-  const entryPointSummary = report.entry_points.length > 0 ? `${report.entry_points.length} entry points` : "No entry points found";
-  const assetSummary = report.assets.length > 0 ? `${report.assets.length} assets` : "No assets inferred";
-  const threatSummary = `${report.threats.length} threats`;
   const flowNodes = [
-    { title: "Operator", detail: "Selects target codebase" },
     { title: "Application UI", detail: "Threat Modeling workspace" },
-    { title: "Desktop service", detail: "IPC request and audit trail" },
+    { title: "Security bridge", detail: "IPC boundary and request validation" },
+    { title: "Desktop service", detail: "Privileged application services" },
     { title: "Analysis engine", detail: frameworkLabel },
-    { title: "Target repository", detail: componentSummary },
-    { title: "Generated artifacts", detail: `${assetSummary} | ${entryPointSummary} | ${threatSummary}` },
+    { title: "Report exporter", detail: "JSON, HTML, Mermaid artifacts" },
+    { title: "Local scan store", detail: "Saved reports and analysis history" },
   ];
   return `
     <div class="diagram-preview" role="img" aria-label="Threat model flow diagram">
-      <div class="diagram-boundary">Trust boundary: user interface</div>
+      <div class="diagram-boundary">Application boundary</div>
       <div class="diagram-row">
         ${flowNodes
           .map(
@@ -1171,7 +1175,7 @@ function renderThreatDiagramPreview(report: ThreatModelReport): string {
           )
           .join("")}
       </div>
-      <div class="diagram-boundary">Trust boundary: privileged analysis</div>
+      <div class="diagram-boundary">Privileged desktop boundary</div>
     </div>
   `;
 }
@@ -1456,8 +1460,12 @@ function renderThreatHtml(report: ThreatModelReport): string {
       </article>
       <article class="card">
         <h2>Architecture Diagram</h2>
-        <p class="muted">Rendered flowchart for trust boundaries and high-level data movement.</p>
-        <pre>${escapeHtml(report.diagram)}</pre>
+        <p class="muted">Rendered application architecture with trust boundaries and core components.</p>
+        ${renderThreatDiagramPreview(report)}
+        <details style="margin-top:12px;">
+          <summary class="diagram-help">View diagram source</summary>
+          <pre>${escapeHtml(report.diagram)}</pre>
+        </details>
       </article>
     </section>
 
@@ -1514,7 +1522,20 @@ function renderThreatHtml(report: ThreatModelReport): string {
       </div>
       <h3 style="margin-top:18px;">Threat Table</h3>
       <table>
-        <thead><tr><th>ID</th><th>Title</th><th>Component</th><th>Classification</th><th>Impact</th><th>Likelihood</th><th>Exposure</th><th>Risk</th><th>Review Status</th><th>Root Cause</th><th>Abuse Case</th><th>Mitigation</th></tr></thead>
+        <thead><tr>
+          <th title="Stable identifier assigned to the threat entry.">ID</th>
+          <th title="Short name describing the threat scenario.">Title</th>
+          <th title="Codebase component or subsystem affected by the threat.">Component</th>
+          <th title="Threat modeling category or framework classification.">Classification</th>
+          <th title="Business or technical impact if the threat is realized.">Impact</th>
+          <th title="Estimated likelihood that the threat can be exercised.">Likelihood</th>
+          <th title="Exposure context for the threat: public, authenticated, or internal.">Exposure</th>
+          <th title="Risk score and severity level derived from the threat model.">Risk</th>
+          <th title="Review status describing whether the threat has been validated by a reviewer.">Review Status</th>
+          <th title="Observed code root cause or direct evidence supporting the threat.">Root Cause</th>
+          <th title="Practical attack path describing how the threat can be abused.">Abuse Case</th>
+          <th title="Actionable guidance for reducing or eliminating the threat.">Mitigation</th>
+        </tr></thead>
         <tbody>${threatRows}</tbody>
       </table>
       ${categoryEntries.length > 0 ? `<h3 style="margin-top:18px;">Methodology Category Breakdown</h3><table><thead><tr><th>Category</th><th>Count</th></tr></thead><tbody>${categoryEntries.map(([category, count]) => `<tr><td>${escapeHtml(category)}</td><td>${count}</td></tr>`).join("")}</tbody></table>` : ""}
@@ -1563,12 +1584,9 @@ function renderThreatHtml(report: ThreatModelReport): string {
         <pre>${escapeHtml(JSON.stringify(report, null, 2))}</pre>
       </article>
       <article class="card code-box">
-        <h2>Architecture Diagram</h2>
-        ${renderThreatDiagramPreview(report)}
-        <details style="margin-top:12px;">
-          <summary class="diagram-help">View diagram source</summary>
-          <pre>${escapeHtml(report.diagram)}</pre>
-        </details>
+        <h2>Diagram Source</h2>
+        <p class="muted">Mermaid source for the architecture diagram shown above.</p>
+        <pre>${escapeHtml(report.diagram)}</pre>
       </article>
     </section>
   </main>

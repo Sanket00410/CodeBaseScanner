@@ -3020,15 +3020,12 @@ export default function App(): React.JSX.Element {
       framework === "OWASP" ? "OWASP" : framework === "PASTA" ? "PASTA" : framework === "DREAD" ? "DREAD" : "STRIDE";
     const diagramNodes = report
       ? [
-          { title: "Operator", detail: "Selects target codebase" },
-          { title: "Application UI", detail: "Threat Modeling section" },
-          { title: "Desktop service", detail: "IPC request and audit trail" },
+          { title: "Application UI", detail: "Threat Modeling workspace" },
+          { title: "Security bridge", detail: "IPC boundary and request validation" },
+          { title: "Desktop service", detail: "Privileged application services" },
           { title: "Analysis engine", detail: frameworkLabel },
-          { title: "Target repository", detail: report.system_overview.main_components.slice(0, 3).join(", ") || "Selected codebase" },
-          {
-            title: "Generated artifacts",
-            detail: `${report.assets.length} assets · ${report.entry_points.length} entry points · ${report.threats.length} threats`,
-          },
+          { title: "Report exporter", detail: "JSON, HTML, Mermaid artifacts" },
+          { title: "Local scan store", detail: "Saved reports and analysis history" },
         ]
       : [];
     const jumpToThreat = (anchor: string): void => {
@@ -3443,18 +3440,18 @@ export default function App(): React.JSX.Element {
                 <table className="simple-table">
                   <thead>
                     <tr>
-                      <th>ID</th>
-                      <th>Title</th>
-                      <th>Component</th>
-                      <th>Classification</th>
-                      <th>Impact</th>
-                      <th>Likelihood</th>
-                      <th>Exposure</th>
-                      <th>Risk</th>
-                      <th>Review Status</th>
-                      <th>Root Cause</th>
-                      <th>Abuse Case</th>
-                      <th>Mitigation</th>
+                      <th title="Stable identifier assigned to the threat entry.">ID</th>
+                      <th title="Short name describing the threat scenario.">Title</th>
+                      <th title="Codebase component or subsystem affected by the threat.">Component</th>
+                      <th title="Threat modeling category or framework classification.">Classification</th>
+                      <th title="Business or technical impact if the threat is realized.">Impact</th>
+                      <th title="Estimated likelihood that the threat can be exercised.">Likelihood</th>
+                      <th title="Exposure context for the threat: public, authenticated, or internal.">Exposure</th>
+                      <th title="Risk score and severity level derived from the threat model.">Risk</th>
+                      <th title="Review status describing whether the threat has been validated by a reviewer.">Review Status</th>
+                      <th title="Observed code root cause or direct evidence supporting the threat.">Root Cause</th>
+                      <th title="Practical attack path describing how the threat can be abused.">Abuse Case</th>
+                      <th title="Actionable guidance for reducing or eliminating the threat.">Mitigation</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3603,7 +3600,7 @@ export default function App(): React.JSX.Element {
                     fontSize: ".82rem",
                   }}
                 >
-                  Trust boundary: user interface
+                  Application boundary
                 </div>
                 <div
                   style={{
@@ -3661,7 +3658,7 @@ export default function App(): React.JSX.Element {
                     fontSize: ".82rem",
                   }}
                 >
-                  Trust boundary: privileged analysis
+                  Privileged desktop boundary
                 </div>
                 <details>
                   <summary className="role-hint" style={{ cursor: "pointer" }}>
