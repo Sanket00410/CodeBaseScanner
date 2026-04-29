@@ -3018,6 +3018,19 @@ export default function App(): React.JSX.Element {
     const framework = report?.framework || threatModelFramework;
     const frameworkLabel =
       framework === "OWASP" ? "OWASP Threat Model" : framework === "PASTA" ? "PASTA" : framework === "DREAD" ? "DREAD" : "STRIDE";
+    const diagramNodes = report
+      ? [
+          { title: "User", detail: "Selects codebase" },
+          { title: "Frontend renderer", detail: "Threat Model tab" },
+          { title: "Electron main process", detail: "IPC request + audit trail" },
+          { title: "Threat model analyzer", detail: frameworkLabel },
+          { title: "Source code repository", detail: report.system_overview.main_components.slice(0, 3).join(", ") || "Selected codebase" },
+          {
+            title: "Threat model artifacts",
+            detail: `${report.assets.length} assets · ${report.entry_points.length} entry points · ${report.threats.length} threats`,
+          },
+        ]
+      : [];
     const jumpToThreat = (anchor: string): void => {
       document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "start" });
     };
@@ -3567,8 +3580,96 @@ export default function App(): React.JSX.Element {
             )}
 
             <div className="subpanel">
-              <h3>Mermaid Diagram</h3>
-              <pre>{report.diagram}</pre>
+              <h3>Diagram</h3>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "12px",
+                  border: "1px solid rgba(120,168,205,.18)",
+                  borderRadius: "16px",
+                  padding: "16px",
+                  background: "rgba(255,255,255,.02)",
+                }}
+              >
+                <div
+                  style={{
+                    alignSelf: "flex-start",
+                    padding: "6px 10px",
+                    borderRadius: "999px",
+                    border: "1px solid rgba(120,168,205,.22)",
+                    background: "rgba(255,255,255,.03)",
+                    color: "#b8cadc",
+                    fontSize: ".82rem",
+                  }}
+                >
+                  Trust boundary: user interface
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(11, minmax(0, 1fr))",
+                    gap: "10px",
+                    alignItems: "stretch",
+                  }}
+                >
+                  {diagramNodes.map((node, index) => (
+                    <React.Fragment key={node.title}>
+                      <div
+                        style={{
+                          gridColumn: "span 2",
+                          minHeight: "92px",
+                          border: "1px solid rgba(120,168,205,.22)",
+                          borderRadius: "14px",
+                          padding: "12px",
+                          background: "linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02))",
+                          display: "flex",
+                          flexDirection: "column",
+                          justifyContent: "center",
+                          textAlign: "center",
+                        }}
+                      >
+                        <div style={{ fontWeight: 700, marginBottom: "6px" }}>{node.title}</div>
+                        <div style={{ color: "#9ab0c8", fontSize: ".9rem", lineHeight: 1.35 }}>{node.detail}</div>
+                      </div>
+                      {index < diagramNodes.length - 1 && (
+                        <div
+                          style={{
+                            gridColumn: "span 1",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            color: "#7ecbff",
+                            fontSize: "1.4rem",
+                            fontWeight: 700,
+                          }}
+                        >
+                          →
+                        </div>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </div>
+                <div
+                  style={{
+                    alignSelf: "flex-start",
+                    padding: "6px 10px",
+                    borderRadius: "999px",
+                    border: "1px solid rgba(120,168,205,.22)",
+                    background: "rgba(255,255,255,.03)",
+                    color: "#b8cadc",
+                    fontSize: ".82rem",
+                  }}
+                >
+                  Trust boundary: privileged analysis
+                </div>
+                <details>
+                  <summary className="role-hint" style={{ cursor: "pointer" }}>
+                    View Mermaid source
+                  </summary>
+                  <pre>{report.diagram}</pre>
+                </details>
+              </div>
             </div>
 
             <div className="subpanel">

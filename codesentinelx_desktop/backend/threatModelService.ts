@@ -1141,6 +1141,41 @@ function buildMermaidDiagram(report: ThreatModelReport): string {
   return body.join("\n");
 }
 
+function renderThreatDiagramPreview(report: ThreatModelReport): string {
+  const frameworkLabel = threatModelFrameworkLabel(report.framework);
+  const componentSummary = report.system_overview.main_components.slice(0, 3).join(", ") || "Selected codebase";
+  const entryPointSummary = report.entry_points.length > 0 ? `${report.entry_points.length} entry points` : "No entry points found";
+  const assetSummary = report.assets.length > 0 ? `${report.assets.length} assets` : "No assets inferred";
+  const threatSummary = `${report.threats.length} threats`;
+  const flowNodes = [
+    { title: "User", detail: "Selects codebase" },
+    { title: "Frontend renderer", detail: "Threat Model tab" },
+    { title: "Electron main process", detail: "IPC request + audit trail" },
+    { title: "Threat model analyzer", detail: frameworkLabel },
+    { title: "Source code repository", detail: componentSummary },
+    { title: "Threat model artifacts", detail: `${assetSummary} | ${entryPointSummary} | ${threatSummary}` },
+  ];
+  return `
+    <div class="diagram-preview" role="img" aria-label="Threat model flow diagram">
+      <div class="diagram-boundary">Trust boundary: user interface</div>
+      <div class="diagram-row">
+        ${flowNodes
+          .map(
+            (node, index) => `
+              <div class="diagram-node">
+                <div class="diagram-node-title">${escapeHtml(node.title)}</div>
+                <div class="diagram-node-detail">${escapeHtml(node.detail)}</div>
+              </div>
+              ${index < flowNodes.length - 1 ? `<div class="diagram-arrow">-&gt;</div>` : ""}
+            `,
+          )
+          .join("")}
+      </div>
+      <div class="diagram-boundary">Trust boundary: privileged analysis</div>
+    </div>
+  `;
+}
+
 function buildAttackSurfaceSummary(entryPoints: ThreatModelEntryPoint[], components: string[], externalIntegrations: string[]): Array<{ label: string; value: string; detail: string }> {
   const routeEntries = entryPoints.filter((item) => item.type === "HTTP route");
   const ipcEntries = entryPoints.filter((item) => item.type === "Desktop IPC channel");
@@ -1372,6 +1407,14 @@ function renderThreatHtml(report: ThreatModelReport): string {
     .threat-body { padding:0 14px 14px; }
     .eyebrow { margin:0; color:#9ab0c8; font-size:.78rem; letter-spacing:.08em; text-transform:uppercase; }
     .stride { display:inline-flex; align-items:center; border:1px solid rgba(120,168,205,.25); border-radius:999px; padding:6px 10px; background:rgba(255,255,255,.04); white-space:nowrap; }
+    .diagram-preview { display:flex; flex-direction:column; gap:12px; }
+    .diagram-boundary { display:inline-flex; align-self:flex-start; padding:6px 10px; border-radius:999px; border:1px solid rgba(120,168,205,.22); background:rgba(255,255,255,.03); color:#b8cadc; font-size:.82rem; }
+    .diagram-row { display:grid; grid-template-columns:repeat(11, minmax(0, 1fr)); gap:10px; align-items:stretch; }
+    .diagram-node { grid-column:span 2; min-height:92px; border:1px solid rgba(120,168,205,.22); border-radius:14px; padding:12px; background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02)); display:flex; flex-direction:column; justify-content:center; text-align:center; }
+    .diagram-node-title { font-weight:700; margin-bottom:6px; }
+    .diagram-node-detail { color:#9ab0c8; font-size:.9rem; line-height:1.35; }
+    .diagram-arrow { grid-column:span 1; display:flex; align-items:center; justify-content:center; color:#7ecbff; font-size:1.4rem; font-weight:700; }
+    .diagram-help { color:#9ab0c8; font-size:.88rem; margin-top:-4px; }
   </style>
 </head>
 <body>
@@ -1520,8 +1563,12 @@ function renderThreatHtml(report: ThreatModelReport): string {
         <pre>${escapeHtml(JSON.stringify(report, null, 2))}</pre>
       </article>
       <article class="card code-box">
-        <h2>Mermaid</h2>
-        <pre>${escapeHtml(report.diagram)}</pre>
+        <h2>Diagram</h2>
+        ${renderThreatDiagramPreview(report)}
+        <details style="margin-top:12px;">
+          <summary class="diagram-help">View Mermaid source</summary>
+          <pre>${escapeHtml(report.diagram)}</pre>
+        </details>
       </article>
     </section>
   </main>
