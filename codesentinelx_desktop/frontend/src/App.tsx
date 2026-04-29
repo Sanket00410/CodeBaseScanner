@@ -23,6 +23,7 @@ import {
   ToolManagerAuthConfig,
   ToolManagerOtpResult,
   ToolManagerVerifyResult,
+  ThreatModelFramework,
   ToolScanProfile,
   ToolchainStatusEntry,
   UserRole,
@@ -776,6 +777,7 @@ export default function App(): React.JSX.Element {
   const [tab, setTab] = useState<AppTab>("dashboard");
   const [projectPath, setProjectPath] = useState("");
   const [threatModelPath, setThreatModelPath] = useState("");
+  const [threatModelFramework, setThreatModelFramework] = useState<ThreatModelFramework>("STRIDE");
   const [scanPreset, setScanPreset] = useState<ScanPreset>("standard");
   const [diffBaseRef, setDiffBaseRef] = useState("");
   const [diffHeadRef, setDiffHeadRef] = useState("");
@@ -1518,12 +1520,12 @@ export default function App(): React.JSX.Element {
       return;
     }
     setIsThreatModeling(true);
-    setThreatModelStatus("Analyzing codebase for STRIDE threat model...");
+    setThreatModelStatus(`Analyzing codebase for ${threatModelFramework} threat model...`);
     try {
       const result = await window.codeSentinelX.createThreatModel({
         projectPath: targetPath,
         requestedBy: "local-user",
-        framework: "STRIDE",
+        framework: threatModelFramework,
       });
       setThreatModel(result);
       setLastThreatModelHtml(result.htmlPath);
@@ -1531,7 +1533,7 @@ export default function App(): React.JSX.Element {
       setLastThreatModelMermaid(result.mermaidPath);
       const threatIds = result.report.threats.map((threat, index) => threat.threat_id || `TM-${index + 1}`).join(", ");
       setThreatModelStatus(
-        `Threat model completed: ${result.report.summary.threats} threats from ${result.report.summary.source_files_analyzed} source files. Threat IDs: ${threatIds || "none"}.`,
+        `${result.report.framework} threat model completed: ${result.report.summary.threats} threats from ${result.report.summary.source_files_analyzed} source files. Threat IDs: ${threatIds || "none"}.`,
       );
     } catch (error) {
       setThreatModelStatus(error instanceof Error ? error.message : String(error));
@@ -3013,32 +3015,23 @@ export default function App(): React.JSX.Element {
   const renderThreatModel = (): React.JSX.Element => {
     const report = threatModel?.report;
     const jsonText = report ? JSON.stringify(report, null, 2) : "";
+    const framework = report?.framework || threatModelFramework;
+    const frameworkLabel =
+      framework === "OWASP" ? "OWASP Threat Model" : framework === "PASTA" ? "PASTA" : framework === "DREAD" ? "DREAD" : "STRIDE";
     const jumpToThreat = (anchor: string): void => {
       document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "start" });
     };
-    const strideCounts = report
+    const categoryCounts = report
       ? report.threats.reduce(
           (acc, threat) => {
-            acc[threat.stride_category] += 1;
+            const key = threat.framework_category || threat.stride_category;
+            acc[key] = (acc[key] || 0) + 1;
             return acc;
           },
-          {
-            Spoofing: 0,
-            Tampering: 0,
-            Repudiation: 0,
-            "Information Disclosure": 0,
-            "Denial of Service": 0,
-            "Elevation of Privilege": 0,
-          } as Record<ThreatModelReport["threats"][number]["stride_category"], number>,
+          {} as Record<string, number>,
         )
-      : {
-          Spoofing: 0,
-          Tampering: 0,
-          Repudiation: 0,
-          "Information Disclosure": 0,
-            "Denial of Service": 0,
-            "Elevation of Privilege": 0,
-        };
+      : {};
+    const categoryEntries = Object.entries(categoryCounts).sort((left, right) => right[1] - left[1]).slice(0, 8);
     const threatLinks = report
       ? report.threats.map((threat, index) => {
           const threatId = threat.threat_id || `TM-${index + 1}`;
@@ -3063,13 +3056,14 @@ export default function App(): React.JSX.Element {
     const hasTraceability = Boolean(report && report.traceability.length > 0);
     const hasResidualRisk = Boolean(report && report.residual_risk.length > 0);
     const hasAssumptions = Boolean(report && report.assumptions.length > 0);
+    const hasDreadDetails = Boolean(report && report.threats.some((threat) => Boolean(threat.dread_breakdown)));
 
     return (
       <section className="panel stack-gap">
         <div className="subpanel stack-gap">
           <h3>Threat Model Workspace</h3>
           <p className="muted-text">
-            This workflow is independent from the canonical scan. It reads source code only, infers architecture from the selected codebase, and generates a STRIDE threat model.
+            This workflow is independent from the canonical scan. It reads source code only, infers architecture from the selected codebase, and generates a methodology-specific threat model.
           </p>
           <div className="header-row">
             <label htmlFor="threatModelPath">Codebase File or Folder</label>
@@ -3079,6 +3073,17 @@ export default function App(): React.JSX.Element {
               onChange={(event) => setThreatModelPath(event.target.value)}
               placeholder="C:\\projects\\app-or-repo"
             />
+            <label htmlFor="threatModelFramework">Framework</label>
+            <select
+              id="threatModelFramework"
+              value={threatModelFramework}
+              onChange={(event) => setThreatModelFramework(event.target.value as ThreatModelFramework)}
+            >
+              <option value="STRIDE">STRIDE</option>
+              <option value="DREAD">DREAD</option>
+              <option value="OWASP">OWASP</option>
+              <option value="PASTA">PASTA</option>
+            </select>
             <button type="button" onClick={browseThreatModelProject}>
               Browse
             </button>
@@ -3096,11 +3101,12 @@ export default function App(): React.JSX.Element {
             </button>
           </div>
           <p className="role-hint">{threatModelStatus}</p>
+          <p className="role-hint">Selected framework: {frameworkLabel}</p>
           <p className="role-hint">Threat model target selection does not affect canonical scan history or report exports.</p>
         </div>
 
         {!report ? (
-          <EmptyState text="Browse a project file or folder, then create a threat model to see STRIDE output." />
+          <EmptyState text="Browse a project file or folder, then create a threat model to see the selected framework output." />
         ) : (
           <>
             <div className="subpanel">
@@ -3126,6 +3132,10 @@ export default function App(): React.JSX.Element {
                   <p>Threats</p>
                   <h4>{report.summary.threats}</h4>
                 </div>
+              </div>
+              <div className="metric-card" style={{ marginTop: "12px" }}>
+                <p>Framework</p>
+                <h4>{frameworkLabel}</h4>
               </div>
               {(hasOverviewComponents || hasExternalIntegrations) && (
                 <div className="table-split-grid">
@@ -3303,19 +3313,51 @@ export default function App(): React.JSX.Element {
 
             {hasThreats && (
               <div className="subpanel">
-                <h3>Threats (STRIDE)</h3>
+                <h3>Threats ({frameworkLabel})</h3>
                 <div className="metric-grid">
                   <MetricCard label="Total Threats" value={String(report.threats.length)} />
-                  <MetricCard label="Spoofing" value={String(strideCounts.Spoofing)} />
-                  <MetricCard label="Tampering" value={String(strideCounts.Tampering)} />
-                  <MetricCard label="Repudiation" value={String(strideCounts.Repudiation)} />
-                  <MetricCard label="Information Disclosure" value={String(strideCounts["Information Disclosure"])} />
-                  <MetricCard label="Denial of Service" value={String(strideCounts["Denial of Service"])} />
-                  <MetricCard label="Elevation of Privilege" value={String(strideCounts["Elevation of Privilege"])} />
+                  {framework === "STRIDE" ? (
+                    <>
+                      <MetricCard label="Spoofing" value={String(categoryCounts.Spoofing || 0)} />
+                      <MetricCard label="Tampering" value={String(categoryCounts.Tampering || 0)} />
+                      <MetricCard label="Repudiation" value={String(categoryCounts.Repudiation || 0)} />
+                      <MetricCard label="Information Disclosure" value={String(categoryCounts["Information Disclosure"] || 0)} />
+                      <MetricCard label="Denial of Service" value={String(categoryCounts["Denial of Service"] || 0)} />
+                      <MetricCard label="Elevation of Privilege" value={String(categoryCounts["Elevation of Privilege"] || 0)} />
+                    </>
+                  ) : (
+                    <>
+                      <MetricCard label="Framework Categories" value={String(categoryEntries.length)} />
+                      <MetricCard label="Validated Threats" value={String(report.threats.filter((item) => item.review_status === "Validated by reviewer").length)} />
+                      <MetricCard label="Pending Review" value={String(report.threats.filter((item) => item.review_status !== "Validated by reviewer").length)} />
+                      {hasDreadDetails && <MetricCard label="DREAD Profiles" value={String(report.threats.filter((item) => Boolean(item.dread_breakdown)).length)} />}
+                    </>
+                  )}
                 </div>
                 <div className="threat-model-link-bar">
                   {threatLinks}
                 </div>
+                {framework !== "STRIDE" && categoryEntries.length > 0 && (
+                  <div className="subpanel" style={{ marginTop: "12px" }}>
+                    <h4>Framework Category Breakdown</h4>
+                    <table className="simple-table">
+                      <thead>
+                        <tr>
+                          <th>Category</th>
+                          <th>Count</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {categoryEntries.map(([category, count]) => (
+                          <tr key={category}>
+                            <td>{category}</td>
+                            <td>{count}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
                 <div className="threat-model-card-grid">
                   {report.threats.map((threat, index) => {
                     const threatId = threat.threat_id || `TM-${index + 1}`;
@@ -3327,14 +3369,44 @@ export default function App(): React.JSX.Element {
                             <p className="eyebrow">Threat {threatId}</p>
                             <h4>{threat.title}</h4>
                           </div>
-                          <span className="stride-pill">{threat.stride_category}</span>
+                          <span className="stride-pill">{threat.framework_category || threat.stride_category}</span>
                         </summary>
                         <div className="threat-model-card-body">
                           <p><strong>Component:</strong> {threat.component}</p>
+                          <p><strong>Framework:</strong> {frameworkLabel}</p>
+                          <p><strong>Classification:</strong> {threat.framework_category || threat.stride_category}</p>
                           <p><strong>Impact:</strong> {threat.impact} | <strong>Likelihood:</strong> {threat.likelihood} | <strong>Exposure:</strong> {threat.exposure}</p>
                           <p><strong>Risk Score:</strong> {threat.risk_score ?? "N/A"} ({threat.risk_level || "N/A"})</p>
                           <p><strong>Reviewer Status:</strong> {threat.review_status || "Pending reviewer validation"}</p>
                           <p><strong>Description:</strong> {threat.description}</p>
+                          {threat.owasp_category && (
+                            <p><strong>OWASP Category:</strong> {threat.owasp_category}</p>
+                          )}
+                          {threat.pasta_stage && (
+                            <p><strong>PASTA Stage:</strong> {threat.pasta_stage}</p>
+                          )}
+                          {threat.dread_breakdown && (
+                            <table className="simple-table">
+                              <thead>
+                                <tr>
+                                  <th>Damage</th>
+                                  <th>Reproducibility</th>
+                                  <th>Exploitability</th>
+                                  <th>Affected Users</th>
+                                  <th>Discoverability</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                <tr>
+                                  <td>{threat.dread_breakdown.damage}</td>
+                                  <td>{threat.dread_breakdown.reproducibility}</td>
+                                  <td>{threat.dread_breakdown.exploitability}</td>
+                                  <td>{threat.dread_breakdown.affected_users}</td>
+                                  <td>{threat.dread_breakdown.discoverability}</td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          )}
                           <p><strong>Evidence:</strong></p>
                           {evidence.length > 0 ? (
                             <ul className="landing-story-list">
@@ -3361,7 +3433,7 @@ export default function App(): React.JSX.Element {
                       <th>ID</th>
                       <th>Title</th>
                       <th>Component</th>
-                      <th>STRIDE</th>
+                      <th>Classification</th>
                       <th>Impact</th>
                       <th>Likelihood</th>
                       <th>Exposure</th>
@@ -3378,7 +3450,7 @@ export default function App(): React.JSX.Element {
                         <td>{threat.threat_id || `TM-${index + 1}`}</td>
                         <td>{threat.title}</td>
                         <td>{threat.component}</td>
-                        <td>{threat.stride_category}</td>
+                        <td>{threat.framework_category || threat.stride_category}</td>
                         <td>{threat.impact}</td>
                         <td>{threat.likelihood}</td>
                         <td>{threat.exposure}</td>

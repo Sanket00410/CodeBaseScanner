@@ -1,6 +1,7 @@
 export type Severity = "Critical" | "High" | "Medium" | "Low" | "Info";
 export type UserRole = "Admin" | "Security Analyst" | "Developer" | "Auditor" | "Management";
 export type ScanPreset = "fast" | "standard" | "deep";
+export type ThreatModelFramework = "STRIDE" | "DREAD" | "OWASP" | "PASTA";
 
 export interface ScmDiffContext {
   diffBaseRef?: string;
@@ -46,7 +47,7 @@ export interface ExportRequest {
 export interface ThreatModelRequest {
   projectPath: string;
   requestedBy?: string;
-  framework?: "STRIDE";
+  framework?: ThreatModelFramework;
 }
 
 export interface ThreatModelSystemOverview {
@@ -106,6 +107,17 @@ export interface ThreatModelThreat {
   title: string;
   component: string;
   stride_category: "Spoofing" | "Tampering" | "Repudiation" | "Information Disclosure" | "Denial of Service" | "Elevation of Privilege";
+  framework_category?: string;
+  framework_notes?: string;
+  owasp_category?: string;
+  pasta_stage?: string;
+  dread_breakdown?: {
+    damage: number;
+    reproducibility: number;
+    exploitability: number;
+    affected_users: number;
+    discoverability: number;
+  };
   description: string;
   abuse_case: string;
   impact: "High" | "Medium" | "Low";
@@ -149,6 +161,7 @@ export interface ThreatModelReport {
   target_path: string;
   target_type: "file" | "folder" | "unknown";
   generated_at: string;
+  framework: ThreatModelFramework;
   system_overview: ThreatModelSystemOverview;
   assets: ThreatModelAsset[];
   security_objectives: ThreatModelSecurityObjective[];

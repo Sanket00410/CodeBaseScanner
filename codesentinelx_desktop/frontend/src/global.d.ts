@@ -27,7 +27,7 @@ declare global {
       createThreatModel: (request: {
         projectPath: string;
         requestedBy?: string;
-        framework?: "STRIDE";
+        framework?: "STRIDE" | "DREAD" | "OWASP" | "PASTA";
       }) => Promise<import("./types").ThreatModelResult>;
       startScan: (request: {
         projectPath: string;

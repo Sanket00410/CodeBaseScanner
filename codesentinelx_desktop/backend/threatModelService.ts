@@ -9,6 +9,7 @@ import {
   ThreatModelRequest,
   ThreatModelResult,
   ThreatModelCodeMapping,
+  ThreatModelFramework,
   ThreatModelSecurityObjective,
   ThreatModelTraceabilityItem,
   ThreatModelValidationPlanItem,
@@ -65,6 +66,8 @@ const IGNORE_SEGMENTS = new Set([
   "logs",
   "exports",
 ]);
+
+const THREAT_MODEL_FRAMEWORKS: ThreatModelFramework[] = ["STRIDE", "DREAD", "OWASP", "PASTA"];
 
 function toPosixPath(input: string): string {
   return String(input || "").replaceAll("\\", "/");
@@ -189,6 +192,128 @@ function collectEvidence(
 
 function uniqueValues(items: string[]): string[] {
   return [...new Set(items.map((item) => item.trim()).filter(Boolean))];
+}
+
+function normalizeThreatModelFramework(input: unknown): ThreatModelFramework {
+  const candidate = String(input || "").trim().toUpperCase();
+  return (THREAT_MODEL_FRAMEWORKS as string[]).includes(candidate) ? (candidate as ThreatModelFramework) : "STRIDE";
+}
+
+function threatModelFrameworkLabel(framework: ThreatModelFramework): string {
+  switch (framework) {
+    case "DREAD":
+      return "DREAD";
+    case "OWASP":
+      return "OWASP Threat Model";
+    case "PASTA":
+      return "PASTA";
+    case "STRIDE":
+    default:
+      return "STRIDE";
+  }
+}
+
+function mapStrideThreatToOwasp(strideCategory: ThreatModelThreat["stride_category"], threat: Pick<ThreatModelThreat, "title" | "component" | "description">): string {
+  const text = `${threat.title} ${threat.component} ${threat.description}`.toLowerCase();
+  if (strideCategory === "Spoofing" || strideCategory === "Elevation of Privilege") {
+    return "A01:2021 - Broken Access Control";
+  }
+  if (strideCategory === "Repudiation") {
+    return "A09:2021 - Security Logging and Monitoring Failures";
+  }
+  if (strideCategory === "Information Disclosure") {
+    return text.includes("secret") || text.includes("credential") || text.includes("token")
+      ? "A02:2021 - Cryptographic Failures"
+      : "A01:2021 - Broken Access Control";
+  }
+  if (strideCategory === "Denial of Service") {
+    return "A04:2021 - Insecure Design";
+  }
+  if (text.includes("export") || text.includes("write") || text.includes("tamper")) {
+    return "A08:2021 - Software and Data Integrity Failures";
+  }
+  if (text.includes("login") || text.includes("session") || text.includes("auth")) {
+    return "A07:2021 - Identification and Authentication Failures";
+  }
+  return "A05:2021 - Security Misconfiguration";
+}
+
+function mapStrideThreatToPastaStage(threat: Pick<ThreatModelThreat, "title" | "component" | "description">): string {
+  const text = `${threat.title} ${threat.component} ${threat.description}`.toLowerCase();
+  if (text.includes("privilege") || text.includes("auth") || text.includes("session")) {
+    return "Stage 6 - Attack Modeling";
+  }
+  if (text.includes("export") || text.includes("write") || text.includes("tamper")) {
+    return "Stage 5 - Vulnerability Analysis";
+  }
+  if (text.includes("audit") || text.includes("log") || text.includes("history")) {
+    return "Stage 4 - Threat Analysis";
+  }
+  if (text.includes("secret") || text.includes("token") || text.includes("credential")) {
+    return "Stage 3 - Application Decomposition";
+  }
+  return "Stage 6 - Attack Modeling";
+}
+
+function computeDreadBreakdown(
+  threat: Pick<ThreatModelThreat, "impact" | "likelihood" | "exposure" | "evidence" | "title" | "component" | "description">,
+): NonNullable<ThreatModelThreat["dread_breakdown"]> {
+  const damage = threat.impact === "High" ? 9 : threat.impact === "Medium" ? 6 : 3;
+  const reproducibility = threat.likelihood === "High" ? 8 : threat.likelihood === "Medium" ? 5 : 2;
+  const exploitability = threat.exposure === "Public" ? 9 : threat.exposure === "Authenticated" ? 6 : 3;
+  const affectedUsers = threat.exposure === "Public" ? 9 : threat.exposure === "Authenticated" ? 5 : 2;
+  const evidenceCount = Array.isArray(threat.evidence) ? threat.evidence.length : 0;
+  const discoverability = Math.min(10, 4 + evidenceCount * 2 + (String(threat.title || threat.component || threat.description).length > 40 ? 1 : 0));
+  return {
+    damage,
+    reproducibility,
+    exploitability,
+    affected_users: affectedUsers,
+    discoverability,
+  };
+}
+
+function computeFrameworkScore(framework: ThreatModelFramework, threat: ThreatModelThreat): number {
+  if (framework === "DREAD") {
+    const breakdown = computeDreadBreakdown(threat);
+    const average = (breakdown.damage + breakdown.reproducibility + breakdown.exploitability + breakdown.affected_users + breakdown.discoverability) / 5;
+    return Number(average.toFixed(1));
+  }
+  return estimateThreatScore(threat.impact, threat.likelihood, threat.exposure);
+}
+
+function adaptThreatForFramework(threat: ThreatModelThreat, framework: ThreatModelFramework): ThreatModelThreat {
+  const frameworkCategory =
+    framework === "OWASP"
+      ? mapStrideThreatToOwasp(threat.stride_category, threat)
+      : framework === "PASTA"
+        ? mapStrideThreatToPastaStage(threat)
+        : threat.stride_category;
+  const adapted: ThreatModelThreat = {
+    ...threat,
+    framework_category: frameworkCategory,
+    framework_notes:
+      framework === "STRIDE"
+        ? "Direct STRIDE mapping from code evidence."
+        : framework === "OWASP"
+          ? "OWASP Top 10 oriented model derived from the same code evidence."
+          : framework === "DREAD"
+            ? "DREAD scoring applied to the same evidence-backed threat."
+            : "PASTA stage-aligned view derived from the same evidence-backed threat.",
+    owasp_category: framework === "OWASP" ? frameworkCategory : threat.owasp_category,
+    pasta_stage: framework === "PASTA" ? frameworkCategory : threat.pasta_stage,
+    dread_breakdown: framework === "DREAD" ? computeDreadBreakdown(threat) : threat.dread_breakdown,
+    risk_score: computeFrameworkScore(framework, threat),
+    risk_level:
+      computeFrameworkScore(framework, threat) >= 8
+        ? "Critical"
+        : computeFrameworkScore(framework, threat) >= 6.5
+          ? "High"
+          : computeFrameworkScore(framework, threat) >= 4
+            ? "Medium"
+            : "Low",
+  };
+  return adapted;
 }
 
 function normalizeExposure(text: string): "Public" | "Authenticated" | "Internal" {
@@ -817,6 +942,7 @@ function buildThreats(
   entryPoints: ThreatModelEntryPoint[],
   components: string[],
   externalIntegrations: string[],
+  framework: ThreatModelFramework,
 ): ThreatModelThreat[] {
   const threats: ThreatModelThreat[] = [];
   const nextId = () => `TM-${threats.length + 1}`;
@@ -978,7 +1104,7 @@ function buildThreats(
     }
   }
 
-  return threats;
+  return threats.map((threat) => adaptThreatForFramework(threat, framework));
 }
 
 function summarizeStrideCounts(threats: ThreatModelThreat[]): Record<ThreatModelThreat["stride_category"], number> {
@@ -1076,9 +1202,17 @@ function escapeHtml(input: string): string {
 }
 
 function renderThreatHtml(report: ThreatModelReport): string {
+  const framework = report.framework;
+  const frameworkLabel = threatModelFrameworkLabel(report.framework);
   const overviewList = report.system_overview.main_components.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
   const integrationsList = report.system_overview.external_integrations.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
   const stackList = report.system_overview.technology_stack.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+  const categoryCounts = report.threats.reduce((acc, threat) => {
+    const key = threat.framework_category || threat.stride_category;
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+  const categoryEntries = Object.entries(categoryCounts).sort((left, right) => right[1] - left[1]);
   const assetRows = report.assets
     .map(
       (item) => `<tr>
@@ -1148,7 +1282,7 @@ function renderThreatHtml(report: ThreatModelReport): string {
         <td>${escapeHtml(item.threat_id || "")}</td>
         <td><strong>${escapeHtml(item.title)}</strong></td>
         <td>${escapeHtml(item.component)}</td>
-        <td>${escapeHtml(item.stride_category)}</td>
+        <td>${escapeHtml(item.framework_category || item.stride_category)}</td>
         <td>${escapeHtml(item.impact)}</td>
         <td>${escapeHtml(item.likelihood)}</td>
         <td>${escapeHtml(item.exposure)}</td>
@@ -1180,10 +1314,15 @@ function renderThreatHtml(report: ThreatModelReport): string {
         </summary>
         <div class="threat-body">
           <p><strong>Component:</strong> ${escapeHtml(item.component)}</p>
+          <p><strong>Framework:</strong> ${escapeHtml(frameworkLabel)}</p>
+          <p><strong>Classification:</strong> ${escapeHtml(item.framework_category || item.stride_category)}</p>
           <p><strong>Impact:</strong> ${escapeHtml(item.impact)} | <strong>Likelihood:</strong> ${escapeHtml(item.likelihood)} | <strong>Exposure:</strong> ${escapeHtml(item.exposure)}</p>
           <p><strong>Risk score:</strong> ${escapeHtml(String(item.risk_score ?? ""))} (${escapeHtml(item.risk_level || "")})</p>
           <p><strong>Reviewer status:</strong> ${escapeHtml(item.review_status || "Pending reviewer validation")}</p>
           <p><strong>Description:</strong> ${escapeHtml(item.description)}</p>
+          ${item.owasp_category ? `<p><strong>OWASP Category:</strong> ${escapeHtml(item.owasp_category)}</p>` : ""}
+          ${item.pasta_stage ? `<p><strong>PASTA Stage:</strong> ${escapeHtml(item.pasta_stage)}</p>` : ""}
+          ${item.dread_breakdown ? `<table><thead><tr><th>Damage</th><th>Reproducibility</th><th>Exploitability</th><th>Affected Users</th><th>Discoverability</th></tr></thead><tbody><tr><td>${item.dread_breakdown.damage}</td><td>${item.dread_breakdown.reproducibility}</td><td>${item.dread_breakdown.exploitability}</td><td>${item.dread_breakdown.affected_users}</td><td>${item.dread_breakdown.discoverability}</td></tr></tbody></table>` : ""}
           <p><strong>Evidence:</strong></p>
           ${(item.evidence || []).length > 0
             ? `<ul>${(item.evidence || []).map((hit) => `<li>${escapeHtml(hit.file)}:${Number(hit.line || 0)} - ${escapeHtml(hit.excerpt)}</li>`).join("")}</ul>`
@@ -1239,10 +1378,11 @@ function renderThreatHtml(report: ThreatModelReport): string {
   <main class="shell">
     <section class="hero">
       <h1>CodeSentinelX Threat Model</h1>
-      <p class="muted">STRIDE analysis generated from code only. This workflow is separate from the canonical scan pipeline.</p>
+      <p class="muted">${escapeHtml(frameworkLabel)} analysis generated from code only. This workflow is separate from the canonical scan pipeline.</p>
       <div class="meta">
         <div class="pill"><strong>Target:</strong> ${escapeHtml(report.target_path)}</div>
         <div class="pill"><strong>Type:</strong> ${escapeHtml(report.target_type)}</div>
+        <div class="pill"><strong>Framework:</strong> ${escapeHtml(frameworkLabel)}</div>
         <div class="pill"><strong>Generated:</strong> ${escapeHtml(report.generated_at)}</div>
         <div class="pill"><strong>Source files analyzed:</strong> ${report.summary.source_files_analyzed}</div>
         <div class="pill"><strong>Entry points:</strong> ${report.summary.entry_points}</div>
@@ -1251,12 +1391,14 @@ function renderThreatHtml(report: ThreatModelReport): string {
       <div class="threat-index">
         <div class="index-card"><div>Assets</div><div class="count">${report.summary.assets}</div><div class="muted">Inventory items</div></div>
         <div class="index-card"><div>TM-1 to TM-${report.threats.length}</div><div class="count">${report.summary.threats}</div><div class="muted">Total threats</div></div>
-        <div class="index-card"><div>Spoofing</div><div class="count">${strideCounts.Spoofing}</div></div>
-        <div class="index-card"><div>Tampering</div><div class="count">${strideCounts.Tampering}</div></div>
-        <div class="index-card"><div>Repudiation</div><div class="count">${strideCounts.Repudiation}</div></div>
-        <div class="index-card"><div>Information Disclosure</div><div class="count">${strideCounts["Information Disclosure"]}</div></div>
-        <div class="index-card"><div>Denial of Service</div><div class="count">${strideCounts["Denial of Service"]}</div></div>
-        <div class="index-card"><div>Elevation of Privilege</div><div class="count">${strideCounts["Elevation of Privilege"]}</div></div>
+        ${framework === "STRIDE"
+          ? `<div class="index-card"><div>Spoofing</div><div class="count">${strideCounts.Spoofing}</div></div>
+             <div class="index-card"><div>Tampering</div><div class="count">${strideCounts.Tampering}</div></div>
+             <div class="index-card"><div>Repudiation</div><div class="count">${strideCounts.Repudiation}</div></div>
+             <div class="index-card"><div>Information Disclosure</div><div class="count">${strideCounts["Information Disclosure"]}</div></div>
+             <div class="index-card"><div>Denial of Service</div><div class="count">${strideCounts["Denial of Service"]}</div></div>
+             <div class="index-card"><div>Elevation of Privilege</div><div class="count">${strideCounts["Elevation of Privilege"]}</div></div>`
+          : categoryEntries.slice(0, 6).map(([category, count]) => `<div class="index-card"><div>${escapeHtml(category)}</div><div class="count">${count}</div></div>`).join("")}
       </div>
       <div class="threat-links">${threatLinks}</div>
     </section>
@@ -1323,15 +1465,16 @@ function renderThreatHtml(report: ThreatModelReport): string {
 
     ${report.threats.length > 0 ? `
     <section class="card">
-      <h2>Threats</h2>
+      <h2>Threats (${escapeHtml(frameworkLabel)})</h2>
       <div class="threat-list">
         ${threatCards}
       </div>
       <h3 style="margin-top:18px;">Threat Table</h3>
       <table>
-        <thead><tr><th>ID</th><th>Title</th><th>Component</th><th>STRIDE</th><th>Impact</th><th>Likelihood</th><th>Exposure</th><th>Risk</th><th>Review Status</th><th>Root Cause</th><th>Abuse Case</th><th>Mitigation</th></tr></thead>
+        <thead><tr><th>ID</th><th>Title</th><th>Component</th><th>Classification</th><th>Impact</th><th>Likelihood</th><th>Exposure</th><th>Risk</th><th>Review Status</th><th>Root Cause</th><th>Abuse Case</th><th>Mitigation</th></tr></thead>
         <tbody>${threatRows}</tbody>
       </table>
+      ${categoryEntries.length > 0 ? `<h3 style="margin-top:18px;">Framework Category Breakdown</h3><table><thead><tr><th>Category</th><th>Count</th></tr></thead><tbody>${categoryEntries.map(([category, count]) => `<tr><td>${escapeHtml(category)}</td><td>${count}</td></tr>`).join("")}</tbody></table>` : ""}
     </section>` : ""}
 
     ${report.code_mappings.length > 0 ? `
@@ -1391,6 +1534,7 @@ export class ThreatModelService {
 
   async createThreatModel(request: ThreatModelRequest): Promise<ThreatModelResult> {
     const resolved = path.resolve(request.projectPath);
+    const framework = normalizeThreatModelFramework(request.framework);
     const stat = await fs.promises.stat(resolved).catch(() => null);
     if (!stat || (!stat.isDirectory() && !stat.isFile())) {
       throw new Error("Provided path does not exist or is not a file or directory.");
@@ -1417,7 +1561,7 @@ export class ThreatModelService {
     const assets = buildAssets(samples, entryPoints, mainComponents, externalIntegrations);
     const securityObjectives = buildSecurityObjectives(assets);
     const dataFlows = buildDataFlows(mainComponents, entryPoints);
-    const threats = buildThreats(samples, entryPoints, mainComponents, externalIntegrations);
+    const threats = buildThreats(samples, entryPoints, mainComponents, externalIntegrations, framework);
     const trustBoundaries = buildTrustBoundaries(entryPoints, mainComponents, externalIntegrations);
     const codeMappings = buildCodeMappings(threats);
     const validationPlan = buildValidationPlan(threats);
@@ -1429,6 +1573,7 @@ export class ThreatModelService {
       target_path: resolved,
       target_type: stat.isFile() ? "file" : "folder",
       generated_at: new Date().toISOString(),
+      framework,
       system_overview: {
         application_type: detectApplicationType(samples),
         main_components: mainComponents,
@@ -1463,11 +1608,12 @@ export class ThreatModelService {
       .replace(/[^A-Za-z0-9._-]+/g, "_")
       .replace(/^_+|_+$/g, "") || "threat_model";
     const timestamp = report.generated_at.replace(/[:.]/g, "-");
-    const targetDir = path.join(this.outputDir, "threat-models", safeName);
+    const frameworkSlug = framework.toLowerCase();
+    const targetDir = path.join(this.outputDir, "threat-models", safeName, frameworkSlug);
     await fs.promises.mkdir(targetDir, { recursive: true });
-    const jsonPath = path.join(targetDir, `${timestamp}_threat_model.json`);
-    const mermaidPath = path.join(targetDir, `${timestamp}_threat_model.mmd`);
-    const htmlPath = path.join(targetDir, `${timestamp}_threat_model.html`);
+    const jsonPath = path.join(targetDir, `${timestamp}_${frameworkSlug}_threat_model.json`);
+    const mermaidPath = path.join(targetDir, `${timestamp}_${frameworkSlug}_threat_model.mmd`);
+    const htmlPath = path.join(targetDir, `${timestamp}_${frameworkSlug}_threat_model.html`);
     await fs.promises.writeFile(jsonPath, JSON.stringify(report, null, 2), "utf-8");
     await fs.promises.writeFile(mermaidPath, `${report.diagram}\n`, "utf-8");
     await fs.promises.writeFile(htmlPath, renderThreatHtml(report), "utf-8");
