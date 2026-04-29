@@ -204,7 +204,7 @@ function threatModelFrameworkLabel(framework: ThreatModelFramework): string {
     case "DREAD":
       return "DREAD";
     case "OWASP":
-      return "OWASP Threat Model";
+      return "OWASP";
     case "PASTA":
       return "PASTA";
     case "STRIDE":
@@ -406,13 +406,13 @@ function detectMainComponents(samples: FileSample[]): string[] {
     const rel = sample.relativePath.toLowerCase();
     const content = sample.content.toLowerCase();
     if (rel.includes("frontend/src/app.tsx") || rel.includes("renderer") || content.includes("react")) {
-      components.add("Frontend renderer");
+      components.add("Application UI");
     }
     if (rel.includes("electron/main.ts") || content.includes("ipcmain.handle")) {
-      components.add("Electron main process");
+      components.add("Desktop service");
     }
     if (rel.includes("electron/preload.ts") || content.includes("contextbridge.exposeinmainworld")) {
-      components.add("Preload bridge");
+      components.add("Security bridge");
     }
     if (rel.includes("backend/exportservice.ts") || rel.includes("reporting/export") || content.includes("exportreport(")) {
       components.add("Report exporter");
@@ -424,10 +424,10 @@ function detectMainComponents(samples: FileSample[]): string[] {
       components.add("Local scan store");
     }
     if (rel.includes("toolaccessauth") || rel.includes("toolmanager")) {
-      components.add("Analyzer access control");
+      components.add("Analysis governance");
     }
     if (rel.includes("web/app.py") || content.includes("fastapi(") || content.includes("@app.")) {
-      components.add("Python API backend");
+      components.add("Python service backend");
     }
   }
   return [...components];
@@ -530,20 +530,20 @@ function extractEntryPoints(samples: FileSample[]): ThreatModelEntryPoint[] {
 
 function buildTrustBoundaries(entryPoints: ThreatModelEntryPoint[], components: string[], externalIntegrations: string[]): ThreatModelTrustBoundary[] {
   const boundaries: ThreatModelTrustBoundary[] = [];
-  if (components.includes("Frontend renderer") || components.includes("Electron main process") || components.includes("Preload bridge")) {
+  if (components.includes("Application UI") || components.includes("Desktop service") || components.includes("Security bridge")) {
     boundaries.push({
-      from: "User / Browser UI",
-      to: "Application renderer",
+      from: "User interface",
+      to: "Application UI",
       data: ["codebase path", "scan request", "threat-model request"],
-      description: "User-driven actions cross from the UI into renderer logic.",
+      description: "User-driven actions cross from the interface into application logic.",
     });
   }
-  if (components.includes("Electron main process") || components.includes("Python API backend") || components.includes("Analysis engine")) {
+  if (components.includes("Desktop service") || components.includes("Python service backend") || components.includes("Analysis engine")) {
     boundaries.push({
-      from: "Renderer / IPC",
+      from: "Application UI / IPC",
       to: "Backend services",
       data: ["IPC channels", "route handlers", "analysis requests"],
-      description: "Privileged application logic receives user-controlled requests from the renderer or HTTP layer.",
+      description: "Privileged application logic receives user-controlled requests from the UI or HTTP layer.",
     });
   }
   if (components.includes("Local scan store") || components.includes("Report exporter")) {
@@ -577,23 +577,23 @@ function buildDataFlows(components: string[], entryPoints: ThreatModelEntryPoint
   const flows: ThreatModelDataFlow[] = [];
   if (entryPoints.length > 0) {
     flows.push({
-      source: "User-selected codebase path",
-      destination: "Threat model analyzer",
+      source: "Target codebase path",
+      destination: "Analysis engine",
       data: "filesystem path and source tree",
       description: "The user chooses a file or folder and the threat model engine traverses source code from that path only.",
     });
   }
-  if (components.includes("Frontend renderer") && components.includes("Electron main process")) {
+  if (components.includes("Application UI") && components.includes("Desktop service")) {
     flows.push({
-      source: "Frontend renderer",
-      destination: "Electron main process",
+      source: "Application UI",
+      destination: "Desktop service",
       data: "IPC request payloads",
       description: "Renderer requests are passed through a controlled IPC boundary into the privileged main process.",
     });
   }
-  if (components.includes("Electron main process") && components.includes("Analysis engine")) {
+  if (components.includes("Desktop service") && components.includes("Analysis engine")) {
     flows.push({
-      source: "Electron main process",
+      source: "Desktop service",
       destination: "Analysis engine",
       data: "path, analysis options, and runtime context",
       description: "The main process invokes the code-only threat modeling engine for the selected target.",
@@ -602,7 +602,7 @@ function buildDataFlows(components: string[], entryPoints: ThreatModelEntryPoint
   if (components.includes("Analysis engine") && components.includes("Report exporter")) {
     flows.push({
       source: "Analysis engine",
-      destination: "Threat model JSON / Mermaid report",
+      destination: "Threat model report artifacts",
       data: "system overview, entry points, boundaries, threats",
       description: "The engine serializes STRIDE findings into a consumable report and Mermaid diagram.",
     });
@@ -669,11 +669,11 @@ function buildAssets(
   const hasSecrets = samples.some((sample) => /secret|credential|api[_-]?key|private[_-]?key|token/i.test(sample.content));
   const hasExports = samples.some((sample) => /export|report|pdfkit|writefile/i.test(sample.content));
   const hasStore = components.includes("Local scan store") || externalIntegrations.includes("SQLite") || externalIntegrations.includes("PostgreSQL");
-  const hasIpc = components.includes("Electron main process") || components.includes("Preload bridge");
+  const hasIpc = components.includes("Desktop service") || components.includes("Security bridge");
 
   pushAsset({
     asset_id: "AS-1",
-    name: "Source code repository",
+    name: "Target codebase",
     category: "Repository contents",
     description: "The target codebase itself is the primary asset and must be protected from unauthorized disclosure or modification.",
     location: "Selected codebase path",
@@ -928,7 +928,7 @@ function buildAssumptions(samples: FileSample[], components: string[]): string[]
   if (samples.length > 0) {
     assumptions.push("Threat model scope is limited to the selected source tree and the files discovered during this run.");
   }
-  if (components.includes("Electron main process") || components.includes("Frontend renderer")) {
+  if (components.includes("Desktop service") || components.includes("Application UI")) {
     assumptions.push("Renderer-to-main requests are treated as untrusted until validated in privileged code.");
   }
   if (components.includes("Report exporter")) {
@@ -967,7 +967,7 @@ function buildThreats(
     threats.push({
       threat_id: nextId(),
       title: "Renderer or caller can influence privileged operations",
-      component: components.includes("Electron main process") ? "Electron main process IPC" : "Backend route handling",
+      component: components.includes("Desktop service") ? "Desktop service IPC" : "Backend route handling",
       stride_category: "Spoofing",
       description: "Privilege-sensitive actions are exposed through callable handlers or endpoints that must not trust caller-supplied role or identity data.",
       abuse_case: "Attacker forges a higher-privilege request or replays an old session claim to reach an operation that should only be available to privileged users.",
@@ -1080,14 +1080,14 @@ function buildThreats(
     }
   }
 
-  if (components.includes("Electron main process") || components.includes("Analysis engine") || hasPrivilegedHandlers) {
+  if (components.includes("Desktop service") || components.includes("Analysis engine") || hasPrivilegedHandlers) {
     const score = estimateThreatScore("High", "Medium", "Internal");
     const evidence = privilegeEvidence.length > 0 ? privilegeEvidence : collectEvidence(samples, [/ipcMain/i, /contextBridge/i, /main process/i, /renderer/i]);
     if (evidence.length > 0) {
     threats.push({
       threat_id: nextId(),
       title: "Privileged desktop handlers can elevate access if authorization drifts",
-      component: "Electron main process / backend service",
+      component: "Desktop service / backend service",
       stride_category: "Elevation of Privilege",
       description: "Privileged application handlers should never rely on UI state alone for authorization because renderer code can be manipulated locally.",
       abuse_case: "An attacker crafts IPC payloads or local state mutations to invoke operations that were intended only for administrators or tool owners.",
@@ -1128,13 +1128,13 @@ function buildMermaidDiagram(report: ThreatModelReport): string {
   const body = [
     "flowchart TD",
     "  subgraph TB1[Trust boundary: User interface]",
-    "    user([User]) -->|select codebase| ui[Frontend renderer]",
+    "    user([Operator]) -->|selects target codebase| ui[Application UI]",
     "  end",
     "  subgraph TB2[Trust boundary: privileged analysis]",
-    "    ui -->|IPC request| bridge[Electron main process]",
-    "    bridge -->|path + options| engine[Threat model analyzer]",
-    "    engine -->|read source code| repo[(Source code repository)]",
-    "    engine -->|write JSON / HTML / Mermaid| store[(Threat model artifacts)]",
+    "    ui -->|IPC request| bridge[Desktop service]",
+    "    bridge -->|path + methodology| engine[Analysis engine]",
+    "    engine -->|read source code| repo[(Target repository)]",
+    "    engine -->|write JSON / HTML / Mermaid| store[(Generated artifacts)]",
     "  end",
     "  bridge -->|rendered model| ui",
   ];
@@ -1148,12 +1148,12 @@ function renderThreatDiagramPreview(report: ThreatModelReport): string {
   const assetSummary = report.assets.length > 0 ? `${report.assets.length} assets` : "No assets inferred";
   const threatSummary = `${report.threats.length} threats`;
   const flowNodes = [
-    { title: "User", detail: "Selects codebase" },
-    { title: "Frontend renderer", detail: "Threat Model tab" },
-    { title: "Electron main process", detail: "IPC request + audit trail" },
-    { title: "Threat model analyzer", detail: frameworkLabel },
-    { title: "Source code repository", detail: componentSummary },
-    { title: "Threat model artifacts", detail: `${assetSummary} | ${entryPointSummary} | ${threatSummary}` },
+    { title: "Operator", detail: "Selects target codebase" },
+    { title: "Application UI", detail: "Threat Modeling workspace" },
+    { title: "Desktop service", detail: "IPC request and audit trail" },
+    { title: "Analysis engine", detail: frameworkLabel },
+    { title: "Target repository", detail: componentSummary },
+    { title: "Generated artifacts", detail: `${assetSummary} | ${entryPointSummary} | ${threatSummary}` },
   ];
   return `
     <div class="diagram-preview" role="img" aria-label="Threat model flow diagram">
@@ -1166,7 +1166,7 @@ function renderThreatDiagramPreview(report: ThreatModelReport): string {
                 <div class="diagram-node-title">${escapeHtml(node.title)}</div>
                 <div class="diagram-node-detail">${escapeHtml(node.detail)}</div>
               </div>
-              ${index < flowNodes.length - 1 ? `<div class="diagram-arrow">-&gt;</div>` : ""}
+              ${index < flowNodes.length - 1 ? `<div class="diagram-arrow">→</div>` : ""}
             `,
           )
           .join("")}
@@ -1349,11 +1349,11 @@ function renderThreatHtml(report: ThreatModelReport): string {
         </summary>
         <div class="threat-body">
           <p><strong>Component:</strong> ${escapeHtml(item.component)}</p>
-          <p><strong>Framework:</strong> ${escapeHtml(frameworkLabel)}</p>
+          <p><strong>Methodology:</strong> ${escapeHtml(frameworkLabel)}</p>
           <p><strong>Classification:</strong> ${escapeHtml(item.framework_category || item.stride_category)}</p>
           <p><strong>Impact:</strong> ${escapeHtml(item.impact)} | <strong>Likelihood:</strong> ${escapeHtml(item.likelihood)} | <strong>Exposure:</strong> ${escapeHtml(item.exposure)}</p>
           <p><strong>Risk score:</strong> ${escapeHtml(String(item.risk_score ?? ""))} (${escapeHtml(item.risk_level || "")})</p>
-          <p><strong>Reviewer status:</strong> ${escapeHtml(item.review_status || "Pending reviewer validation")}</p>
+          <p><strong>Review status:</strong> ${escapeHtml(item.review_status || "Pending review")}</p>
           <p><strong>Description:</strong> ${escapeHtml(item.description)}</p>
           ${item.owasp_category ? `<p><strong>OWASP Category:</strong> ${escapeHtml(item.owasp_category)}</p>` : ""}
           ${item.pasta_stage ? `<p><strong>PASTA Stage:</strong> ${escapeHtml(item.pasta_stage)}</p>` : ""}
@@ -1375,7 +1375,7 @@ function renderThreatHtml(report: ThreatModelReport): string {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>CodeSentinelX Threat Model</title>
+  <title>CodeSentinelX Threat Modeling Report</title>
   <style>
     body { margin:0; background:#08111c; color:#e8eef6; font-family:Segoe UI, Arial, sans-serif; }
     .shell { max-width: 1400px; margin: 0 auto; padding: 24px; }
@@ -1420,12 +1420,12 @@ function renderThreatHtml(report: ThreatModelReport): string {
 <body>
   <main class="shell">
     <section class="hero">
-      <h1>CodeSentinelX Threat Model</h1>
+      <h1>CodeSentinelX Threat Modeling Report</h1>
       <p class="muted">${escapeHtml(frameworkLabel)} analysis generated from code only. This workflow is separate from the canonical scan pipeline.</p>
       <div class="meta">
         <div class="pill"><strong>Target:</strong> ${escapeHtml(report.target_path)}</div>
         <div class="pill"><strong>Type:</strong> ${escapeHtml(report.target_type)}</div>
-        <div class="pill"><strong>Framework:</strong> ${escapeHtml(frameworkLabel)}</div>
+        <div class="pill"><strong>Methodology:</strong> ${escapeHtml(frameworkLabel)}</div>
         <div class="pill"><strong>Generated:</strong> ${escapeHtml(report.generated_at)}</div>
         <div class="pill"><strong>Source files analyzed:</strong> ${report.summary.source_files_analyzed}</div>
         <div class="pill"><strong>Entry points:</strong> ${report.summary.entry_points}</div>
@@ -1448,15 +1448,15 @@ function renderThreatHtml(report: ThreatModelReport): string {
 
     <section class="grid">
       <article class="card">
-        <h2>System Overview</h2>
+        <h2>Executive Overview</h2>
         <p><strong>Application Type:</strong> ${escapeHtml(report.system_overview.application_type)}</p>
         ${overviewList ? `<h3>Main Components</h3><ul>${overviewList}</ul>` : ""}
         ${integrationsList ? `<h3>External Integrations</h3><ul>${integrationsList}</ul>` : ""}
         ${stackList ? `<h3>Technology Stack</h3><ul>${stackList}</ul>` : ""}
       </article>
       <article class="card">
-        <h2>Diagram</h2>
-        <p class="muted">Mermaid flowchart for trust boundaries and high-level data movement.</p>
+        <h2>Architecture Diagram</h2>
+        <p class="muted">Rendered flowchart for trust boundaries and high-level data movement.</p>
         <pre>${escapeHtml(report.diagram)}</pre>
       </article>
     </section>
@@ -1469,7 +1469,7 @@ function renderThreatHtml(report: ThreatModelReport): string {
 
     ${objectiveRows ? `
     <section class="card">
-      <h2>Assets & Security Objectives</h2>
+      <h2>Assets and Security Objectives</h2>
       <table><thead><tr><th>Asset</th><th>Confidentiality</th><th>Integrity</th><th>Availability</th><th>Rationale</th></tr></thead><tbody>${objectiveRows}</tbody></table>
     </section>` : ""}
 
@@ -1508,7 +1508,7 @@ function renderThreatHtml(report: ThreatModelReport): string {
 
     ${report.threats.length > 0 ? `
     <section class="card">
-      <h2>Threats (${escapeHtml(frameworkLabel)})</h2>
+      <h2>Threat Register (${escapeHtml(frameworkLabel)})</h2>
       <div class="threat-list">
         ${threatCards}
       </div>
@@ -1517,7 +1517,7 @@ function renderThreatHtml(report: ThreatModelReport): string {
         <thead><tr><th>ID</th><th>Title</th><th>Component</th><th>Classification</th><th>Impact</th><th>Likelihood</th><th>Exposure</th><th>Risk</th><th>Review Status</th><th>Root Cause</th><th>Abuse Case</th><th>Mitigation</th></tr></thead>
         <tbody>${threatRows}</tbody>
       </table>
-      ${categoryEntries.length > 0 ? `<h3 style="margin-top:18px;">Framework Category Breakdown</h3><table><thead><tr><th>Category</th><th>Count</th></tr></thead><tbody>${categoryEntries.map(([category, count]) => `<tr><td>${escapeHtml(category)}</td><td>${count}</td></tr>`).join("")}</tbody></table>` : ""}
+      ${categoryEntries.length > 0 ? `<h3 style="margin-top:18px;">Methodology Category Breakdown</h3><table><thead><tr><th>Category</th><th>Count</th></tr></thead><tbody>${categoryEntries.map(([category, count]) => `<tr><td>${escapeHtml(category)}</td><td>${count}</td></tr>`).join("")}</tbody></table>` : ""}
     </section>` : ""}
 
     ${report.code_mappings.length > 0 ? `
@@ -1563,10 +1563,10 @@ function renderThreatHtml(report: ThreatModelReport): string {
         <pre>${escapeHtml(JSON.stringify(report, null, 2))}</pre>
       </article>
       <article class="card code-box">
-        <h2>Diagram</h2>
+        <h2>Architecture Diagram</h2>
         ${renderThreatDiagramPreview(report)}
         <details style="margin-top:12px;">
-          <summary class="diagram-help">View Mermaid source</summary>
+          <summary class="diagram-help">View diagram source</summary>
           <pre>${escapeHtml(report.diagram)}</pre>
         </details>
       </article>

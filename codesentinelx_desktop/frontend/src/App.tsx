@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+﻿import React, { useEffect, useMemo, useRef, useState } from "react";
 
 import BrandMark from "./components/BrandMark";
 import GlobeBackdrop from "./components/GlobeBackdrop";
@@ -3017,16 +3017,16 @@ export default function App(): React.JSX.Element {
     const jsonText = report ? JSON.stringify(report, null, 2) : "";
     const framework = report?.framework || threatModelFramework;
     const frameworkLabel =
-      framework === "OWASP" ? "OWASP Threat Model" : framework === "PASTA" ? "PASTA" : framework === "DREAD" ? "DREAD" : "STRIDE";
+      framework === "OWASP" ? "OWASP" : framework === "PASTA" ? "PASTA" : framework === "DREAD" ? "DREAD" : "STRIDE";
     const diagramNodes = report
       ? [
-          { title: "User", detail: "Selects codebase" },
-          { title: "Frontend renderer", detail: "Threat Model tab" },
-          { title: "Electron main process", detail: "IPC request + audit trail" },
-          { title: "Threat model analyzer", detail: frameworkLabel },
-          { title: "Source code repository", detail: report.system_overview.main_components.slice(0, 3).join(", ") || "Selected codebase" },
+          { title: "Operator", detail: "Selects target codebase" },
+          { title: "Application UI", detail: "Threat Modeling section" },
+          { title: "Desktop service", detail: "IPC request and audit trail" },
+          { title: "Analysis engine", detail: frameworkLabel },
+          { title: "Target repository", detail: report.system_overview.main_components.slice(0, 3).join(", ") || "Selected codebase" },
           {
-            title: "Threat model artifacts",
+            title: "Generated artifacts",
             detail: `${report.assets.length} assets · ${report.entry_points.length} entry points · ${report.threats.length} threats`,
           },
         ]
@@ -3074,19 +3074,19 @@ export default function App(): React.JSX.Element {
     return (
       <section className="panel stack-gap">
         <div className="subpanel stack-gap">
-          <h3>Threat Model Workspace</h3>
+          <h3>Threat Modeling</h3>
           <p className="muted-text">
             This workflow is independent from the canonical scan. It reads source code only, infers architecture from the selected codebase, and generates a methodology-specific threat model.
           </p>
           <div className="header-row">
-            <label htmlFor="threatModelPath">Codebase File or Folder</label>
+            <label htmlFor="threatModelPath">Target Source Path</label>
             <input
               id="threatModelPath"
               value={threatModelPath}
               onChange={(event) => setThreatModelPath(event.target.value)}
               placeholder="C:\\projects\\app-or-repo"
             />
-            <label htmlFor="threatModelFramework">Framework</label>
+            <label htmlFor="threatModelFramework">Methodology</label>
             <select
               id="threatModelFramework"
               value={threatModelFramework}
@@ -3101,7 +3101,7 @@ export default function App(): React.JSX.Element {
               Browse
             </button>
             <button type="button" onClick={createThreatModel} disabled={isThreatModeling}>
-              {isThreatModeling ? "Creating Threat Model..." : "Create Threat Model"}
+              {isThreatModeling ? "Generating Threat Model..." : "Generate Threat Model"}
             </button>
             <button type="button" onClick={() => void window.codeSentinelX.openPath(lastThreatModelHtml)} disabled={!lastThreatModelHtml}>
               Open HTML
@@ -3114,7 +3114,7 @@ export default function App(): React.JSX.Element {
             </button>
           </div>
           <p className="role-hint">{threatModelStatus}</p>
-          <p className="role-hint">Selected framework: {frameworkLabel}</p>
+          <p className="role-hint">Selected methodology: {frameworkLabel}</p>
           <p className="role-hint">Threat model target selection does not affect canonical scan history or report exports.</p>
         </div>
 
@@ -3123,7 +3123,7 @@ export default function App(): React.JSX.Element {
         ) : (
           <>
             <div className="subpanel">
-              <h3>System Overview</h3>
+              <h3>Executive Overview</h3>
               <div className="metric-grid">
                 <div className="metric-card">
                   <p>Application Type</p>
@@ -3147,14 +3147,14 @@ export default function App(): React.JSX.Element {
                 </div>
               </div>
               <div className="metric-card" style={{ marginTop: "12px" }}>
-                <p>Framework</p>
+                <p>Methodology</p>
                 <h4>{frameworkLabel}</h4>
               </div>
               {(hasOverviewComponents || hasExternalIntegrations) && (
                 <div className="table-split-grid">
                   {hasOverviewComponents && (
                     <div>
-                      <h4>Main Components</h4>
+                      <h4>Primary Components</h4>
                       <ul className="landing-story-list">
                         {report.system_overview.main_components.map((item) => <li key={item}>{item}</li>)}
                       </ul>
@@ -3214,7 +3214,7 @@ export default function App(): React.JSX.Element {
 
             {hasSecurityObjectives && (
               <div className="subpanel">
-                <h3>Assets & Security Objectives</h3>
+                <h3>Assets and Security Objectives</h3>
                 <table className="simple-table">
                   <thead>
                     <tr>
@@ -3326,7 +3326,7 @@ export default function App(): React.JSX.Element {
 
             {hasThreats && (
               <div className="subpanel">
-                <h3>Threats ({frameworkLabel})</h3>
+                <h3>Threat Register ({frameworkLabel})</h3>
                 <div className="metric-grid">
                   <MetricCard label="Total Threats" value={String(report.threats.length)} />
                   {framework === "STRIDE" ? (
@@ -3340,9 +3340,9 @@ export default function App(): React.JSX.Element {
                     </>
                   ) : (
                     <>
-                      <MetricCard label="Framework Categories" value={String(categoryEntries.length)} />
+                      <MetricCard label="Methodology Categories" value={String(categoryEntries.length)} />
                       <MetricCard label="Validated Threats" value={String(report.threats.filter((item) => item.review_status === "Validated by reviewer").length)} />
-                      <MetricCard label="Pending Review" value={String(report.threats.filter((item) => item.review_status !== "Validated by reviewer").length)} />
+                      <MetricCard label="Needs Review" value={String(report.threats.filter((item) => item.review_status !== "Validated by reviewer").length)} />
                       {hasDreadDetails && <MetricCard label="DREAD Profiles" value={String(report.threats.filter((item) => Boolean(item.dread_breakdown)).length)} />}
                     </>
                   )}
@@ -3352,7 +3352,7 @@ export default function App(): React.JSX.Element {
                 </div>
                 {framework !== "STRIDE" && categoryEntries.length > 0 && (
                   <div className="subpanel" style={{ marginTop: "12px" }}>
-                    <h4>Framework Category Breakdown</h4>
+                    <h4>Methodology Category Breakdown</h4>
                     <table className="simple-table">
                       <thead>
                         <tr>
@@ -3386,11 +3386,11 @@ export default function App(): React.JSX.Element {
                         </summary>
                         <div className="threat-model-card-body">
                           <p><strong>Component:</strong> {threat.component}</p>
-                          <p><strong>Framework:</strong> {frameworkLabel}</p>
+                          <p><strong>Methodology:</strong> {frameworkLabel}</p>
                           <p><strong>Classification:</strong> {threat.framework_category || threat.stride_category}</p>
                           <p><strong>Impact:</strong> {threat.impact} | <strong>Likelihood:</strong> {threat.likelihood} | <strong>Exposure:</strong> {threat.exposure}</p>
                           <p><strong>Risk Score:</strong> {threat.risk_score ?? "N/A"} ({threat.risk_level || "N/A"})</p>
-                          <p><strong>Reviewer Status:</strong> {threat.review_status || "Pending reviewer validation"}</p>
+                          <p><strong>Review Status:</strong> {threat.review_status || "Pending review"}</p>
                           <p><strong>Description:</strong> {threat.description}</p>
                           {threat.owasp_category && (
                             <p><strong>OWASP Category:</strong> {threat.owasp_category}</p>
@@ -3580,7 +3580,7 @@ export default function App(): React.JSX.Element {
             )}
 
             <div className="subpanel">
-              <h3>Diagram</h3>
+              <h3>Architecture Diagram</h3>
               <div
                 style={{
                   display: "flex",
@@ -3665,7 +3665,7 @@ export default function App(): React.JSX.Element {
                 </div>
                 <details>
                   <summary className="role-hint" style={{ cursor: "pointer" }}>
-                    View Mermaid source
+                    View diagram source
                   </summary>
                   <pre>{report.diagram}</pre>
                 </details>

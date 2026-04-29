@@ -1,23 +1,23 @@
-﻿# CodeSentinelX Threat Model Guide
+﻿# CodeSentinelX Threat Modeling Guide
 
-## What this workflow is
-The Threat Model workflow is a separate analysis mode from the canonical scan pipeline.
+## Purpose
+The Threat Modeling workflow is a separate analysis mode from the canonical scan pipeline.
 It inspects a selected codebase and builds a code-backed architecture and threat model.
 
-## Supported frameworks
+## Supported methodologies
 - STRIDE
 - DREAD
 - OWASP
 - PASTA
 
-## How to use it
+## Workflow
 1. Open the Threat Model section in the app.
 2. Browse to a file or folder containing the codebase you want to analyze.
-3. Select a framework.
-4. Click Create Threat Model.
-5. Review the generated report, diagram, JSON, and Mermaid source.
+3. Select a methodology.
+4. Click Generate Threat Model.
+5. Review the generated report, diagram, JSON, and diagram source.
 
-## What the report includes
+## Report contents
 - System overview
 - Assets and security objectives
 - Entry points and attack surface
@@ -30,21 +30,22 @@ It inspects a selected codebase and builds a code-backed architecture and threat
 - Validation and traceability
 - Residual risk and assumptions
 
-## How to read the diagram
+## Architecture diagram
 The diagram shows the path from user interaction to analysis and artifact generation.
 It is meant to explain trust boundaries and high-level flow, not to replace the detailed threat tables.
 
-## Evidence rules
+## Evidence policy
 - Only code-backed evidence is included by default.
 - Empty sections are hidden.
 - Placeholder text is avoided.
 - If a threat lacks strong evidence, it is marked for reviewer validation.
 
-## Relationship to normal scans
+## Relationship to canonical scans
 Threat modeling is independent from the canonical code scanning workflow.
 It does not reuse the vulnerability scan pipeline or its role-based projections.
 
-## Notes
-- STRIDE is the default framework when no framework is selected.
+## Additional notes
+- STRIDE is the default methodology when no methodology is selected.
 - DREAD is used as a risk-ranking overlay.
-- OWASP and PASTA use the same evidence with framework-specific framing.
+- OWASP and PASTA use the same evidence with methodology-specific framing.
+
