@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   --bg: #071018;
   --bg-2: #0a1a29;
   --panel: #101e2b;
@@ -246,7 +246,7 @@ a {
 
 .window-control-close span::before,
 .window-control-close span::after {
-  content: "";
+  content: "\2212";
   position: absolute;
   left: 50%;
   top: 50%;
@@ -511,7 +511,7 @@ a {
 
 .earth-reticle::before,
 .earth-reticle::after {
-  content: "";
+  content: "\2212";
   position: absolute;
   background: rgba(255, 92, 92, 0.5);
 }
@@ -599,7 +599,7 @@ a {
 }
 
 .darkworld-map-frame::after {
-  content: "";
+  content: "\2212";
   position: absolute;
   inset: 0;
   background:
@@ -1372,6 +1372,71 @@ select optgroup {
 
 .threat-model-card-body {
   padding: 0 2px 2px;
+}
+
+.threat-section {
+  margin-bottom: 12px;
+}
+
+.threat-section > summary,
+.threat-model-card > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.threat-section > summary::-webkit-details-marker,
+.threat-model-card > summary::-webkit-details-marker {
+  display: none;
+}
+
+.threat-section > summary::before,
+.threat-model-card > summary::before {
+  content: "\2212";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  margin-right: 10px;
+  color: #8fc3e6;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.threat-section[open] > summary::before,
+.threat-model-card[open] > summary::before {
+  content: "\2212";
+}
+
+.threat-section-summary {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.threat-section-title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.threat-section-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.threat-section-body {
+  padding-top: 12px;
+}
+
+.threat-section-note {
+  margin-bottom: 10px;
 }
 
 .eyebrow {
@@ -2715,3 +2780,5 @@ li {
     transform-origin: top left;
   }
 }
+
+

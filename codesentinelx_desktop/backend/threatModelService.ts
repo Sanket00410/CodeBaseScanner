@@ -1404,10 +1404,37 @@ function renderThreatHtml(report: ThreatModelReport): string {
     .threat-links { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
     .threat-link { display:inline-flex; align-items:center; padding:8px 10px; border-radius:999px; border:1px solid rgba(120,168,205,.18); background:rgba(255,255,255,.03); color:#d8e6f2; text-decoration:none; }
     .threat-link:hover { border-color: rgba(120,168,205,.42); background:rgba(255,255,255,.06); }
+    .threat-section { margin-bottom:12px; }
+    .threat-section > summary,
+    .threat-card > summary {
+      cursor:pointer;
+      list-style:none;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      padding:14px;
+    }
+    .threat-section > summary::-webkit-details-marker,
+    .threat-card > summary::-webkit-details-marker { display:none; }
+    .threat-section > summary::before,
+    .threat-card > summary::before {
+      content:"+";
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      min-width:22px;
+      margin-right:10px;
+      color:#8fc3e6;
+      font-size:20px;
+      font-weight:700;
+      line-height:1;
+    }
+    .threat-section[open] > summary::before,
+    .threat-card[open] > summary::before { content:"−"; }
+    .threat-section-body { padding:0 14px 14px; }
     .threat-card { border:1px solid rgba(120,168,205,.18); border-radius:14px; padding:0; background:#0a1421; overflow:hidden; }
     .threat-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; margin-bottom:10px; }
-    .threat-card > summary { cursor:pointer; list-style:none; padding:14px; }
-    .threat-card > summary::-webkit-details-marker { display:none; }
     .threat-body { padding:0 14px 14px; }
     .eyebrow { margin:0; color:#9ab0c8; font-size:.78rem; letter-spacing:.08em; text-transform:uppercase; }
     .stride { display:inline-flex; align-items:center; border:1px solid rgba(120,168,205,.25); border-radius:999px; padding:6px 10px; background:rgba(255,255,255,.04); white-space:nowrap; }
@@ -1450,144 +1477,228 @@ function renderThreatHtml(report: ThreatModelReport): string {
       <div class="threat-links">${threatLinks}</div>
     </section>
 
-    <section class="grid">
-      <article class="card">
-        <h2>Executive Overview</h2>
+    <details class="card threat-section">
+      <summary class="threat-section-summary">
+        <span class="threat-section-title">Executive Overview</span>
+        <span class="threat-section-toggle" aria-hidden="true"></span>
+      </summary>
+      <div class="threat-section-body">
         <p><strong>Application Type:</strong> ${escapeHtml(report.system_overview.application_type)}</p>
         ${overviewList ? `<h3>Main Components</h3><ul>${overviewList}</ul>` : ""}
         ${integrationsList ? `<h3>External Integrations</h3><ul>${integrationsList}</ul>` : ""}
         ${stackList ? `<h3>Technology Stack</h3><ul>${stackList}</ul>` : ""}
-      </article>
-      <article class="card">
-        <h2>Architecture Diagram</h2>
+      </div>
+    </details>
+
+    <details class="card threat-section">
+      <summary class="threat-section-summary">
+        <span class="threat-section-title">Architecture Diagram</span>
+        <span class="threat-section-toggle" aria-hidden="true"></span>
+      </summary>
+      <div class="threat-section-body">
         <p class="muted">Rendered application architecture with trust boundaries and core components.</p>
         ${renderThreatDiagramPreview(report)}
         <details style="margin-top:12px;">
           <summary class="diagram-help">View diagram source</summary>
           <pre>${escapeHtml(report.diagram)}</pre>
         </details>
-      </article>
-    </section>
+      </div>
+    </details>
 
     ${assetRows ? `
-    <section class="card">
-      <h2>Asset Inventory</h2>
-      <table><thead><tr><th>ID</th><th>Name</th><th>Category</th><th>Sensitivity</th><th>Location</th><th>Description</th></tr></thead><tbody>${assetRows}</tbody></table>
-    </section>` : ""}
+    <details class="card threat-section">
+      <summary class="threat-section-summary">
+        <span class="threat-section-title">Asset Inventory</span>
+        <span class="threat-section-toggle" aria-hidden="true"></span>
+      </summary>
+      <div class="threat-section-body">
+        <table><thead><tr><th title="Stable identifier for the inferred asset.">ID</th><th title="Name of the inferred asset or data store.">Name</th><th title="Asset grouping used for reporting and prioritization.">Category</th><th title="Relative sensitivity assigned from the code evidence.">Sensitivity</th><th title="Location where the asset is defined or used.">Location</th><th title="Short explanation of why the asset matters.">Description</th></tr></thead><tbody>${assetRows}</tbody></table>
+      </div>
+    </details>` : ""}
 
     ${objectiveRows ? `
-    <section class="card">
-      <h2>Assets and Security Objectives</h2>
-      <table><thead><tr><th>Asset</th><th>Confidentiality</th><th>Integrity</th><th>Availability</th><th>Rationale</th></tr></thead><tbody>${objectiveRows}</tbody></table>
-    </section>` : ""}
+    <details class="card threat-section">
+      <summary class="threat-section-summary">
+        <span class="threat-section-title">Assets and Security Objectives</span>
+        <span class="threat-section-toggle" aria-hidden="true"></span>
+      </summary>
+      <div class="threat-section-body">
+        <table><thead><tr><th title="Asset under review.">Asset</th><th title="Confidentiality objective for the asset.">Confidentiality</th><th title="Integrity objective for the asset.">Integrity</th><th title="Availability objective for the asset.">Availability</th><th title="Reason the objective level was assigned.">Rationale</th></tr></thead><tbody>${objectiveRows}</tbody></table>
+      </div>
+    </details>` : ""}
 
     ${surfaceRows ? `
-    <section class="card">
-      <h2>Attack Surface</h2>
-      <table><thead><tr><th>Surface</th><th>Count</th><th>Evidence</th></tr></thead><tbody>${surfaceRows}</tbody></table>
-    </section>` : ""}
+    <details class="card threat-section">
+      <summary class="threat-section-summary">
+        <span class="threat-section-title">Attack Surface</span>
+        <span class="threat-section-toggle" aria-hidden="true"></span>
+      </summary>
+      <div class="threat-section-body">
+        <table><thead><tr><th title="Surface category being summarized.">Surface</th><th title="Number of matching entry points or items.">Count</th><th title="Supporting evidence for the surface.">Evidence</th></tr></thead><tbody>${surfaceRows}</tbody></table>
+      </div>
+    </details>` : ""}
 
     ${entryRows ? `
-    <section class="card">
-      <h2>Entry Points</h2>
-      <table>
-        <thead><tr><th>Name</th><th>Type</th><th>Exposure</th><th>Location</th><th>Details</th></tr></thead>
-        <tbody>${entryRows}</tbody>
-      </table>
-    </section>` : ""}
+    <details class="card threat-section">
+      <summary class="threat-section-summary">
+        <span class="threat-section-title">Entry Points</span>
+        <span class="threat-section-toggle" aria-hidden="true"></span>
+      </summary>
+      <div class="threat-section-body">
+        <table>
+          <thead><tr><th title="Entry point name or handler label.">Name</th><th title="Type of entry point such as route, IPC channel, or auth path.">Type</th><th title="Exposure level for the entry point.">Exposure</th><th title="Source file and line where the entry point appears.">Location</th><th title="Why the entry point is considered part of the attack surface.">Details</th></tr></thead>
+          <tbody>${entryRows}</tbody>
+        </table>
+      </div>
+    </details>` : ""}
 
     ${boundaryRows ? `
-    <section class="card">
-      <h2>Trust Boundaries</h2>
-      <table>
-        <thead><tr><th>From</th><th>To</th><th>Data</th><th>Description</th></tr></thead>
-        <tbody>${boundaryRows}</tbody>
-      </table>
-    </section>` : ""}
+    <details class="card threat-section">
+      <summary class="threat-section-summary">
+        <span class="threat-section-title">Trust Boundaries</span>
+        <span class="threat-section-toggle" aria-hidden="true"></span>
+      </summary>
+      <div class="threat-section-body">
+        <table>
+          <thead><tr><th title="Source side of the trust boundary.">From</th><th title="Destination side of the trust boundary.">To</th><th title="Data that crosses the boundary.">Data</th><th title="Why the boundary matters.">Description</th></tr></thead>
+          <tbody>${boundaryRows}</tbody>
+        </table>
+      </div>
+    </details>` : ""}
 
     ${flowRows ? `
-    <section class="card">
-      <h2>Data Flows</h2>
-      <table>
-        <thead><tr><th>Source</th><th>Destination</th><th>Data</th><th>Description</th></tr></thead>
-        <tbody>${flowRows}</tbody>
-      </table>
-    </section>` : ""}
+    <details class="card threat-section">
+      <summary class="threat-section-summary">
+        <span class="threat-section-title">Data Flows</span>
+        <span class="threat-section-toggle" aria-hidden="true"></span>
+      </summary>
+      <div class="threat-section-body">
+        <table>
+          <thead><tr><th title="Origin of the data flow.">Source</th><th title="Destination of the data flow.">Destination</th><th title="Information being transferred.">Data</th><th title="Security significance of the flow.">Description</th></tr></thead>
+          <tbody>${flowRows}</tbody>
+        </table>
+      </div>
+    </details>` : ""}
 
     ${report.threats.length > 0 ? `
-    <section class="card">
-      <h2>Threat Register (${escapeHtml(frameworkLabel)})</h2>
-      <div class="threat-list">
-        ${threatCards}
+    <details class="card threat-section">
+      <summary>
+        <span class="threat-section-title">Threat Register (${escapeHtml(frameworkLabel)})</span>
+        <span class="diagram-help" aria-hidden="true">Collapse / expand</span>
+      </summary>
+      <div class="threat-section-body">
+        <div class="threat-list">
+          ${threatCards}
+        </div>
+        <h3 style="margin-top:18px;">Threat Table</h3>
+        <table>
+          <thead><tr>
+            <th title="Why this is shown: stable identifier used to reference the threat across the report.">ID</th>
+            <th title="Why this is shown: short human-readable name for the threat scenario.">Title</th>
+            <th title="Why this is shown: the codebase module or service affected by the threat.">Component</th>
+            <th title="Why this is shown: the threat-model category used to group similar threats.">Classification</th>
+            <th title="Why this is shown: expected business or technical harm if the threat is realized.">Impact</th>
+            <th title="Why this is shown: how feasible the threat is based on the code evidence.">Likelihood</th>
+            <th title="Why this is shown: who can reach the threat scenario, such as public, authenticated, or internal access.">Exposure</th>
+            <th title="Why this is shown: combined risk score used for prioritization.">Risk</th>
+            <th title="Why this is shown: whether a reviewer has validated the threat or it still needs review.">Review Status</th>
+            <th title="Why this is shown: the code behavior or evidence that creates the threat.">Root Cause</th>
+            <th title="Why this is shown: a realistic attacker path for using the weakness.">Abuse Case</th>
+            <th title="Why this is shown: the recommended fix or control for reducing the threat.">Mitigation</th>
+          </tr></thead>
+          <tbody>${threatRows}</tbody>
+        </table>
+        ${categoryEntries.length > 0 ? `<h3 style="margin-top:18px;">Methodology Category Breakdown</h3><table><thead><tr><th>Category</th><th>Count</th></tr></thead><tbody>${categoryEntries.map(([category, count]) => `<tr><td>${escapeHtml(category)}</td><td>${count}</td></tr>`).join("")}</tbody></table>` : ""}
       </div>
-      <h3 style="margin-top:18px;">Threat Table</h3>
-      <table>
-        <thead><tr>
-          <th title="Stable identifier assigned to the threat entry.">ID</th>
-          <th title="Short name describing the threat scenario.">Title</th>
-          <th title="Codebase component or subsystem affected by the threat.">Component</th>
-          <th title="Threat modeling category or framework classification.">Classification</th>
-          <th title="Business or technical impact if the threat is realized.">Impact</th>
-          <th title="Estimated likelihood that the threat can be exercised.">Likelihood</th>
-          <th title="Exposure context for the threat: public, authenticated, or internal.">Exposure</th>
-          <th title="Risk score and severity level derived from the threat model.">Risk</th>
-          <th title="Review status describing whether the threat has been validated by a reviewer.">Review Status</th>
-          <th title="Observed code root cause or direct evidence supporting the threat.">Root Cause</th>
-          <th title="Practical attack path describing how the threat can be abused.">Abuse Case</th>
-          <th title="Actionable guidance for reducing or eliminating the threat.">Mitigation</th>
-        </tr></thead>
-        <tbody>${threatRows}</tbody>
-      </table>
-      ${categoryEntries.length > 0 ? `<h3 style="margin-top:18px;">Methodology Category Breakdown</h3><table><thead><tr><th>Category</th><th>Count</th></tr></thead><tbody>${categoryEntries.map(([category, count]) => `<tr><td>${escapeHtml(category)}</td><td>${count}</td></tr>`).join("")}</tbody></table>` : ""}
-    </section>` : ""}
+    </details>` : ""}
 
     ${report.code_mappings.length > 0 ? `
-    <section class="card">
-      <h2>Vulnerabilities Mapped to Code</h2>
-      <table><thead><tr><th>Threat</th><th>Component</th><th>File</th><th>Line</th><th>Root Cause</th><th>CWE</th></tr></thead><tbody>${report.code_mappings.map((item) => `<tr><td>${escapeHtml(item.threat_id)}</td><td>${escapeHtml(item.component)}</td><td>${escapeHtml(item.file)}</td><td>${Number(item.line || 0)}</td><td>${escapeHtml(item.root_cause)}</td><td>${escapeHtml(item.cwe || "")}</td></tr>`).join("")}</tbody></table>
-    </section>` : ""}
+    <details class="card threat-section">
+      <summary>
+        <span class="threat-section-title">Vulnerabilities Mapped to Code</span>
+        <span class="diagram-help" aria-hidden="true">Collapse / expand</span>
+      </summary>
+      <div class="threat-section-body">
+        <table><thead><tr><th title="Threat identifier linked to the vulnerability.">Threat</th><th title="Codebase module or subsystem where the root cause appears.">Component</th><th title="Exact file containing the mapped evidence.">File</th><th title="Line number where the relevant code appears.">Line</th><th title="Why the code path maps to the threat.">Root Cause</th><th title="Optional CWE identifier associated with the code issue.">CWE</th></tr></thead><tbody>${report.code_mappings.map((item) => `<tr><td>${escapeHtml(item.threat_id)}</td><td>${escapeHtml(item.component)}</td><td>${escapeHtml(item.file)}</td><td>${Number(item.line || 0)}</td><td>${escapeHtml(item.root_cause)}</td><td>${escapeHtml(item.cwe || "")}</td></tr>`).join("")}</tbody></table>
+      </div>
+    </details>` : ""}
 
     ${report.threats.length > 0 ? `
-    <section class="card">
-      <h2>Risk Assessment</h2>
-      <table><thead><tr><th>Threat</th><th>Risk</th><th>Level</th><th>Justification</th></tr></thead><tbody>${report.threats.map((item) => `<tr><td>${escapeHtml(item.threat_id || item.title)}</td><td>${escapeHtml(String(item.risk_score ?? ""))}</td><td>${escapeHtml(item.risk_level || "")}</td><td>${escapeHtml(item.impact)} impact / ${escapeHtml(item.likelihood)} likelihood / ${escapeHtml(item.exposure)} exposure</td></tr>`).join("")}</tbody></table>
-    </section>` : ""}
+    <details class="card threat-section">
+      <summary>
+        <span class="threat-section-title">Risk Assessment</span>
+        <span class="diagram-help" aria-hidden="true">Collapse / expand</span>
+      </summary>
+      <div class="threat-section-body">
+        <table><thead><tr><th title="Threat identifier used in the report.">Threat</th><th title="Computed risk score used for ordering and prioritization.">Risk</th><th title="Severity level derived from the risk score.">Level</th><th title="Why this risk rating was assigned.">Justification</th></tr></thead><tbody>${report.threats.map((item) => `<tr><td>${escapeHtml(item.threat_id || item.title)}</td><td>${escapeHtml(String(item.risk_score ?? ""))}</td><td>${escapeHtml(item.risk_level || "")}</td><td>${escapeHtml(item.impact)} impact / ${escapeHtml(item.likelihood)} likelihood / ${escapeHtml(item.exposure)} exposure</td></tr>`).join("")}</tbody></table>
+      </div>
+    </details>` : ""}
 
     ${report.threats.length > 0 ? `
-    <section class="card">
-      <h2>Mitigations</h2>
-      <table><thead><tr><th>Threat</th><th>Mitigation</th></tr></thead><tbody>${report.threats.map((item) => `<tr><td>${escapeHtml(item.threat_id || item.title)}</td><td>${escapeHtml(item.mitigation)}</td></tr>`).join("")}</tbody></table>
-    </section>` : ""}
+    <details class="card threat-section">
+      <summary>
+        <span class="threat-section-title">Mitigations</span>
+        <span class="diagram-help" aria-hidden="true">Collapse / expand</span>
+      </summary>
+      <div class="threat-section-body">
+        <table><thead><tr><th title="Threat identifier used in the report.">Threat</th><th title="Recommended code or control change to reduce the threat.">Mitigation</th></tr></thead><tbody>${report.threats.map((item) => `<tr><td>${escapeHtml(item.threat_id || item.title)}</td><td>${escapeHtml(item.mitigation)}</td></tr>`).join("")}</tbody></table>
+      </div>
+    </details>` : ""}
 
     ${report.validation_plan.length > 0 ? `
-    <section class="card">
-      <h2>Validation & Test Strategy</h2>
-      <table><thead><tr><th>Threat</th><th>Check</th><th>Expected Verification</th></tr></thead><tbody>${report.validation_plan.map((item) => `<tr><td>${escapeHtml(item.threat_id)}</td><td>${escapeHtml(item.check)}</td><td>${escapeHtml(item.expected_verification)}</td></tr>`).join("")}</tbody></table>
-    </section>` : ""}
+    <details class="card threat-section">
+      <summary>
+        <span class="threat-section-title">Validation & Test Strategy</span>
+        <span class="diagram-help" aria-hidden="true">Collapse / expand</span>
+      </summary>
+      <div class="threat-section-body">
+        <table><thead><tr><th title="Threat identifier linked to the validation step.">Threat</th><th title="Security check or verification action to run.">Check</th><th title="What success should look like after validation.">Expected Verification</th></tr></thead><tbody>${report.validation_plan.map((item) => `<tr><td>${escapeHtml(item.threat_id)}</td><td>${escapeHtml(item.check)}</td><td>${escapeHtml(item.expected_verification)}</td></tr>`).join("")}</tbody></table>
+      </div>
+    </details>` : ""}
 
     ${report.traceability.length > 0 ? `
-    <section class="card">
-      <h2>Traceability</h2>
-      <table><thead><tr><th>Threat</th><th>Evidence</th><th>Status</th></tr></thead><tbody>${report.traceability.map((item) => `<tr><td>${escapeHtml(item.threat_id)}</td><td>${escapeHtml(item.evidence)}</td><td>${escapeHtml(item.status)}</td></tr>`).join("")}</tbody></table>
-    </section>` : ""}
+    <details class="card threat-section">
+      <summary>
+        <span class="threat-section-title">Traceability</span>
+        <span class="diagram-help" aria-hidden="true">Collapse / expand</span>
+      </summary>
+      <div class="threat-section-body">
+        <table><thead><tr><th title="Threat identifier used in the report.">Threat</th><th title="Evidence that links the threat to code, tests, or review notes.">Evidence</th><th title="Current lifecycle status of the threat.">Status</th></tr></thead><tbody>${report.traceability.map((item) => `<tr><td>${escapeHtml(item.threat_id)}</td><td>${escapeHtml(item.evidence)}</td><td>${escapeHtml(item.status)}</td></tr>`).join("")}</tbody></table>
+      </div>
+    </details>` : ""}
 
     ${(report.residual_risk.length > 0 || report.assumptions.length > 0) ? `
-    <section class="card">
-      <h2>Residual Risk & Assumptions</h2>
-      ${report.residual_risk.length > 0 ? `<h3>Residual Risk</h3><ul>${report.residual_risk.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}
-      ${report.assumptions.length > 0 ? `<h3>Assumptions</h3><ul>${report.assumptions.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}
-    </section>` : ""}
+    <details class="card threat-section">
+      <summary>
+        <span class="threat-section-title">Residual Risk & Assumptions</span>
+        <span class="diagram-help" aria-hidden="true">Collapse / expand</span>
+      </summary>
+      <div class="threat-section-body">
+        ${report.residual_risk.length > 0 ? `<h3>Residual Risk</h3><ul>${report.residual_risk.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}
+        ${report.assumptions.length > 0 ? `<h3>Assumptions</h3><ul>${report.assumptions.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}
+      </div>
+    </details>` : ""}
 
     <section class="two-col">
-      <article class="card code-box">
-        <h2>JSON</h2>
-        <pre>${escapeHtml(JSON.stringify(report, null, 2))}</pre>
-      </article>
-      <article class="card code-box">
-        <h2>Diagram Source</h2>
-        <p class="muted">Mermaid source for the architecture diagram shown above.</p>
-        <pre>${escapeHtml(report.diagram)}</pre>
-      </article>
+      <details class="card threat-section code-box">
+        <summary>
+          <span class="threat-section-title">JSON</span>
+          <span class="diagram-help" aria-hidden="true">Collapse / expand</span>
+        </summary>
+        <div class="threat-section-body">
+          <pre>${escapeHtml(JSON.stringify(report, null, 2))}</pre>
+        </div>
+      </details>
+      <details class="card threat-section code-box">
+        <summary>
+          <span class="threat-section-title">Diagram Source</span>
+          <span class="diagram-help" aria-hidden="true">Collapse / expand</span>
+        </summary>
+        <div class="threat-section-body">
+          <p class="muted">Mermaid source for the architecture diagram shown above.</p>
+          <pre>${escapeHtml(report.diagram)}</pre>
+        </div>
+      </details>
     </section>
   </main>
 </body>

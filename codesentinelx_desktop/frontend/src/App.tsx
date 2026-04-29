@@ -3067,6 +3067,20 @@ export default function App(): React.JSX.Element {
     const hasResidualRisk = Boolean(report && report.residual_risk.length > 0);
     const hasAssumptions = Boolean(report && report.assumptions.length > 0);
     const hasDreadDetails = Boolean(report && report.threats.some((threat) => Boolean(threat.dread_breakdown)));
+    const renderThreatSection = (
+      title: string,
+      body: React.ReactNode,
+      options?: { className?: string; open?: boolean; note?: string },
+    ): React.JSX.Element => (
+      <details className={`subpanel threat-section ${options?.className || ""}`.trim()} open={options?.open ?? false}>
+        <summary className="threat-section-summary">
+          <span className="threat-section-title">{title}</span>
+          <span className="threat-section-toggle" aria-hidden="true" />
+        </summary>
+        {options?.note ? <p className="muted-text threat-section-note">{options.note}</p> : null}
+        <div className="threat-section-body">{body}</div>
+      </details>
+    );
 
     return (
       <section className="panel stack-gap">
@@ -3119,69 +3133,72 @@ export default function App(): React.JSX.Element {
           <EmptyState text="Browse a project file or folder, then create a threat model to see the selected framework output." />
         ) : (
           <>
-            <div className="subpanel">
-              <h3>Executive Overview</h3>
-              <div className="metric-grid">
-                <div className="metric-card">
-                  <p>Application Type</p>
-                  <h4>{report.system_overview.application_type}</h4>
+            {renderThreatSection(
+              "Executive Overview",
+              <>
+                <div className="metric-grid">
+                  <div className="metric-card">
+                    <p>Application Type</p>
+                    <h4>{report.system_overview.application_type}</h4>
+                  </div>
+                  <div className="metric-card">
+                    <p>Source Files</p>
+                    <h4>{report.summary.source_files_analyzed}</h4>
+                  </div>
+                  <div className="metric-card">
+                    <p>Assets</p>
+                    <h4>{report.summary.assets}</h4>
+                  </div>
+                  <div className="metric-card">
+                    <p>Entry Points</p>
+                    <h4>{report.summary.entry_points}</h4>
+                  </div>
+                  <div className="metric-card">
+                    <p>Threats</p>
+                    <h4>{report.summary.threats}</h4>
+                  </div>
                 </div>
-                <div className="metric-card">
-                  <p>Source Files</p>
-                  <h4>{report.summary.source_files_analyzed}</h4>
+                <div className="metric-card" style={{ marginTop: "12px" }}>
+                  <p>Methodology</p>
+                  <h4>{frameworkLabel}</h4>
                 </div>
-                <div className="metric-card">
-                  <p>Assets</p>
-                  <h4>{report.summary.assets}</h4>
-                </div>
-                <div className="metric-card">
-                  <p>Entry Points</p>
-                  <h4>{report.summary.entry_points}</h4>
-                </div>
-                <div className="metric-card">
-                  <p>Threats</p>
-                  <h4>{report.summary.threats}</h4>
-                </div>
-              </div>
-              <div className="metric-card" style={{ marginTop: "12px" }}>
-                <p>Methodology</p>
-                <h4>{frameworkLabel}</h4>
-              </div>
-              {(hasOverviewComponents || hasExternalIntegrations) && (
-                <div className="table-split-grid">
-                  {hasOverviewComponents && (
-                    <div>
-                      <h4>Primary Components</h4>
-                      <ul className="landing-story-list">
-                        {report.system_overview.main_components.map((item) => <li key={item}>{item}</li>)}
-                      </ul>
-                    </div>
-                  )}
-                  {hasExternalIntegrations && (
-                    <div>
-                      <h4>External Integrations</h4>
-                      <ul className="landing-story-list">
-                        {report.system_overview.external_integrations.map((item) => <li key={item}>{item}</li>)}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+                {(hasOverviewComponents || hasExternalIntegrations) && (
+                  <div className="table-split-grid">
+                    {hasOverviewComponents && (
+                      <div>
+                        <h4>Primary Components</h4>
+                        <ul className="landing-story-list">
+                          {report.system_overview.main_components.map((item) => <li key={item}>{item}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                    {hasExternalIntegrations && (
+                      <div>
+                        <h4>External Integrations</h4>
+                        <ul className="landing-story-list">
+                          {report.system_overview.external_integrations.map((item) => <li key={item}>{item}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>,
+              { note: "System context and topology cues derived from the selected codebase." },
+            )}
 
-            {hasAssets && (
-              <div className="subpanel">
-                <h3>Asset Inventory</h3>
+            {hasAssets &&
+              renderThreatSection(
+                "Asset Inventory",
                 <table className="simple-table">
                   <thead>
                     <tr>
-                      <th>ID</th>
-                      <th>Name</th>
-                      <th>Category</th>
-                      <th>Sensitivity</th>
-                      <th>Location</th>
-                      <th>Evidence</th>
-                      <th>Description</th>
+                      <th title="Stable identifier for the inferred asset.">ID</th>
+                      <th title="Name of the inferred asset or data store.">Name</th>
+                      <th title="Asset grouping used for reporting and prioritization.">Category</th>
+                      <th title="Relative sensitivity assigned from the code evidence.">Sensitivity</th>
+                      <th title="Location where the asset is defined or used.">Location</th>
+                      <th title="Code evidence supporting the asset inference.">Evidence</th>
+                      <th title="Short explanation of why the asset matters.">Description</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3205,21 +3222,21 @@ export default function App(): React.JSX.Element {
                       </tr>
                     ))}
                   </tbody>
-                </table>
-              </div>
-            )}
+                </table>,
+                { note: "Assets are derived from code-backed evidence and inferred data stores, secrets, entry points, and exports." },
+              )}
 
-            {hasSecurityObjectives && (
-              <div className="subpanel">
-                <h3>Assets and Security Objectives</h3>
+            {hasSecurityObjectives &&
+              renderThreatSection(
+                "Assets and Security Objectives",
                 <table className="simple-table">
                   <thead>
                     <tr>
-                      <th>Asset</th>
-                      <th>Confidentiality</th>
-                      <th>Integrity</th>
-                      <th>Availability</th>
-                      <th>Rationale</th>
+                      <th title="Asset under review.">Asset</th>
+                      <th title="Confidentiality objective for the asset.">Confidentiality</th>
+                      <th title="Integrity objective for the asset.">Integrity</th>
+                      <th title="Availability objective for the asset.">Availability</th>
+                      <th title="Reason the objective level was assigned.">Rationale</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3233,21 +3250,21 @@ export default function App(): React.JSX.Element {
                       </tr>
                     ))}
                   </tbody>
-                </table>
-              </div>
-            )}
+                </table>,
+                { note: "Confidentiality, integrity, and availability priorities for each inferred asset." },
+              )}
 
-            {hasAttackSurface && (
-              <div className="subpanel">
-                <h3>Attack Surface</h3>
+            {hasAttackSurface &&
+              renderThreatSection(
+                "Attack Surface",
                 <table className="simple-table">
                   <thead>
                     <tr>
-                      <th>Name</th>
-                      <th>Type</th>
-                      <th>Exposure</th>
-                      <th>Location</th>
-                      <th>Details</th>
+                      <th title="Entry point name or handler label.">Name</th>
+                      <th title="Type of entry point such as route, IPC channel, or auth path.">Type</th>
+                      <th title="Exposure level for the entry point.">Exposure</th>
+                      <th title="Source file and line where the entry point appears.">Location</th>
+                      <th title="Why the entry point is considered part of the attack surface.">Details</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3265,20 +3282,20 @@ export default function App(): React.JSX.Element {
                       </tr>
                     ))}
                   </tbody>
-                </table>
-              </div>
-            )}
+                </table>,
+                { note: "Public, authenticated, and internal entry points are listed here for direct review." },
+              )}
 
-            {hasTrustBoundaries && (
-              <div className="subpanel">
-                <h3>Trust Boundaries</h3>
+            {hasTrustBoundaries &&
+              renderThreatSection(
+                "Trust Boundaries",
                 <table className="simple-table">
                   <thead>
                     <tr>
-                      <th>From</th>
-                      <th>To</th>
-                      <th>Data</th>
-                      <th>Description</th>
+                      <th title="Source side of the trust boundary.">From</th>
+                      <th title="Destination side of the trust boundary.">To</th>
+                      <th title="Data that crosses the boundary.">Data</th>
+                      <th title="Why the boundary matters.">Description</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3291,20 +3308,20 @@ export default function App(): React.JSX.Element {
                       </tr>
                     ))}
                   </tbody>
-                </table>
-              </div>
-            )}
+                </table>,
+                { note: "Trust boundaries identify where validation, authorization, or sanitization must occur." },
+              )}
 
-            {hasDataFlows && (
-              <div className="subpanel">
-                <h3>Data Flows</h3>
+            {hasDataFlows &&
+              renderThreatSection(
+                "Data Flows",
                 <table className="simple-table">
                   <thead>
                     <tr>
-                      <th>Source</th>
-                      <th>Destination</th>
-                      <th>Data</th>
-                      <th>Description</th>
+                      <th title="Origin of the data flow.">Source</th>
+                      <th title="Destination of the data flow.">Destination</th>
+                      <th title="Information being transferred.">Data</th>
+                      <th title="Security significance of the flow.">Description</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3317,177 +3334,179 @@ export default function App(): React.JSX.Element {
                       </tr>
                     ))}
                   </tbody>
-                </table>
-              </div>
-            )}
+                </table>,
+                { note: "Flows show how input moves through the system and where trust changes." },
+              )}
 
-            {hasThreats && (
-              <div className="subpanel">
-                <h3>Threat Register ({frameworkLabel})</h3>
-                <div className="metric-grid">
-                  <MetricCard label="Total Threats" value={String(report.threats.length)} />
-                  {framework === "STRIDE" ? (
-                    <>
-                      <MetricCard label="Spoofing" value={String(categoryCounts.Spoofing || 0)} />
-                      <MetricCard label="Tampering" value={String(categoryCounts.Tampering || 0)} />
-                      <MetricCard label="Repudiation" value={String(categoryCounts.Repudiation || 0)} />
-                      <MetricCard label="Information Disclosure" value={String(categoryCounts["Information Disclosure"] || 0)} />
-                      <MetricCard label="Denial of Service" value={String(categoryCounts["Denial of Service"] || 0)} />
-                      <MetricCard label="Elevation of Privilege" value={String(categoryCounts["Elevation of Privilege"] || 0)} />
-                    </>
-                  ) : (
-                    <>
-                      <MetricCard label="Methodology Categories" value={String(categoryEntries.length)} />
-                      <MetricCard label="Validated Threats" value={String(report.threats.filter((item) => item.review_status === "Validated by reviewer").length)} />
-                      <MetricCard label="Needs Review" value={String(report.threats.filter((item) => item.review_status !== "Validated by reviewer").length)} />
-                      {hasDreadDetails && <MetricCard label="DREAD Profiles" value={String(report.threats.filter((item) => Boolean(item.dread_breakdown)).length)} />}
-                    </>
-                  )}
-                </div>
-                <div className="threat-model-link-bar">
-                  {threatLinks}
-                </div>
-                {framework !== "STRIDE" && categoryEntries.length > 0 && (
-                  <div className="subpanel" style={{ marginTop: "12px" }}>
-                    <h4>Methodology Category Breakdown</h4>
-                    <table className="simple-table">
-                      <thead>
-                        <tr>
-                          <th>Category</th>
-                          <th>Count</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {categoryEntries.map(([category, count]) => (
-                          <tr key={category}>
-                            <td>{category}</td>
-                            <td>{count}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+            {hasThreats &&
+              renderThreatSection(
+                `Threat Register (${frameworkLabel})`,
+                <>
+                  <div className="metric-grid">
+                    <MetricCard label="Total Threats" value={String(report.threats.length)} />
+                    {framework === "STRIDE" ? (
+                      <>
+                        <MetricCard label="Spoofing" value={String(categoryCounts.Spoofing || 0)} />
+                        <MetricCard label="Tampering" value={String(categoryCounts.Tampering || 0)} />
+                        <MetricCard label="Repudiation" value={String(categoryCounts.Repudiation || 0)} />
+                        <MetricCard label="Information Disclosure" value={String(categoryCounts["Information Disclosure"] || 0)} />
+                        <MetricCard label="Denial of Service" value={String(categoryCounts["Denial of Service"] || 0)} />
+                        <MetricCard label="Elevation of Privilege" value={String(categoryCounts["Elevation of Privilege"] || 0)} />
+                      </>
+                    ) : (
+                      <>
+                        <MetricCard label="Methodology Categories" value={String(categoryEntries.length)} />
+                        <MetricCard label="Validated Threats" value={String(report.threats.filter((item) => item.review_status === "Validated by reviewer").length)} />
+                        <MetricCard label="Needs Review" value={String(report.threats.filter((item) => item.review_status !== "Validated by reviewer").length)} />
+                        {hasDreadDetails && <MetricCard label="DREAD Profiles" value={String(report.threats.filter((item) => Boolean(item.dread_breakdown)).length)} />}
+                      </>
+                    )}
                   </div>
-                )}
-                <div className="threat-model-card-grid">
-                  {report.threats.map((threat, index) => {
-                    const threatId = threat.threat_id || `TM-${index + 1}`;
-                    const evidence = threat.evidence || [];
-                    return (
-                      <details key={`${threatId}-${threat.title}`} className="subpanel threat-model-card" id={`threat-${threatId}`}>
-                        <summary className="threat-model-card-header">
-                          <div>
-                            <p className="eyebrow">Threat {threatId}</p>
-                            <h4>{threat.title}</h4>
+                  <div className="threat-model-link-bar">
+                    {threatLinks}
+                  </div>
+                  {framework !== "STRIDE" && categoryEntries.length > 0 && (
+                    <div className="subpanel" style={{ marginTop: "12px" }}>
+                      <h4>Methodology Category Breakdown</h4>
+                      <table className="simple-table">
+                        <thead>
+                          <tr>
+                            <th title="Framework or methodology category.">Category</th>
+                            <th title="Number of threats assigned to the category.">Count</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {categoryEntries.map(([category, count]) => (
+                            <tr key={category}>
+                              <td>{category}</td>
+                              <td>{count}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  <div className="threat-model-card-grid">
+                    {report.threats.map((threat, index) => {
+                      const threatId = threat.threat_id || `TM-${index + 1}`;
+                      const evidence = threat.evidence || [];
+                      return (
+                        <details key={`${threatId}-${threat.title}`} className="subpanel threat-model-card" id={`threat-${threatId}`}>
+                          <summary className="threat-model-card-header">
+                            <div>
+                              <p className="eyebrow">Threat {threatId}</p>
+                              <h4>{threat.title}</h4>
+                            </div>
+                            <span className="stride-pill">{threat.framework_category || threat.stride_category}</span>
+                          </summary>
+                          <div className="threat-model-card-body">
+                            <p><strong>Component:</strong> {threat.component}</p>
+                            <p><strong>Methodology:</strong> {frameworkLabel}</p>
+                            <p><strong>Classification:</strong> {threat.framework_category || threat.stride_category}</p>
+                            <p><strong>Impact:</strong> {threat.impact} | <strong>Likelihood:</strong> {threat.likelihood} | <strong>Exposure:</strong> {threat.exposure}</p>
+                            <p><strong>Risk Score:</strong> {threat.risk_score ?? "N/A"} ({threat.risk_level || "N/A"})</p>
+                            <p><strong>Review Status:</strong> {threat.review_status || "Pending review"}</p>
+                            <p><strong>Description:</strong> {threat.description}</p>
+                            {threat.owasp_category && (
+                              <p><strong>OWASP Category:</strong> {threat.owasp_category}</p>
+                            )}
+                            {threat.pasta_stage && (
+                              <p><strong>PASTA Stage:</strong> {threat.pasta_stage}</p>
+                            )}
+                            {threat.dread_breakdown && (
+                              <table className="simple-table">
+                                <thead>
+                                  <tr>
+                                    <th title="Estimated potential damage if the threat is realized.">Damage</th>
+                                    <th title="How easily the threat can be repeated.">Reproducibility</th>
+                                    <th title="How easy the threat is to execute.">Exploitability</th>
+                                    <th title="Number of users affected by the threat.">Affected Users</th>
+                                    <th title="How easy it is to discover the weakness.">Discoverability</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  <tr>
+                                    <td>{threat.dread_breakdown.damage}</td>
+                                    <td>{threat.dread_breakdown.reproducibility}</td>
+                                    <td>{threat.dread_breakdown.exploitability}</td>
+                                    <td>{threat.dread_breakdown.affected_users}</td>
+                                    <td>{threat.dread_breakdown.discoverability}</td>
+                                  </tr>
+                                </tbody>
+                              </table>
+                            )}
+                            <p><strong>Evidence:</strong></p>
+                            {evidence.length > 0 ? (
+                              <ul className="landing-story-list">
+                                {evidence.map((hit) => (
+                                  <li key={`${hit.file}:${hit.line}`}>
+                                    {hit.file}:{hit.line} - {hit.excerpt}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="muted-text">Needs reviewer validation.</p>
+                            )}
+                            <p><strong>Root Cause:</strong> {threat.root_cause || "Derived from direct code evidence."}</p>
+                            <p><strong>Abuse Case:</strong> {threat.abuse_case}</p>
+                            <p><strong>Mitigation:</strong> {threat.mitigation}</p>
                           </div>
-                          <span className="stride-pill">{threat.framework_category || threat.stride_category}</span>
-                        </summary>
-                        <div className="threat-model-card-body">
-                          <p><strong>Component:</strong> {threat.component}</p>
-                          <p><strong>Methodology:</strong> {frameworkLabel}</p>
-                          <p><strong>Classification:</strong> {threat.framework_category || threat.stride_category}</p>
-                          <p><strong>Impact:</strong> {threat.impact} | <strong>Likelihood:</strong> {threat.likelihood} | <strong>Exposure:</strong> {threat.exposure}</p>
-                          <p><strong>Risk Score:</strong> {threat.risk_score ?? "N/A"} ({threat.risk_level || "N/A"})</p>
-                          <p><strong>Review Status:</strong> {threat.review_status || "Pending review"}</p>
-                          <p><strong>Description:</strong> {threat.description}</p>
-                          {threat.owasp_category && (
-                            <p><strong>OWASP Category:</strong> {threat.owasp_category}</p>
-                          )}
-                          {threat.pasta_stage && (
-                            <p><strong>PASTA Stage:</strong> {threat.pasta_stage}</p>
-                          )}
-                          {threat.dread_breakdown && (
-                            <table className="simple-table">
-                              <thead>
-                                <tr>
-                                  <th>Damage</th>
-                                  <th>Reproducibility</th>
-                                  <th>Exploitability</th>
-                                  <th>Affected Users</th>
-                                  <th>Discoverability</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                <tr>
-                                  <td>{threat.dread_breakdown.damage}</td>
-                                  <td>{threat.dread_breakdown.reproducibility}</td>
-                                  <td>{threat.dread_breakdown.exploitability}</td>
-                                  <td>{threat.dread_breakdown.affected_users}</td>
-                                  <td>{threat.dread_breakdown.discoverability}</td>
-                                </tr>
-                              </tbody>
-                            </table>
-                          )}
-                          <p><strong>Evidence:</strong></p>
-                          {evidence.length > 0 ? (
-                            <ul className="landing-story-list">
-                              {evidence.map((hit) => (
-                                <li key={`${hit.file}:${hit.line}`}>
-                                  {hit.file}:{hit.line} - {hit.excerpt}
-                                </li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <p className="muted-text">Needs reviewer validation.</p>
-                          )}
-                          <p><strong>Root Cause:</strong> {threat.root_cause || "Derived from direct code evidence."}</p>
-                          <p><strong>Abuse Case:</strong> {threat.abuse_case}</p>
-                          <p><strong>Mitigation:</strong> {threat.mitigation}</p>
-                        </div>
-                      </details>
-                    );
-                  })}
-                </div>
-                <table className="simple-table">
+                        </details>
+                      );
+                    })}
+                  </div>
+                  <table className="simple-table">
                   <thead>
                     <tr>
-                      <th title="Stable identifier assigned to the threat entry.">ID</th>
-                      <th title="Short name describing the threat scenario.">Title</th>
-                      <th title="Codebase component or subsystem affected by the threat.">Component</th>
-                      <th title="Threat modeling category or framework classification.">Classification</th>
-                      <th title="Business or technical impact if the threat is realized.">Impact</th>
-                      <th title="Estimated likelihood that the threat can be exercised.">Likelihood</th>
-                      <th title="Exposure context for the threat: public, authenticated, or internal.">Exposure</th>
-                      <th title="Risk score and severity level derived from the threat model.">Risk</th>
-                      <th title="Review status describing whether the threat has been validated by a reviewer.">Review Status</th>
-                      <th title="Observed code root cause or direct evidence supporting the threat.">Root Cause</th>
-                      <th title="Practical attack path describing how the threat can be abused.">Abuse Case</th>
-                      <th title="Actionable guidance for reducing or eliminating the threat.">Mitigation</th>
+                      <th title="Why this is shown: stable identifier used to reference the threat across the report.">ID</th>
+                      <th title="Why this is shown: short human-readable name for the threat scenario.">Title</th>
+                      <th title="Why this is shown: the codebase module or service affected by the threat.">Component</th>
+                      <th title="Why this is shown: the threat-model category used to group similar threats.">Classification</th>
+                      <th title="Why this is shown: expected business or technical harm if the threat is realized.">Impact</th>
+                      <th title="Why this is shown: how feasible the threat is based on the code evidence.">Likelihood</th>
+                      <th title="Why this is shown: who can reach the threat scenario, such as public, authenticated, or internal access.">Exposure</th>
+                      <th title="Why this is shown: combined risk score used for prioritization.">Risk</th>
+                      <th title="Why this is shown: whether a reviewer has validated the threat or it still needs review.">Review Status</th>
+                      <th title="Why this is shown: the code behavior or evidence that creates the threat.">Root Cause</th>
+                      <th title="Why this is shown: a realistic attacker path for using the weakness.">Abuse Case</th>
+                      <th title="Why this is shown: the recommended fix or control for reducing the threat.">Mitigation</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {report.threats.map((threat, index) => (
-                      <tr key={`${threat.title}-${index}`}>
-                        <td>{threat.threat_id || `TM-${index + 1}`}</td>
-                        <td>{threat.title}</td>
-                        <td>{threat.component}</td>
-                        <td>{threat.framework_category || threat.stride_category}</td>
-                        <td>{threat.impact}</td>
-                        <td>{threat.likelihood}</td>
-                        <td>{threat.exposure}</td>
-                        <td>{threat.risk_score ?? "N/A"} ({threat.risk_level || "N/A"})</td>
-                        <td>{threat.review_status || "Pending reviewer validation"}</td>
-                        <td>{threat.root_cause || "Derived from direct code evidence."}</td>
-                        <td>{threat.abuse_case}</td>
-                        <td>{threat.mitigation}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                    <tbody>
+                      {report.threats.map((threat, index) => (
+                        <tr key={`${threat.title}-${index}`}>
+                          <td>{threat.threat_id || `TM-${index + 1}`}</td>
+                          <td>{threat.title}</td>
+                          <td>{threat.component}</td>
+                          <td>{threat.framework_category || threat.stride_category}</td>
+                          <td>{threat.impact}</td>
+                          <td>{threat.likelihood}</td>
+                          <td>{threat.exposure}</td>
+                          <td>{threat.risk_score ?? "N/A"} ({threat.risk_level || "N/A"})</td>
+                          <td>{threat.review_status || "Pending reviewer validation"}</td>
+                          <td>{threat.root_cause || "Derived from direct code evidence."}</td>
+                          <td>{threat.abuse_case}</td>
+                          <td>{threat.mitigation}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>,
+                { note: "Each threat is evidence-backed, prioritized, and linked to the code paths that triggered it." },
+              )}
 
-            {hasCodeMappings && (
-              <div className="subpanel">
-                <h3>Vulnerabilities Mapped to Code</h3>
+            {hasCodeMappings &&
+              renderThreatSection(
+                "Vulnerabilities Mapped to Code",
                 <table className="simple-table">
                   <thead>
                     <tr>
-                      <th>Threat</th>
-                      <th>Component</th>
-                      <th>File</th>
-                      <th>Line</th>
-                      <th>Root Cause</th>
-                      <th>CWE</th>
+                      <th title="Threat identifier that the mapping belongs to.">Threat</th>
+                      <th title="Affected component or subsystem.">Component</th>
+                      <th title="Source file containing the code evidence.">File</th>
+                      <th title="Line number where the evidence was observed.">Line</th>
+                      <th title="Observed root cause tied to the threat.">Root Cause</th>
+                      <th title="Optional CWE mapping.">CWE</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3502,19 +3521,19 @@ export default function App(): React.JSX.Element {
                       </tr>
                     ))}
                   </tbody>
-                </table>
-              </div>
-            )}
+                </table>,
+                { note: "This section ties each threat back to the exact source location that supports it." },
+              )}
 
-            {hasValidationPlan && (
-              <div className="subpanel">
-                <h3>Validation & Test Strategy</h3>
+            {hasValidationPlan &&
+              renderThreatSection(
+                "Validation and Test Strategy",
                 <table className="simple-table">
                   <thead>
                     <tr>
-                      <th>Threat</th>
-                      <th>Check</th>
-                      <th>Expected Verification</th>
+                      <th title="Threat identifier covered by the validation step.">Threat</th>
+                      <th title="Action to verify the threat or mitigation.">Check</th>
+                      <th title="Expected verification outcome.">Expected Verification</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3526,19 +3545,19 @@ export default function App(): React.JSX.Element {
                       </tr>
                     ))}
                   </tbody>
-                </table>
-              </div>
-            )}
+                </table>,
+                { note: "Validation steps describe how the team can confirm the mitigation in code or test cases." },
+              )}
 
-            {hasTraceability && (
-              <div className="subpanel">
-                <h3>Traceability</h3>
+            {hasTraceability &&
+              renderThreatSection(
+                "Traceability",
                 <table className="simple-table">
                   <thead>
                     <tr>
-                      <th>Threat</th>
-                      <th>Evidence</th>
-                      <th>Status</th>
+                      <th title="Threat identifier tracked through the lifecycle.">Threat</th>
+                      <th title="Evidence or reference attached to the threat.">Evidence</th>
+                      <th title="Current status of the threat record.">Status</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3550,129 +3569,129 @@ export default function App(): React.JSX.Element {
                       </tr>
                     ))}
                   </tbody>
-                </table>
-              </div>
-            )}
+                </table>,
+                { note: "Traceability links the threat register to fixes, tickets, or acceptance decisions." },
+              )}
 
-            {(hasResidualRisk || hasAssumptions) && (
-              <div className="subpanel">
-                <h3>Residual Risk & Assumptions</h3>
-                {hasResidualRisk && (
-                  <>
-                    <h4>Residual Risk</h4>
-                    <ul className="landing-story-list">
-                      {report.residual_risk.map((item) => <li key={item}>{item}</li>)}
-                    </ul>
-                  </>
-                )}
-                {hasAssumptions && (
-                  <>
-                    <h4>Assumptions</h4>
-                    <ul className="landing-story-list">
-                      {report.assumptions.map((item) => <li key={item}>{item}</li>)}
-                    </ul>
-                  </>
-                )}
-              </div>
-            )}
+            {(hasResidualRisk || hasAssumptions) &&
+              renderThreatSection(
+                "Residual Risk and Assumptions",
+                <>
+                  {hasResidualRisk && (
+                    <>
+                      <h4>Residual Risk</h4>
+                      <ul className="landing-story-list">
+                        {report.residual_risk.map((item) => <li key={item}>{item}</li>)}
+                      </ul>
+                    </>
+                  )}
+                  {hasAssumptions && (
+                    <>
+                      <h4>Assumptions</h4>
+                      <ul className="landing-story-list">
+                        {report.assumptions.map((item) => <li key={item}>{item}</li>)}
+                      </ul>
+                    </>
+                  )}
+                </>,
+                { note: "Residual risk explains what remains after recommended mitigations are applied." },
+              )}
 
-            <div className="subpanel">
-              <h3>Architecture Diagram</h3>
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "12px",
-                  border: "1px solid rgba(120,168,205,.18)",
-                  borderRadius: "16px",
-                  padding: "16px",
-                  background: "rgba(255,255,255,.02)",
-                }}
-              >
+            {renderThreatSection(
+              "Architecture Diagram",
+              <>
                 <div
                   style={{
-                    alignSelf: "flex-start",
-                    padding: "6px 10px",
-                    borderRadius: "999px",
-                    border: "1px solid rgba(120,168,205,.22)",
-                    background: "rgba(255,255,255,.03)",
-                    color: "#b8cadc",
-                    fontSize: ".82rem",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "12px",
+                    border: "1px solid rgba(120,168,205,.18)",
+                    borderRadius: "16px",
+                    padding: "16px",
+                    background: "rgba(255,255,255,.02)",
                   }}
                 >
-                  Application boundary
-                </div>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(11, minmax(0, 1fr))",
-                    gap: "10px",
-                    alignItems: "stretch",
-                  }}
-                >
-                  {diagramNodes.map((node, index) => (
-                    <React.Fragment key={node.title}>
-                      <div
-                        style={{
-                          gridColumn: "span 2",
-                          minHeight: "92px",
-                          border: "1px solid rgba(120,168,205,.22)",
-                          borderRadius: "14px",
-                          padding: "12px",
-                          background: "linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02))",
-                          display: "flex",
-                          flexDirection: "column",
-                          justifyContent: "center",
-                          textAlign: "center",
-                        }}
-                      >
-                        <div style={{ fontWeight: 700, marginBottom: "6px" }}>{node.title}</div>
-                        <div style={{ color: "#9ab0c8", fontSize: ".9rem", lineHeight: 1.35 }}>{node.detail}</div>
-                      </div>
-                      {index < diagramNodes.length - 1 && (
+                  <div
+                    style={{
+                      alignSelf: "flex-start",
+                      padding: "6px 10px",
+                      borderRadius: "999px",
+                      border: "1px solid rgba(120,168,205,.22)",
+                      background: "rgba(255,255,255,.03)",
+                      color: "#b8cadc",
+                      fontSize: ".82rem",
+                    }}
+                  >
+                    Application boundary
+                  </div>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(11, minmax(0, 1fr))",
+                      gap: "10px",
+                      alignItems: "stretch",
+                    }}
+                  >
+                    {diagramNodes.map((node, index) => (
+                      <React.Fragment key={node.title}>
                         <div
                           style={{
-                            gridColumn: "span 1",
+                            gridColumn: "span 2",
+                            minHeight: "92px",
+                            border: "1px solid rgba(120,168,205,.22)",
+                            borderRadius: "14px",
+                            padding: "12px",
+                            background: "linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02))",
                             display: "flex",
-                            alignItems: "center",
+                            flexDirection: "column",
                             justifyContent: "center",
-                            color: "#7ecbff",
-                            fontSize: "1.4rem",
-                            fontWeight: 700,
+                            textAlign: "center",
                           }}
                         >
-                          →
+                          <div style={{ fontWeight: 700, marginBottom: "6px" }}>{node.title}</div>
+                          <div style={{ color: "#9ab0c8", fontSize: ".9rem", lineHeight: 1.35 }}>{node.detail}</div>
                         </div>
-                      )}
-                    </React.Fragment>
-                  ))}
+                        {index < diagramNodes.length - 1 && (
+                          <div
+                            style={{
+                              gridColumn: "span 1",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              color: "#7ecbff",
+                              fontSize: "1.4rem",
+                              fontWeight: 700,
+                            }}
+                          >
+                            →
+                          </div>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </div>
+                  <div
+                    style={{
+                      alignSelf: "flex-start",
+                      padding: "6px 10px",
+                      borderRadius: "999px",
+                      border: "1px solid rgba(120,168,205,.22)",
+                      background: "rgba(255,255,255,.03)",
+                      color: "#b8cadc",
+                      fontSize: ".82rem",
+                    }}
+                  >
+                    Privileged desktop boundary
+                  </div>
                 </div>
-                <div
-                  style={{
-                    alignSelf: "flex-start",
-                    padding: "6px 10px",
-                    borderRadius: "999px",
-                    border: "1px solid rgba(120,168,205,.22)",
-                    background: "rgba(255,255,255,.03)",
-                    color: "#b8cadc",
-                    fontSize: ".82rem",
-                  }}
-                >
-                  Privileged desktop boundary
-                </div>
-                <details>
-                  <summary className="role-hint" style={{ cursor: "pointer" }}>
-                    View diagram source
-                  </summary>
-                  <pre>{report.diagram}</pre>
-                </details>
-              </div>
-            </div>
+              </>,
+              { note: "This visual summarizes the application layers and the privileged boundaries that matter to the analysis." },
+            )}
 
-            <div className="subpanel">
-              <h3>JSON Output</h3>
-              <pre>{jsonText}</pre>
-            </div>
+            {renderThreatSection(
+              "JSON Output",
+              <pre>{jsonText}</pre>,
+              { note: "The raw generated report for downstream use, archival, or troubleshooting." },
+            )}
           </>
         )}
       </section>
