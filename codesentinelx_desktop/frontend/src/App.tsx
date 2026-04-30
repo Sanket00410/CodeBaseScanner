@@ -110,6 +110,30 @@ function parseHelpGuideSections(markdown: string): HelpGuideSection[] {
   return sections;
 }
 
+function parseCweReference(cwe: string): { label: string; href: string } | null {
+  const match = /CWE-(\d+)/i.exec(String(cwe || "").trim());
+  if (!match) {
+    return null;
+  }
+  const id = match[1];
+  return {
+    label: `CWE-${id}`,
+    href: `https://cwe.mitre.org/data/definitions/${id}.html`,
+  };
+}
+
+function renderCweLink(cwe: string): React.ReactNode {
+  const reference = parseCweReference(cwe);
+  if (!reference) {
+    return cwe || "";
+  }
+  return (
+    <a href={reference.href} target="_blank" rel="noreferrer" title={`Open official ${reference.label} definition`}>
+      {reference.label}
+    </a>
+  );
+}
+
 const TABS: Array<{ key: AppTab; label: string; icon: string }> = [
   { key: "dashboard", label: "Code Risk Overview", icon: "CM" },
   { key: "threat-model", label: "Threat Model", icon: "TH" },
@@ -3517,7 +3541,7 @@ export default function App(): React.JSX.Element {
                         <td>{item.file}</td>
                         <td>{item.line}</td>
                         <td>{item.root_cause}</td>
-                        <td>{item.cwe || ""}</td>
+                        <td>{renderCweLink(item.cwe || "")}</td>
                       </tr>
                     ))}
                   </tbody>

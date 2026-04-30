@@ -73,6 +73,18 @@ function toPosixPath(input: string): string {
   return String(input || "").replaceAll("\\", "/");
 }
 
+function extractCweReference(input: string): { label: string; href: string } | null {
+  const match = /CWE-(\d+)/i.exec(String(input || "").trim());
+  if (!match) {
+    return null;
+  }
+  const id = match[1];
+  return {
+    label: `CWE-${id}`,
+    href: `https://cwe.mitre.org/data/definitions/${id}.html`,
+  };
+}
+
 function fileLanguage(filePath: string): string {
   const ext = path.extname(filePath).toLowerCase();
   switch (ext) {
@@ -1351,6 +1363,13 @@ function renderThreatHtml(report: ThreatModelReport): string {
       </tr>`,
     )
     .join("");
+  const renderCweCell = (cwe: string): string => {
+    const reference = extractCweReference(cwe);
+    if (!reference) {
+      return escapeHtml(cwe || "");
+    }
+    return `<a href="${escapeHtml(reference.href)}" target="_blank" rel="noreferrer" title="Open official ${escapeHtml(reference.label)} definition">${escapeHtml(reference.label)}</a>`;
+  };
   const threatRows = report.threats
     .map(
       (item) => `<tr>
@@ -1655,7 +1674,7 @@ function renderThreatHtml(report: ThreatModelReport): string {
         <span class="diagram-help" aria-hidden="true">Collapse / expand</span>
       </summary>
       <div class="threat-section-body">
-        <table><thead><tr><th title="Threat identifier linked to the vulnerability.">Threat</th><th title="Codebase module or subsystem where the root cause appears.">Component</th><th title="Exact file containing the mapped evidence.">File</th><th title="Line number where the relevant code appears.">Line</th><th title="Why the code path maps to the threat.">Root Cause</th><th title="CWE identifier associated with the mapped code weakness.">CWE</th></tr></thead><tbody>${report.code_mappings.map((item) => `<tr><td>${escapeHtml(item.threat_id)}</td><td>${escapeHtml(item.component)}</td><td>${escapeHtml(item.file)}</td><td>${Number(item.line || 0)}</td><td>${escapeHtml(item.root_cause)}</td><td>${escapeHtml(item.cwe || "")}</td></tr>`).join("")}</tbody></table>
+        <table><thead><tr><th title="Threat identifier linked to the vulnerability.">Threat</th><th title="Codebase module or subsystem where the root cause appears.">Component</th><th title="Exact file containing the mapped evidence.">File</th><th title="Line number where the relevant code appears.">Line</th><th title="Why the code path maps to the threat.">Root Cause</th><th title="CWE identifier associated with the mapped code weakness.">CWE</th></tr></thead><tbody>${report.code_mappings.map((item) => `<tr><td>${escapeHtml(item.threat_id)}</td><td>${escapeHtml(item.component)}</td><td>${escapeHtml(item.file)}</td><td>${Number(item.line || 0)}</td><td>${escapeHtml(item.root_cause)}</td><td>${renderCweCell(item.cwe || "")}</td></tr>`).join("")}</tbody></table>
       </div>
     </details>` : ""}
 
