@@ -870,10 +870,46 @@ function buildCodeMappings(threats: ThreatModelThreat[]): ThreatModelCodeMapping
         file: first.file,
         line: first.line,
         root_cause: threat.root_cause || first.excerpt,
-        cwe: undefined,
+        cwe: inferThreatCwe(threat),
       },
     ];
   });
+}
+
+function inferThreatCwe(threat: ThreatModelThreat): string {
+  const evidenceText = (threat.evidence || []).map((hit) => hit.excerpt).join(" ").toLowerCase();
+  const text = `${threat.title} ${threat.component} ${threat.root_cause || ""} ${threat.description} ${evidenceText}`.toLowerCase();
+  if (/path|travers|export|filesystem|file selection/.test(text)) {
+    return "CWE-22";
+  }
+  if (/audit|history|log/.test(text)) {
+    return "CWE-778";
+  }
+  if (/secret|credential|password|token|snippet|evidence/.test(text)) {
+    return "CWE-200";
+  }
+  if (/readdir|rglob|recursive|collectfiles/.test(text)) {
+    return "CWE-400";
+  }
+  if (/ipcmain|contextbridge|renderer|main process|privileged|role|token|session|auth|login/.test(text)) {
+    return threat.stride_category === "Elevation of Privilege" ? "CWE-269" : "CWE-284";
+  }
+  switch (threat.stride_category) {
+    case "Spoofing":
+      return "CWE-287";
+    case "Tampering":
+      return "CWE-20";
+    case "Repudiation":
+      return "CWE-778";
+    case "Information Disclosure":
+      return "CWE-200";
+    case "Denial of Service":
+      return "CWE-400";
+    case "Elevation of Privilege":
+      return "CWE-269";
+    default:
+      return "CWE-284";
+  }
 }
 
 function buildValidationPlan(threats: ThreatModelThreat[]): ThreatModelValidationPlanItem[] {
@@ -1170,7 +1206,7 @@ function renderThreatDiagramPreview(report: ThreatModelReport): string {
                 <div class="diagram-node-title">${escapeHtml(node.title)}</div>
                 <div class="diagram-node-detail">${escapeHtml(node.detail)}</div>
               </div>
-              ${index < flowNodes.length - 1 ? `<div class="diagram-arrow">→</div>` : ""}
+              ${index < flowNodes.length - 1 ? `<div class="diagram-arrow">-></div>` : ""}
             `,
           )
           .join("")}
@@ -1431,7 +1467,7 @@ function renderThreatHtml(report: ThreatModelReport): string {
       line-height:1;
     }
     .threat-section[open] > summary::before,
-    .threat-card[open] > summary::before { content:"−"; }
+    .threat-card[open] > summary::before { content:"-"; }
     .threat-section-body { padding:0 14px 14px; }
     .threat-card { border:1px solid rgba(120,168,205,.18); border-radius:14px; padding:0; background:#0a1421; overflow:hidden; }
     .threat-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; margin-bottom:10px; }
@@ -1619,7 +1655,7 @@ function renderThreatHtml(report: ThreatModelReport): string {
         <span class="diagram-help" aria-hidden="true">Collapse / expand</span>
       </summary>
       <div class="threat-section-body">
-        <table><thead><tr><th title="Threat identifier linked to the vulnerability.">Threat</th><th title="Codebase module or subsystem where the root cause appears.">Component</th><th title="Exact file containing the mapped evidence.">File</th><th title="Line number where the relevant code appears.">Line</th><th title="Why the code path maps to the threat.">Root Cause</th><th title="Optional CWE identifier associated with the code issue.">CWE</th></tr></thead><tbody>${report.code_mappings.map((item) => `<tr><td>${escapeHtml(item.threat_id)}</td><td>${escapeHtml(item.component)}</td><td>${escapeHtml(item.file)}</td><td>${Number(item.line || 0)}</td><td>${escapeHtml(item.root_cause)}</td><td>${escapeHtml(item.cwe || "")}</td></tr>`).join("")}</tbody></table>
+        <table><thead><tr><th title="Threat identifier linked to the vulnerability.">Threat</th><th title="Codebase module or subsystem where the root cause appears.">Component</th><th title="Exact file containing the mapped evidence.">File</th><th title="Line number where the relevant code appears.">Line</th><th title="Why the code path maps to the threat.">Root Cause</th><th title="CWE identifier associated with the mapped code weakness.">CWE</th></tr></thead><tbody>${report.code_mappings.map((item) => `<tr><td>${escapeHtml(item.threat_id)}</td><td>${escapeHtml(item.component)}</td><td>${escapeHtml(item.file)}</td><td>${Number(item.line || 0)}</td><td>${escapeHtml(item.root_cause)}</td><td>${escapeHtml(item.cwe || "")}</td></tr>`).join("")}</tbody></table>
       </div>
     </details>` : ""}
 

@@ -246,7 +246,7 @@ a {
 
 .window-control-close span::before,
 .window-control-close span::after {
-  content: "\2212";
+  content: "-";
   position: absolute;
   left: 50%;
   top: 50%;
@@ -511,7 +511,7 @@ a {
 
 .earth-reticle::before,
 .earth-reticle::after {
-  content: "\2212";
+  content: "-";
   position: absolute;
   background: rgba(255, 92, 92, 0.5);
 }
@@ -599,7 +599,7 @@ a {
 }
 
 .darkworld-map-frame::after {
-  content: "\2212";
+  content: "-";
   position: absolute;
   inset: 0;
   background:
@@ -1395,7 +1395,7 @@ select optgroup {
 
 .threat-section > summary::before,
 .threat-model-card > summary::before {
-  content: "\2212";
+  content: "-";
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1409,7 +1409,7 @@ select optgroup {
 
 .threat-section[open] > summary::before,
 .threat-model-card[open] > summary::before {
-  content: "\2212";
+  content: "-";
 }
 
 .threat-section-summary {

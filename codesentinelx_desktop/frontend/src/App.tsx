@@ -3506,7 +3506,7 @@ export default function App(): React.JSX.Element {
                       <th title="Source file containing the code evidence.">File</th>
                       <th title="Line number where the evidence was observed.">Line</th>
                       <th title="Observed root cause tied to the threat.">Root Cause</th>
-                      <th title="Optional CWE mapping.">CWE</th>
+                      <th title="CWE identifier mapped from the threat evidence.">CWE</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3663,7 +3663,7 @@ export default function App(): React.JSX.Element {
                               fontWeight: 700,
                             }}
                           >
-                            →
+                            {"->"}
                           </div>
                         )}
                       </React.Fragment>
