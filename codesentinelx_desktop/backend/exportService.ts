@@ -2589,10 +2589,7 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
     writeWrapped(doc, `Tool: ${displayReportToolName(leadExtended.tool || "CodeSentinelX")}`, 8);
     writeWrapped(doc, `Description: ${singleLine(leadExtended.description || "N/A")}`, 8);
     writeWrapped(doc, `CVSS: ${(lead.cvss_score || 0).toFixed(1)} (https://www.first.org/cvss/calculator/3.1)`, 8);
-    const cveJoined = cveValues(leadExtended.cve_ids || []).join(", ");
-    if (cveJoined) {
-      writeWrapped(doc, `CVEs: ${cveJoined}`, 8);
-    }
+    writeLinkedIdList(doc, "CVEs", cveValues(leadExtended.cve_ids || []), cveUrl);
     const leadKnownExploited = knownExploitedFindingText(leadExtended);
     if (leadKnownExploited) {
       writeWrapped(doc, `Known Exploited: ${leadKnownExploited}`, 8);
@@ -2840,10 +2837,9 @@ function writeFixesPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
       8,
     );
     writeWrapped(doc, "CVSS Reference: https://www.first.org/cvss/calculator/3.1", 8);
-    const cves = cveValues(finding.cve_ids || []);
     const advisoryIds = advisoryValues(finding);
     if (advisoryIds.length) {
-      writeWrapped(doc, `CVE / Advisory IDs: ${advisoryIds.join(", ")}`, 8);
+      writeLinkedIdList(doc, "CVE / Advisory IDs", advisoryIds, advisoryUrl);
     }
     writeWrapped(doc, `Recommendation: ${finding.recommendation || "N/A"}`, 8);
     const dependencySummary = dependencyAuthenticitySummary(finding);
@@ -3149,6 +3145,31 @@ function writeWrapped(doc: PDFKit.PDFDocument, text: string, fontSize: number): 
     doc.addPage();
   }
   doc.fontSize(fontSize).text(text, { width: doc.page.width - 64, lineGap: 1.5 });
+}
+
+function writeLinkedIdList(
+  doc: PDFKit.PDFDocument,
+  heading: string,
+  values: string[],
+  resolveUrl: (value: string) => string | null,
+): void {
+  const filtered = values.map((value) => String(value || "").trim()).filter(Boolean);
+  if (!filtered.length) {
+    return;
+  }
+  writeWrapped(doc, `${heading}:`, 8);
+  for (const value of filtered.slice(0, 12)) {
+    const url = resolveUrl(value);
+    if (url) {
+      if (doc.y > doc.page.height - 52) {
+        doc.addPage();
+      }
+      doc.fillColor("#9eb6ce").fontSize(8).text(`- ${value}`, { width: doc.page.width - 64, lineGap: 1.5, link: url, underline: true });
+    } else {
+      writeWrapped(doc, `- ${value}`, 8);
+    }
+  }
+  doc.fillColor("#dce9f7");
 }
 
 function ensurePdfSpace(doc: PDFKit.PDFDocument, height: number): void {
