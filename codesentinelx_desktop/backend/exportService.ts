@@ -560,7 +560,7 @@ function renderHelpGuideHtml(markdown: string, markdownPath: string, generatedAt
       <span class="eyebrow">CodeSentinelX Help Center</span>
       <h1>Documentation that matches the actual app flow</h1>
       <p>
-        This HTML guide is built to feel like a product page, not a plain document. It mirrors the app’s role-based
+        This HTML guide is built to feel like a product page, not a plain document. It mirrors the appï¿½s role-based
         scan flow, report structure, troubleshooting path, and technical term definitions so users can move from
         reading to action quickly.
       </p>
@@ -1450,7 +1450,7 @@ export class ExportService {
 
       const renderBullet = (text: string): void => {
         ensureSpace(16);
-        document.fillColor("#7fcfff").font("Helvetica-Bold").fontSize(10).text("•", contentLeft, document.y, { width: 10 });
+        document.fillColor("#7fcfff").font("Helvetica-Bold").fontSize(10).text("ï¿½", contentLeft, document.y, { width: 10 });
         document.fillColor("#dce9f7").font("Helvetica").fontSize(9.2).text(text, contentLeft + 14, document.y, { width: width - 14, lineGap: 1.3 });
       };
 
@@ -3847,7 +3847,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
     <td><a href="#${escapeHtml(alertInstanceAnchorByGroup.get(group.id) || alertAnchorByGroup.get(group.id) || stableAnchorId("alert", group.id))}" class="alert-link" data-alert-id="${escapeHtml(group.id)}" data-target-id="${escapeHtml(alertAnchorByGroup.get(group.id) || stableAnchorId("alert", group.id))}" data-instance-target-id="${escapeHtml(alertInstanceAnchorByGroup.get(group.id) || stableAnchorId("alert-instance", group.id))}">${escapeHtml(group.title)}</a></td>
     <td align="center">${group.count}</td>
     <td>${renderCweLink(group.cwe)}</td>
-    <td>${escapeHtml(group.owasp)}</td>
+    <td>${renderOwaspLink(group.owasp)}</td>
   </tr>`,
     )
     .join("");
@@ -3884,7 +3884,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
   const owaspRows = owaspAgg
     .map(
       (item) => `<tr>
-    <td>${escapeHtml(String(item.owasp_category || "N/A"))}</td>
+    <td>${renderOwaspLink(String(item.owasp_category || "N/A"))}</td>
     <td align="center">${String(item.count || 0)}</td>
   </tr>`,
     )
@@ -3931,7 +3931,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       <td>${escapeHtml(workflowStatusText(finding.status))}</td>
       <td>${escapeHtml(displayReportToolName((finding as VulnerabilityFinding & { tool?: string }).tool || "CodeSentinelX"))}</td>
       <td>${renderCweLink(finding.cwe_id || "N/A")}</td>
-      <td>${escapeHtml(finding.owasp_mapping || "N/A")}</td>
+      <td>${renderOwaspLink(finding.owasp_mapping || "N/A")}</td>
     </tr>`;
           },
         )
@@ -3941,7 +3941,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
     <h3>[${escapeHtml(group.severity)}] ${escapeHtml(group.title)} (${group.count})</h3>
     <table class="results">
       <tr><th width="20%">CWE</th><td>${renderCweLink(group.cwe)}</td></tr>
-      <tr><th>OWASP</th><td>${escapeHtml(group.owasp)}</td></tr>
+      <tr><th>OWASP</th><td>${renderOwaspLink(group.owasp)}</td></tr>
       <tr><th>CVSS</th><td>${renderCvssLink(lead.cvss_score)}</td></tr>
       ${isRenderableDisplayValue(leadExtended.description) ? `<tr><th>Description</th><td>${escapeHtml(String(leadExtended.description || ""))}</td></tr>` : ""}
       ${isRenderableDisplayValue(lead.business_impact) ? `<tr><th>Business Impact</th><td>${escapeHtml(String(lead.business_impact || ""))}</td></tr>` : ""}
@@ -3986,7 +3986,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
       <td align="center">${finding.line_number || 1}</td>
       <td>${escapeHtml(normalizedFindingTitle(finding))}</td>
       <td>${renderCweLink(finding.cwe_id || "N/A")}</td>
-      <td>${escapeHtml(finding.owasp_mapping || "N/A")}</td>
+      <td>${renderOwaspLink(finding.owasp_mapping || "N/A")}</td>
       <td>${escapeHtml(workflowStatusText(finding.status))}</td>
     </tr>`,
         )
@@ -4158,7 +4158,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
     <td>${escapeHtml(String(row.severity || "Info"))}</td>
     <td>${escapeHtml(String(row.file_path || "unknown"))}:${Number(row.line_number || 1)}</td>
     <td>${renderCweLink(String(row.cwe_id || "N/A"))}</td>
-    <td>${escapeHtml(String(row.owasp_mapping || "N/A"))}</td>
+    <td>${renderOwaspLink(String(row.owasp_mapping || "N/A"))}</td>
     <td><pre class="code">${escapeHtml(String(row.secure_fix_snippet || "N/A"))}</pre></td>
   </tr>`;
     })
@@ -4908,7 +4908,7 @@ function renderVulnerabilityHtml(scan: ScanView): string {
             + "<td>" + escapeCell(item.module) + "</td>"
             + "<td align='center'>" + item.line + "</td>"
             + "<td>" + cweCell + "</td>"
-            + "<td>" + escapeCell(item.owasp) + "</td>"
+            + "<td>" + renderOwaspLink(item.owasp) + "</td>"
             + "<td>" + escapeCell(item.status) + "</td>"
             + "</tr>";
         }).join("");
@@ -5199,7 +5199,7 @@ function renderFixesHtml(scan: ScanView): string {
     <td align="center">${finding.line_number || 1}</td>
     <td>${renderCvssLink(finding.cvss_score)}</td>
     <td>${renderCweLink(finding.cwe_id || "")}</td>
-    <td>${escapeHtml(String(finding.owasp_mapping || ""))}</td>
+    <td>${renderOwaspLink(String(finding.owasp_mapping || ""))}</td>
     <td><a class="fix-link" href="#${escapeHtml(instanceAnchorId)}" data-target-id="${escapeHtml(sectionAnchorId)}" data-instance-target-id="${escapeHtml(instanceAnchorId)}">View</a></td>
   </tr>`;
       },
@@ -5337,8 +5337,8 @@ function renderFixesHtml(scan: ScanView): string {
       }
       const plainLanguageBrief = plainLanguageSecurityBrief(finding as Partial<VulnerabilityFinding> & Record<string, unknown>);
       sectionWhatToChange.push(`<div class="plain-language-brief"><div class="fix-subtitle">Plain-Language Security Brief: ${escapeHtml(plainLanguageBrief.title)}</div><table class="results"><tbody>
-        <tr><th>What’s happening here</th><td>${escapeHtml(plainLanguageBrief.what_is_happening)}</td></tr>
-        <tr><th>Why it’s considered weak</th><td>${escapeHtml(plainLanguageBrief.why_it_is_weak)}</td></tr>
+        <tr><th>Whatï¿½s happening here</th><td>${escapeHtml(plainLanguageBrief.what_is_happening)}</td></tr>
+        <tr><th>Why itï¿½s considered weak</th><td>${escapeHtml(plainLanguageBrief.why_it_is_weak)}</td></tr>
         <tr><th>What you should use instead</th><td>${escapeHtml(plainLanguageBrief.what_to_use_instead)}</td></tr>
         <tr><th>Summary</th><td>${escapeHtml(plainLanguageBrief.summary)}</td></tr>
       </tbody></table></div>`);
@@ -5414,7 +5414,7 @@ function renderFixesHtml(scan: ScanView): string {
       const owaspValue = String(finding.owasp_mapping || "").trim();
       const securityRows = [
         cweValue ? `<tr><th>CWE</th><td>${cweValue}</td></tr>` : "",
-        owaspValue ? `<tr><th>OWASP</th><td>${escapeHtml(owaspValue)}</td></tr>` : "",
+        owaspValue ? `<tr><th>OWASP</th><td>${renderOwaspLink(owaspValue)}</td></tr>` : "",
         `<tr><th>CVSS</th><td>${renderCvssLink(finding.cvss_score)}</td></tr>`,
         isRenderableDisplayValue(finding.attack_scenario) ? `<tr><th>Attack Scenario</th><td>${escapeHtml(String(finding.attack_scenario || ""))}</td></tr>` : "",
         isRenderableDisplayValue(finding.exploitation_example) ? `<tr><th>Exploitation Path</th><td>${escapeHtml(String(finding.exploitation_example || ""))}</td></tr>` : "",
@@ -5600,7 +5600,7 @@ function renderFixesHtml(scan: ScanView): string {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CodeSentinelX Developer Secure Coding Practices Report</title>
-  <style>${exportThemeCss(".fix-link{color:var(--accent);text-decoration:underline}.toolbar{display:flex;gap:8px;align-items:center;margin:6px 0 10px;flex-wrap:wrap}input{background:rgba(7,20,36,.14);border:1px solid rgba(120,168,205,.28);border-radius:8px;color:var(--text);padding:7px 10px;min-width:300px}.fix-detail{border:1px solid rgba(120,168,205,.24);border-radius:14px;background:rgba(8,21,36,.14);padding:12px;margin-bottom:10px}.fix-detail h3{margin-bottom:8px}.fix-detail h4{margin:10px 0 6px;font-size:12px;line-height:1.2;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}.fix-detail .results th,.fix-detail .results td{padding:8px 10px}.fix-detail .code-grid{gap:10px}.fix-detail .code-grid > div{min-width:0}.fix-detail .code-grid pre,.fix-detail pre.evidence-scroll,.fix-detail pre.evidence-full{margin:0}.fix-detail.is-active{outline:2px solid rgba(94,234,212,.38);box-shadow:0 0 0 1px rgba(94,234,212,.18),0 18px 32px rgba(15,23,42,.22)}.fix-subtitle{margin:8px 0 4px;font-size:11px;line-height:1.2;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700}.plain-language-brief{margin-top:10px}.plain-language-brief .results{margin-bottom:0}.plain-language-code{margin:0;white-space:pre-wrap;word-break:break-word;overflow:visible;max-height:none;background:rgba(7,19,34,.34);border:1px solid rgba(120,168,205,.16);border-radius:12px;padding:12px 14px}.fix-disclosure{border:1px solid rgba(120,168,205,.22);border-radius:12px;background:rgba(9,22,37,.1);margin:10px 0 0;overflow:hidden}.fix-disclosure>summary{cursor:pointer;list-style:none;padding:10px 12px;font-weight:700;color:var(--text);display:flex;align-items:center;justify-content:space-between;gap:12px}.fix-disclosure>summary::-webkit-details-marker{display:none}.fix-disclosure>summary::after{content:'+';color:var(--muted);font-size:16px;line-height:1}.fix-disclosure[open]>summary{border-bottom:1px solid rgba(120,168,205,.14)}.fix-disclosure[open]>summary::after{content:'–'}.fix-disclosure-body{padding:12px}.evidence-scroll{max-height:280px;overflow:auto;white-space:pre;word-break:normal;scrollbar-width:thin;scrollbar-color:rgba(128,169,196,.22) transparent}.evidence-full{max-height:none;overflow:visible;white-space:pre-wrap;word-break:break-word;scrollbar-width:thin;scrollbar-color:rgba(128,169,196,.22) transparent}.evidence-scroll::-webkit-scrollbar,.evidence-full::-webkit-scrollbar{height:8px;width:8px}.evidence-scroll::-webkit-scrollbar-track,.evidence-full::-webkit-scrollbar-track{background:transparent}.evidence-scroll::-webkit-scrollbar-thumb,.evidence-full::-webkit-scrollbar-thumb{background:rgba(128,169,196,.2);border-radius:999px}.evidence-scroll::-webkit-scrollbar-thumb:hover,.evidence-full::-webkit-scrollbar-thumb:hover{background:rgba(128,169,196,.32)}")}</style>
+  <style>${exportThemeCss(".fix-link{color:var(--accent);text-decoration:underline}.toolbar{display:flex;gap:8px;align-items:center;margin:6px 0 10px;flex-wrap:wrap}input{background:rgba(7,20,36,.14);border:1px solid rgba(120,168,205,.28);border-radius:8px;color:var(--text);padding:7px 10px;min-width:300px}.fix-detail{border:1px solid rgba(120,168,205,.24);border-radius:14px;background:rgba(8,21,36,.14);padding:12px;margin-bottom:10px}.fix-detail h3{margin-bottom:8px}.fix-detail h4{margin:10px 0 6px;font-size:12px;line-height:1.2;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}.fix-detail .results th,.fix-detail .results td{padding:8px 10px}.fix-detail .code-grid{gap:10px}.fix-detail .code-grid > div{min-width:0}.fix-detail .code-grid pre,.fix-detail pre.evidence-scroll,.fix-detail pre.evidence-full{margin:0}.fix-detail.is-active{outline:2px solid rgba(94,234,212,.38);box-shadow:0 0 0 1px rgba(94,234,212,.18),0 18px 32px rgba(15,23,42,.22)}.fix-subtitle{margin:8px 0 4px;font-size:11px;line-height:1.2;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700}.plain-language-brief{margin-top:10px}.plain-language-brief .results{margin-bottom:0}.plain-language-code{margin:0;white-space:pre-wrap;word-break:break-word;overflow:visible;max-height:none;background:rgba(7,19,34,.34);border:1px solid rgba(120,168,205,.16);border-radius:12px;padding:12px 14px}.fix-disclosure{border:1px solid rgba(120,168,205,.22);border-radius:12px;background:rgba(9,22,37,.1);margin:10px 0 0;overflow:hidden}.fix-disclosure>summary{cursor:pointer;list-style:none;padding:10px 12px;font-weight:700;color:var(--text);display:flex;align-items:center;justify-content:space-between;gap:12px}.fix-disclosure>summary::-webkit-details-marker{display:none}.fix-disclosure>summary::after{content:'+';color:var(--muted);font-size:16px;line-height:1}.fix-disclosure[open]>summary{border-bottom:1px solid rgba(120,168,205,.14)}.fix-disclosure[open]>summary::after{content:'ï¿½'}.fix-disclosure-body{padding:12px}.evidence-scroll{max-height:280px;overflow:auto;white-space:pre;word-break:normal;scrollbar-width:thin;scrollbar-color:rgba(128,169,196,.22) transparent}.evidence-full{max-height:none;overflow:visible;white-space:pre-wrap;word-break:break-word;scrollbar-width:thin;scrollbar-color:rgba(128,169,196,.22) transparent}.evidence-scroll::-webkit-scrollbar,.evidence-full::-webkit-scrollbar{height:8px;width:8px}.evidence-scroll::-webkit-scrollbar-track,.evidence-full::-webkit-scrollbar-track{background:transparent}.evidence-scroll::-webkit-scrollbar-thumb,.evidence-full::-webkit-scrollbar-thumb{background:rgba(128,169,196,.2);border-radius:999px}.evidence-scroll::-webkit-scrollbar-thumb:hover,.evidence-full::-webkit-scrollbar-thumb:hover{background:rgba(128,169,196,.32)}")}</style>
 </head>
 <body>
   <main class="report-shell">
@@ -6058,7 +6058,7 @@ function renderCombinedHtml(scan: ScanView): string {
       const cvss = Number(finding.cvss_score || 0).toFixed(1);
       const location = escapeHtml(fullFindingLocation(scan.report.executive_summary.target_path, finding.file_path, Number(finding.line_number || 1)));
       const cwe = renderCweLink(finding.cwe_id || "N/A");
-      const owasp = escapeHtml(String(finding.owasp_mapping || "N/A"));
+      const owasp = renderOwaspLink(String(finding.owasp_mapping || "N/A"));
       const findingKey = String(finding.finding_uid || `${finding.file_path || ""}:${finding.line_number || 1}`);
       const instanceTarget = stableAnchorId("combined-alert-instance", findingKey);
       const groupTarget =
@@ -6114,7 +6114,7 @@ function renderCombinedHtml(scan: ScanView): string {
           <div class="fix-detail" style="margin:0">
             <table class="results">
               <tr><th width="20%">CWE</th><td>${renderCweLink(leadCwe)}</td></tr>
-              <tr><th>OWASP</th><td>${escapeHtml(leadOwasp)}</td></tr>
+              <tr><th>OWASP</th><td>${renderOwaspLink(leadOwasp)}</td></tr>
               <tr><th>CVSS</th><td>${renderCvssLink(lead.cvss_score)}</td></tr>
               ${isRenderableDisplayValue(lead.description) ? `<tr><th>Description</th><td>${escapeHtml(String(lead.description || ""))}</td></tr>` : ""}
               ${isRenderableDisplayValue(lead.business_impact) ? `<tr><th>Business Impact</th><td>${escapeHtml(String(lead.business_impact || ""))}</td></tr>` : ""}
@@ -6373,7 +6373,7 @@ function renderCombinedHtml(scan: ScanView): string {
                                   return `<tr>
                                     <td>${escapeHtml(group.title)}</td>
                                     <td>${renderCweLink(group.cwe)}</td>
-                                    <td>${escapeHtml(group.owasp)}</td>
+                                    <td>${renderOwaspLink(group.owasp)}</td>
                                     <td>${Number(group.count || 0)}</td>
                                     <td title="${escapeHtml(topInstance?.file_path || "N/A")}">${escapeHtml(topFile)}</td>
                                     <td>${escapeHtml(String(topLine))}</td>
@@ -7575,6 +7575,45 @@ function renderCweLink(value: string): string {
   return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
 }
 
+
+function owaspReference(value: string): { label: string; href: string; display: string } | null {
+  const raw = String(value || "").trim();
+  const match = /A(0[1-9]|10)/i.exec(raw);
+  if (!match) {
+    return null;
+  }
+  const code = `A${match[1]}`;
+  const slugMap: Record<string, string> = {
+    A01: "A01_2021-Broken_Access_Control",
+    A02: "A02_2021-Cryptographic_Failures",
+    A03: "A03_2021-Injection",
+    A04: "A04_2021-Insecure_Design",
+    A05: "A05_2021-Security_Misconfiguration",
+    A06: "A06_2021-Vulnerable_and_Outdated_Components",
+    A07: "A07_2021-Identification_and_Authentication_Failures",
+    A08: "A08_2021-Software_and_Data_Integrity_Failures",
+    A09: "A09_2021-Security_Logging_and_Monitoring_Failures",
+    A10: "A10_2021-Server-Side_Request_Forgery_(SSRF)",
+  };
+  const slug = slugMap[code];
+  if (!slug) {
+    return null;
+  }
+  return {
+    label: code,
+    display: raw || code,
+    href: `https://owasp.org/Top10/2021/${slug}/`,
+  };
+}
+
+function renderOwaspLink(value: string): string {
+  const reference = owaspReference(value);
+  if (!reference) {
+    return isRenderableDisplayValue(value) ? escapeHtml(value) : "";
+  }
+  return `<a href="${escapeHtml(reference.href)}" target="_blank" rel="noopener noreferrer" title="Open official ${escapeHtml(reference.label)} page">${escapeHtml(reference.display)}</a>`;
+}
+
 function renderCveLinks(value: unknown): string {
   const ids = cveValues(value);
   if (!ids.length) {
@@ -8648,7 +8687,7 @@ function plainLanguageSecurityBrief(finding: Partial<VulnerabilityFinding> & Rec
     return {
       title: "Cross-Site Scripting (XSS)",
       what_is_happening: "User-controlled data is reaching a browser rendering sink without enough escaping or context-aware encoding.",
-      why_it_is_weak: "That can let attacker-supplied script or markup execute in another user’s browser and expose sessions, data, or actions.",
+      why_it_is_weak: "That can let attacker-supplied script or markup execute in another userï¿½s browser and expose sessions, data, or actions.",
       what_to_use_instead: "Use framework templating, output encoding, and safe DOM APIs instead of directly injecting HTML or script content.",
       summary: recommendation || "Encode on output and avoid unsafe HTML rendering paths.",
       code_example: originalCode || "Render trusted markup only and escape untrusted values before display.",
@@ -9205,7 +9244,7 @@ function exportThemeCss(extra = ""): string {
     .report-disclosure>summary::-webkit-details-marker{display:none}
     .report-disclosure>summary::after{content:'+';color:var(--muted);font-size:16px;line-height:1}
     .report-disclosure[open]>summary{border-bottom:1px solid rgba(120,168,205,.12)}
-    .report-disclosure[open]>summary::after{content:'–'}
+    .report-disclosure[open]>summary::after{content:'ï¿½'}
     .report-disclosure .section-frame,.report-disclosure .table-frame{border:0;border-radius:0;background:transparent}
     .report-disclosure .section-body,.report-disclosure .table-body{padding:12px}
     .kpi-bars{display:grid;gap:8px}
@@ -10242,7 +10281,7 @@ function renderManagementHtml(scan: ScanView, context?: ManagementReportContext)
         <td>${escapeHtml(item.module)}</td>
         <td>${escapeHtml(item.vulnerability)}</td>
         <td>${renderCweLink(item.cwe)}</td>
-        <td>${escapeHtml(item.owasp)}</td>
+        <td>${renderOwaspLink(item.owasp)}</td>
         <td>${escapeHtml(item.fileName)}</td>
         <td>${escapeHtml(item.filePath)}</td>
         <td align="center">${Number(item.line || 0)}</td>

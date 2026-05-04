@@ -134,6 +134,48 @@ function renderCweLink(cwe: string): React.ReactNode {
   );
 }
 
+function parseOwaspReference(owasp: string): { label: string; href: string; display: string } | null {
+  const match = /A(0[1-9]|10)/i.exec(String(owasp || "").trim());
+  if (!match) {
+    return null;
+  }
+  const code = `A${match[1]}`;
+  const display = String(owasp || "").trim();
+  const slugMap: Record<string, string> = {
+    A01: "A01_2021-Broken_Access_Control",
+    A02: "A02_2021-Cryptographic_Failures",
+    A03: "A03_2021-Injection",
+    A04: "A04_2021-Insecure_Design",
+    A05: "A05_2021-Security_Misconfiguration",
+    A06: "A06_2021-Vulnerable_and_Outdated_Components",
+    A07: "A07_2021-Identification_and_Authentication_Failures",
+    A08: "A08_2021-Software_and_Data_Integrity_Failures",
+    A09: "A09_2021-Security_Logging_and_Monitoring_Failures",
+    A10: "A10_2021-Server-Side_Request_Forgery_(SSRF)",
+  };
+  const slug = slugMap[code];
+  if (!slug) {
+    return null;
+  }
+  return {
+    label: code,
+    display: display || code,
+    href: `https://owasp.org/Top10/2021/${slug}/`,
+  };
+}
+
+function renderOwaspLink(owasp: string): React.ReactNode {
+  const reference = parseOwaspReference(owasp);
+  if (!reference) {
+    return owasp || "";
+  }
+  return (
+    <a href={reference.href} target="_blank" rel="noreferrer" title={`Open official ${reference.label} page`}>
+      {reference.label}
+    </a>
+  );
+}
+
 const TABS: Array<{ key: AppTab; label: string; icon: string }> = [
   { key: "dashboard", label: "Code Risk Overview", icon: "CM" },
   { key: "threat-model", label: "Threat Model", icon: "TH" },
@@ -2629,7 +2671,7 @@ export default function App(): React.JSX.Element {
                                     </details>
                                   </td>
                                   <td>{renderCweLink(group.cwe)}</td>
-                                  <td>{group.owasp}</td>
+                                  <td>{renderOwaspLink(group.owasp)}</td>
                                   <td>{group.count}</td>
                                   <td title={topInstance?.file_path || "N/A"}>{topFile}</td>
                                   <td>{topLine}</td>
@@ -2660,7 +2702,7 @@ export default function App(): React.JSX.Element {
                       .slice(0, 10)
                       .map((item) => (
                       <tr key={item.owasp_category}>
-                        <td>{item.owasp_category}</td>
+                        <td>{renderOwaspLink(item.owasp_category)}</td>
                         <td>{item.count}</td>
                       </tr>
                     ))}
@@ -3928,7 +3970,7 @@ export default function App(): React.JSX.Element {
                 <h3>{selectedFinding.vulnerability_title || selectedFinding.vulnerability_type || "Issue"}</h3>
                 <p>
                   {selectedFinding.severity} | CVSS {(selectedFinding.cvss_score || 0).toFixed(1)} | {renderCweLink(selectedFinding.cwe_id)} |{" "}
-                  {selectedFinding.owasp_mapping}
+                  {renderOwaspLink(selectedFinding.owasp_mapping)}
                 </p>
                 <p>
                   <strong>Location:</strong> {normalizeFindingPath(selectedFinding.file_path)}:{selectedFinding.line_number}
