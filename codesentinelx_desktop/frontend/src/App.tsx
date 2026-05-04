@@ -176,6 +176,14 @@ function renderOwaspLink(owasp: string): React.ReactNode {
   );
 }
 
+function renderOwaspReferenceLink(label: string, href: string, title?: string): React.ReactNode {
+  return (
+    <a href={href} target="_blank" rel="noreferrer" title={title || `Open official ${label} page`}>
+      {label}
+    </a>
+  );
+}
+
 const TABS: Array<{ key: AppTab; label: string; icon: string }> = [
   { key: "dashboard", label: "Code Risk Overview", icon: "CM" },
   { key: "threat-model", label: "Threat Model", icon: "TH" },
@@ -3474,7 +3482,7 @@ export default function App(): React.JSX.Element {
                             <p><strong>Review Status:</strong> {threat.review_status || "Pending review"}</p>
                             <p><strong>Description:</strong> {threat.description}</p>
                             {threat.owasp_category && (
-                              <p><strong>OWASP Category:</strong> {threat.owasp_category}</p>
+                              <p><strong>OWASP Category:</strong> {renderOwaspLink(threat.owasp_category || "")}</p>
                             )}
                             {threat.pasta_stage && (
                               <p><strong>PASTA Stage:</strong> {threat.pasta_stage}</p>
@@ -4102,8 +4110,8 @@ export default function App(): React.JSX.Element {
                 </div>
 
                 <div className="compliance-version-row">
-                  <span>OWASP Top 10: {compliance.framework_versions.owasp_top_10}</span>
-                  <span>OWASP API Top 10: {compliance.framework_versions.owasp_api_top_10}</span>
+                  <span>OWASP Top 10: {renderOwaspReferenceLink(compliance.framework_versions.owasp_top_10 || "OWASP Top 10", "https://owasp.org/www-project-top-ten/")}</span>
+                  <span>OWASP API Top 10: {renderOwaspReferenceLink(compliance.framework_versions.owasp_api_top_10 || "OWASP API Top 10", "https://owasp.org/www-project-api-security/")}</span>
                   <span>ASVS: {compliance.framework_versions.asvs}</span>
                   <span>WSTG: {compliance.framework_versions.wstg}</span>
                 </div>

@@ -2050,7 +2050,7 @@ function writeExistingPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
       `Versions -> OWASP Top 10: ${profileCompliance.framework_versions?.owasp_top_10 || "N/A"} | API Top 10: ${profileCompliance.framework_versions?.owasp_api_top_10 || "N/A"} | ASVS: ${profileCompliance.framework_versions?.asvs || "N/A"} | WSTG: ${profileCompliance.framework_versions?.wstg || "N/A"}`,
       8,
     );
-    writeWrapped(doc, "Reference: OWASP Top 10 latest official published release is 2021.", 8);
+    writeLinkedTextLine(doc, "Reference", "OWASP Top 10 latest official published release is 2021.", "https://owasp.org/www-project-top-ten/");
     for (const framework of profileCompliance.frameworks || []) {
       writeWrapped(
         doc,
@@ -3171,6 +3171,23 @@ function writeLinkedIdList(
   doc.fillColor("#dce9f7");
 }
 
+function writeLinkedTextLine(doc: PDFKit.PDFDocument, label: string, value: string, url: string | null): void {
+  const display = String(value || "").trim();
+  if (!display) {
+    return;
+  }
+  if (doc.y > doc.page.height - 52) {
+    doc.addPage();
+  }
+  doc.fontSize(8).fillColor("#dce9f7").text(`${label}: `, { continued: true });
+  if (url) {
+    doc.fillColor("#9eb6ce").text(display, { link: url, underline: true, continued: false });
+  } else {
+    doc.fillColor("#9eb6ce").text(display, { continued: false });
+  }
+  doc.fillColor("#dce9f7");
+}
+
 function ensurePdfSpace(doc: PDFKit.PDFDocument, height: number): void {
   if (doc.y + height > doc.page.height - 42) {
     doc.addPage();
@@ -3407,8 +3424,8 @@ function renderExistingHtml(scan: ScanView): string {
 
   const profileHeader = profileCompliance
     ? `<p class="meta"><strong>Profile:</strong> ${escapeHtml(profileCompliance.scan_profile_label)} (${escapeHtml(profileCompliance.scan_profile)})</p>
-  <p class="meta"><strong>Framework Versions:</strong> OWASP Top 10 ${escapeHtml(profileCompliance.framework_versions.owasp_top_10)} | API Top 10 ${escapeHtml(profileCompliance.framework_versions.owasp_api_top_10)} | ASVS ${escapeHtml(profileCompliance.framework_versions.asvs)} | WSTG ${escapeHtml(profileCompliance.framework_versions.wstg)}</p>
-  <p class="meta"><strong>Reference:</strong> OWASP Top 10 latest official published release is 2021.</p>`
+  <p class="meta"><strong>Framework Versions:</strong> OWASP Top 10 ${escapeHtml(profileCompliance.framework_versions.owasp_top_10)} | API Top 10 ${renderOwaspLink(profileCompliance.framework_versions.owasp_api_top_10)} | ASVS ${renderOwaspLink(profileCompliance.framework_versions.asvs)} | WSTG ${renderOwaspLink(profileCompliance.framework_versions.wstg)}</p>
+  <p class="meta"><strong>Reference:</strong> ${linkifyOwaspText("OWASP Top 10 latest official published release is 2021.")}</p>`
     : "";
 
   const profileFrameworks = profileCompliance
@@ -7182,7 +7199,7 @@ function renderDeveloperSecureCodingPracticesHtmlSection(findings: Vulnerability
   return `
   <section class="panel practice-panel">
     <h2>Developer Secure Coding Practices</h2>
-    <p class="muted">This section translates the scan into standards-backed coding practices for developers. It is grounded in OWASP Top 10 2021, OWASP ASVS 4.0.3, NIST SSDF SP 800-218, CWE guidance, CERT secure coding references, and platform hardening guidance where applicable.</p>
+    <p class="muted">This section translates the scan into standards-backed coding practices for developers. It is grounded in ${linkifyOwaspText("OWASP Top 10 2021")}, ${linkifyOwaspText("OWASP ASVS 4.0.3")}, NIST SSDF SP 800-218, CWE guidance, CERT secure coding references, and platform hardening guidance where applicable.</p>
     <table>
       <thead><tr><th>Standard</th><th>How to use it in this report</th></tr></thead>
       <tbody>${baselineRows}</tbody>
@@ -7195,11 +7212,9 @@ function renderDeveloperSecureCodingPracticesHtmlSection(findings: Vulnerability
 function writeDeveloperSecureCodingPracticesPdfSection(doc: PDFKit.PDFDocument, findings: VulnerabilityFinding[]): void {
   const cards = buildDeveloperSecureCodingPractices(findings);
   writePdfSectionHeader(doc, "Developer Secure Coding Practices");
-  writeWrapped(
-    doc,
-    "Grounded in OWASP Top 10 2021, OWASP ASVS 4.0.3, NIST SSDF SP 800-218, CWE guidance, CERT secure coding, and platform hardening references.",
-    8,
-  );
+  writeWrapped(doc, "Grounded in OWASP Top 10 2021, OWASP ASVS 4.0.3, NIST SSDF SP 800-218, CWE guidance, CERT secure coding, and platform hardening references.", 8);
+  writeLinkedTextLine(doc, "OWASP Top 10", "OWASP Top 10 2021", "https://owasp.org/www-project-top-ten/");
+  writeLinkedTextLine(doc, "OWASP ASVS", "OWASP ASVS 4.0.3", "https://owasp.org/www-project-application-security-verification-standard/");
   writePdfKeyValueTable(doc, [
     { key: "OWASP Top 10", value: "Use it as the baseline risk language for code review and backlog triage." },
     { key: "OWASP ASVS", value: "Map implementation work to verification requirements instead of ad hoc fixes." },
@@ -7632,6 +7647,15 @@ function renderOwaspLink(value: string): string {
     return isRenderableDisplayValue(value) ? escapeHtml(value) : "";
   }
   return `<a href="${escapeHtml(reference.href)}" target="_blank" rel="noopener noreferrer" title="Open official ${escapeHtml(reference.label)} page">${escapeHtml(reference.display)}</a>`;
+}
+
+function linkifyOwaspText(value: string): string {
+  const text = String(value || "");
+  return escapeHtml(text)
+    .replace(/OWASP Top 10 2021/g, '<a href="https://owasp.org/www-project-top-ten/" target="_blank" rel="noopener noreferrer">OWASP Top 10 2021</a>')
+    .replace(/OWASP API Top 10/g, '<a href="https://owasp.org/www-project-api-security/" target="_blank" rel="noopener noreferrer">OWASP API Top 10</a>')
+    .replace(/OWASP ASVS 4\.0\.3/g, '<a href="https://owasp.org/www-project-application-security-verification-standard/" target="_blank" rel="noopener noreferrer">OWASP ASVS 4.0.3</a>')
+    .replace(/OWASP WSTG/g, '<a href="https://owasp.org/www-project-web-security-testing-guide/" target="_blank" rel="noopener noreferrer">OWASP WSTG</a>');
 }
 
 function renderCveLinks(value: unknown): string {
