@@ -2628,7 +2628,7 @@ export default function App(): React.JSX.Element {
                                       </div>
                                     </details>
                                   </td>
-                                  <td>{group.cwe}</td>
+                                  <td>{renderCweLink(group.cwe)}</td>
                                   <td>{group.owasp}</td>
                                   <td>{group.count}</td>
                                   <td title={topInstance?.file_path || "N/A"}>{topFile}</td>
@@ -3927,7 +3927,7 @@ export default function App(): React.JSX.Element {
               <>
                 <h3>{selectedFinding.vulnerability_title || selectedFinding.vulnerability_type || "Issue"}</h3>
                 <p>
-                  {selectedFinding.severity} | CVSS {(selectedFinding.cvss_score || 0).toFixed(1)} | {selectedFinding.cwe_id} |{" "}
+                  {selectedFinding.severity} | CVSS {(selectedFinding.cvss_score || 0).toFixed(1)} | {renderCweLink(selectedFinding.cwe_id)} |{" "}
                   {selectedFinding.owasp_mapping}
                 </p>
                 <p>
@@ -4228,7 +4228,7 @@ export default function App(): React.JSX.Element {
                       <tbody>
                         {(portfolioSummary.recurringCwe || []).map((item) => (
                           <tr key={item.cwe}>
-                            <td>{item.cwe}</td>
+                            <td>{renderCweLink(item.cwe)}</td>
                             <td>{item.count}</td>
                           </tr>
                         ))}

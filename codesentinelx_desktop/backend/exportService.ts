@@ -6057,7 +6057,7 @@ function renderCombinedHtml(scan: ScanView): string {
       const severity = escapeHtml(String(finding.severity || "Info"));
       const cvss = Number(finding.cvss_score || 0).toFixed(1);
       const location = escapeHtml(fullFindingLocation(scan.report.executive_summary.target_path, finding.file_path, Number(finding.line_number || 1)));
-      const cwe = escapeHtml(String(finding.cwe_id || "N/A"));
+      const cwe = renderCweLink(finding.cwe_id || "N/A");
       const owasp = escapeHtml(String(finding.owasp_mapping || "N/A"));
       const findingKey = String(finding.finding_uid || `${finding.file_path || ""}:${finding.line_number || 1}`);
       const instanceTarget = stableAnchorId("combined-alert-instance", findingKey);
@@ -6372,7 +6372,7 @@ function renderCombinedHtml(scan: ScanView): string {
                                   const topLine = topInstance?.line_number || "N/A";
                                   return `<tr>
                                     <td>${escapeHtml(group.title)}</td>
-                                    <td>${escapeHtml(group.cwe)}</td>
+                                    <td>${renderCweLink(group.cwe)}</td>
                                     <td>${escapeHtml(group.owasp)}</td>
                                     <td>${Number(group.count || 0)}</td>
                                     <td title="${escapeHtml(topInstance?.file_path || "N/A")}">${escapeHtml(topFile)}</td>
@@ -10241,7 +10241,7 @@ function renderManagementHtml(scan: ScanView, context?: ManagementReportContext)
       (item) => `<tr>
         <td>${escapeHtml(item.module)}</td>
         <td>${escapeHtml(item.vulnerability)}</td>
-        <td>${escapeHtml(item.cwe)}</td>
+        <td>${renderCweLink(item.cwe)}</td>
         <td>${escapeHtml(item.owasp)}</td>
         <td>${escapeHtml(item.fileName)}</td>
         <td>${escapeHtml(item.filePath)}</td>
