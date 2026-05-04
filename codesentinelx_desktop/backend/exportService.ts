@@ -2577,7 +2577,8 @@ function writeVulnerabilityPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
   for (const group of groups.slice(0, 50)) {
     writeWrapped(doc, `[${group.severity}] ${group.title} - ${group.count} instance(s)`, 10);
     const groupCweLink = cweUrl(group.cwe);
-    writeWrapped(doc, `CWE: ${group.cwe}${groupCweLink ? ` (${groupCweLink})` : ""} | OWASP: ${group.owasp}`, 8);
+    writeLinkedTaxonomyLine(doc, "CWE", group.cwe, groupCweLink);
+    writeLinkedTaxonomyLine(doc, "OWASP", group.owasp, owaspUrl(group.owasp));
     const lead = group.findings[0];
     const leadExtended = lead as VulnerabilityFinding & {
       description?: string;
@@ -2831,11 +2832,9 @@ function writeFixesPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
       10,
     );
     const cweLink = cweUrl(finding.cwe_id || "");
-    writeWrapped(
-      doc,
-      `Location: ${normalizePath(finding.file_path)}:${finding.line_number || 1} | ${finding.cwe_id || "N/A"}${cweLink ? ` (${cweLink})` : ""} | ${finding.owasp_mapping || "N/A"}`,
-      8,
-    );
+    writeWrapped(doc, `Location: ${normalizePath(finding.file_path)}:${finding.line_number || 1}`, 8);
+    writeLinkedTaxonomyLine(doc, "CWE", finding.cwe_id || "N/A", cweLink);
+    writeLinkedTaxonomyLine(doc, "OWASP", finding.owasp_mapping || "N/A", owaspUrl(finding.owasp_mapping || ""));
     writeWrapped(doc, "CVSS Reference: https://www.first.org/cvss/calculator/3.1", 8);
     const advisoryIds = advisoryValues(finding);
     if (advisoryIds.length) {
@@ -7676,6 +7675,46 @@ function advisoryUrl(id: string): string | null {
     return `https://github.com/advisories/${encodeURIComponent(normalized)}`;
   }
   return null;
+}
+
+function owaspUrl(value: string): string | null {
+  const raw = String(value || "").trim();
+  const match = /A(0[1-9]|10)/i.exec(raw);
+  if (!match) {
+    return null;
+  }
+  const code = `A${match[1]}`;
+  const slugMap: Record<string, string> = {
+    A01: "A01_2021-Broken_Access_Control",
+    A02: "A02_2021-Cryptographic_Failures",
+    A03: "A03_2021-Injection",
+    A04: "A04_2021-Insecure_Design",
+    A05: "A05_2021-Security_Misconfiguration",
+    A06: "A06_2021-Vulnerable_and_Outdated_Components",
+    A07: "A07_2021-Identification_and_Authentication_Failures",
+    A08: "A08_2021-Software_and_Data_Integrity_Failures",
+    A09: "A09_2021-Security_Logging_and_Monitoring_Failures",
+    A10: "A10_2021-Server-Side_Request_Forgery_(SSRF)",
+  };
+  const slug = slugMap[code];
+  return slug ? `https://owasp.org/Top10/2021/${slug}/` : null;
+}
+
+function writeLinkedTaxonomyLine(doc: PDFKit.PDFDocument, label: string, value: string, url: string | null): void {
+  const display = String(value || "").trim();
+  if (!display) {
+    return;
+  }
+  if (doc.y > doc.page.height - 52) {
+    doc.addPage();
+  }
+  doc.fontSize(8).fillColor("#dce9f7").text(`${label}: `, { continued: true });
+  if (url) {
+    doc.fillColor("#9eb6ce").text(display, { link: url, underline: true, continued: false });
+  } else {
+    doc.fillColor("#9eb6ce").text(display, { continued: false });
+  }
+  doc.fillColor("#dce9f7");
 }
 
 function renderAdvisoryLinks(finding: Pick<VulnerabilityFinding, "advisory_ids" | "cve_ids" | "dependency_id">): string {
