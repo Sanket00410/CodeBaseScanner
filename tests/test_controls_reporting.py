@@ -105,8 +105,8 @@ def test_report_has_distinct_sections() -> None:
     assert "fixed_code" in report["vulnerability_fixed_code_report"]["findings"][0]
     assert "patch_preview" in report["vulnerability_fixed_code_report"]["findings"][0]
     assert report["vulnerability_findings"]["toolchain_status"].get("semgrep") is not None
-    assert report["vulnerability_fixed_code_report"]["findings"][0]["owasp_mapping"].startswith("A03:2025")
+    assert report["vulnerability_fixed_code_report"]["findings"][0]["owasp_mapping"].startswith("A03:2021")
     assert report["executive_summary"]["scan_profile"] == "codebase"
     assert report["existing_implementation_report"]["profile_compliance"]["scan_profile"] == "codebase"
-    assert "owasp_top_10_2025" in report["existing_implementation_report"]["profile_compliance"]["applicable_framework_ids"]
+    assert "owasp_top_10_2021" in report["existing_implementation_report"]["profile_compliance"]["applicable_framework_ids"]
 

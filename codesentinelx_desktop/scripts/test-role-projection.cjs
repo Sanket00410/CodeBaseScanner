@@ -21,7 +21,7 @@ function finding(id, severity, title, file, line) {
     severity,
     cvss_score: severity === "Critical" ? 9.8 : 8.1,
     cwe_id: title.includes("SQL") ? "CWE-89" : "CWE-79",
-    owasp_mapping: title.includes("SQL") ? "A03:2025 - Injection" : "A07:2025 - Identification and Authentication Failures",
+    owasp_mapping: title.includes("SQL") ? "A03:2021 - Injection" : "A07:2021 - Identification and Authentication Failures",
     file_path: file,
     line_number: line,
     business_impact: "Impact",
@@ -56,7 +56,7 @@ function report() {
         { type: "SQL Injection", count: 1 },
         { type: "Cross-Site Scripting", count: 1 },
       ],
-      top_owasp_categories: [{ owasp_category: "A03:2025 - Injection", count: 1 }],
+      top_owasp_categories: [{ owasp_category: "A03:2021 - Injection", count: 1 }],
       affected_modules: [{ module: "src", count: 2, critical: 1, high: 1 }],
       management_summary: {
         total_findings: 2,
@@ -126,7 +126,7 @@ function report() {
           { type: "SQL Injection", count: 1 },
           { type: "Cross-Site Scripting", count: 1 },
         ],
-        top_owasp_categories: [{ owasp_category: "A03:2025 - Injection", count: 1 }],
+        top_owasp_categories: [{ owasp_category: "A03:2021 - Injection", count: 1 }],
         affected_modules: [{ module: "src", count: 2, critical: 1, high: 1 }],
         open_findings: 2,
         reviewed_findings: 0,
@@ -179,9 +179,9 @@ function mixedReportWithZeroedSummaries() {
     finding("low-log-1", "Low", "Sensitive Data Logged", "logger/audit.py", 9),
   ];
   payload.vulnerability_fixed_code_report.findings[3].cwe_id = "CWE-327";
-  payload.vulnerability_fixed_code_report.findings[3].owasp_mapping = "A02:2025 - Cryptographic Failures";
+  payload.vulnerability_fixed_code_report.findings[3].owasp_mapping = "A02:2021 - Cryptographic Failures";
   payload.vulnerability_fixed_code_report.findings[4].cwe_id = "CWE-532";
-  payload.vulnerability_fixed_code_report.findings[4].owasp_mapping = "A09:2025 - Security Logging and Monitoring Failures";
+  payload.vulnerability_fixed_code_report.findings[4].owasp_mapping = "A09:2021 - Security Logging and Monitoring Failures";
   return payload;
 }
 

@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 
 
 LATEST_FRAMEWORK_VERSIONS = {
-    "owasp_top_10": "2025",
+    "owasp_top_10": "2021",
     "owasp_api_top_10": "2023",
     "asvs": "5.0.0",
     "wstg": "4.2",
@@ -20,14 +20,14 @@ PROFILE_LABELS = {
 }
 
 PROFILE_APPLICABLE_FRAMEWORKS = {
-    "codebase": {"owasp_top_10_2025", "asvs_5_0_0"},
-    "website": {"owasp_top_10_2025", "owasp_api_top_10_2023", "asvs_5_0_0", "wstg_4_2"},
-    "localhost": {"owasp_top_10_2025", "owasp_api_top_10_2023", "asvs_5_0_0", "wstg_4_2"},
-    "ip": {"owasp_top_10_2025", "owasp_api_top_10_2023", "wstg_4_2"},
+    "codebase": {"owasp_top_10_2021", "asvs_5_0_0"},
+    "website": {"owasp_top_10_2021", "owasp_api_top_10_2023", "asvs_5_0_0", "wstg_4_2"},
+    "localhost": {"owasp_top_10_2021", "owasp_api_top_10_2023", "asvs_5_0_0", "wstg_4_2"},
+    "ip": {"owasp_top_10_2021", "owasp_api_top_10_2023", "wstg_4_2"},
 }
 
 
-OWASP_TOP_10_2025 = [
+OWASP_TOP_10_2021 = [
     {"id": "A01", "title": "Broken Access Control"},
     {"id": "A02", "title": "Cryptographic Failures"},
     {"id": "A03", "title": "Injection"},
@@ -92,7 +92,7 @@ WSTG_4_2 = [
 ]
 
 
-_OWASP_TOP10_LABEL_BY_ID = {item["id"]: f"{item['id']}:{LATEST_FRAMEWORK_VERSIONS['owasp_top_10']} - {item['title']}" for item in OWASP_TOP_10_2025}
+_OWASP_TOP10_LABEL_BY_ID = {item["id"]: f"{item['id']}:{LATEST_FRAMEWORK_VERSIONS['owasp_top_10']} - {item['title']}" for item in OWASP_TOP_10_2021}
 _OWASP_TOP10_TITLE_KEYWORDS = {
     "A01": ("broken access control", "authorization", "idor", "path traversal"),
     "A02": ("cryptographic", "encryption", "cipher", "hash", "secret", "tls"),
@@ -180,11 +180,11 @@ def build_profile_compliance(
 
     frameworks = [
         _framework_payload(
-            framework_id="owasp_top_10_2025",
+            framework_id="owasp_top_10_2021",
             framework_name="OWASP Top 10",
             version=LATEST_FRAMEWORK_VERSIONS["owasp_top_10"],
-            applicable=framework_is_applicable("owasp_top_10_2025", applicable),
-            catalog=OWASP_TOP_10_2025,
+            applicable=framework_is_applicable("owasp_top_10_2021", applicable),
+            catalog=OWASP_TOP_10_2021,
             counts=owasp_counts,
             prefix="A",
         ),
@@ -306,7 +306,7 @@ def _framework_payload(
 
 
 def _count_owasp_top10(findings: list[dict]) -> dict[str, dict[str, int]]:
-    counts = {item["id"]: {"findings": 0, "controls": 0} for item in OWASP_TOP_10_2025}
+    counts = {item["id"]: {"findings": 0, "controls": 0} for item in OWASP_TOP_10_2021}
     label_to_code = {label: code for code, label in _OWASP_TOP10_LABEL_BY_ID.items()}
 
     for finding in findings:
