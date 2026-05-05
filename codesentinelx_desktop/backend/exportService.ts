@@ -2045,11 +2045,10 @@ function writeExistingPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
       `Profile: ${profileCompliance.scan_profile_label} (${profileCompliance.scan_profile})`,
       9,
     );
-    writeWrapped(
-      doc,
-      `Versions -> OWASP Top 10: ${profileCompliance.framework_versions?.owasp_top_10 || "N/A"} | API Top 10: ${profileCompliance.framework_versions?.owasp_api_top_10 || "N/A"} | ASVS: ${profileCompliance.framework_versions?.asvs || "N/A"} | WSTG: ${profileCompliance.framework_versions?.wstg || "N/A"}`,
-      8,
-    );
+    writeLinkedTextLine(doc, "OWASP Top 10", String(profileCompliance.framework_versions?.owasp_top_10 || "N/A"), "https://owasp.org/www-project-top-ten/");
+    writeLinkedTextLine(doc, "OWASP API Top 10", String(profileCompliance.framework_versions?.owasp_api_top_10 || "N/A"), "https://owasp.org/www-project-api-security/");
+    writeLinkedTextLine(doc, "OWASP ASVS", String(profileCompliance.framework_versions?.asvs || "N/A"), "https://owasp.org/www-project-application-security-verification-standard/");
+    writeLinkedTextLine(doc, "OWASP WSTG", String(profileCompliance.framework_versions?.wstg || "N/A"), "https://owasp.org/www-project-web-security-testing-guide/");
     writeLinkedTextLine(doc, "Reference", "OWASP Top 10 latest official published release is 2021.", "https://owasp.org/www-project-top-ten/");
     for (const framework of profileCompliance.frameworks || []) {
       writeWrapped(
@@ -3424,7 +3423,7 @@ function renderExistingHtml(scan: ScanView): string {
 
   const profileHeader = profileCompliance
     ? `<p class="meta"><strong>Profile:</strong> ${escapeHtml(profileCompliance.scan_profile_label)} (${escapeHtml(profileCompliance.scan_profile)})</p>
-  <p class="meta"><strong>Framework Versions:</strong> OWASP Top 10 ${escapeHtml(profileCompliance.framework_versions.owasp_top_10)} | API Top 10 ${renderOwaspLink(profileCompliance.framework_versions.owasp_api_top_10)} | ASVS ${renderOwaspLink(profileCompliance.framework_versions.asvs)} | WSTG ${renderOwaspLink(profileCompliance.framework_versions.wstg)}</p>
+  <p class="meta"><strong>Framework Versions:</strong> ${linkifyOwaspText(`OWASP Top 10 ${profileCompliance.framework_versions.owasp_top_10}`)} | ${linkifyOwaspText(`API Top 10 ${profileCompliance.framework_versions.owasp_api_top_10}`)} | ${linkifyOwaspText(`ASVS ${profileCompliance.framework_versions.asvs}`)} | ${linkifyOwaspText(`WSTG ${profileCompliance.framework_versions.wstg}`)}</p>
   <p class="meta"><strong>Reference:</strong> ${linkifyOwaspText("OWASP Top 10 latest official published release is 2021.")}</p>`
     : "";
 
@@ -10572,7 +10571,7 @@ function renderManagementHtml(scan: ScanView, context?: ManagementReportContext)
       ${compliance?.frameworks?.length ? `
       <div class="mg-card">
         <h2>9. Compliance Mapping (Matrix / Table Visualization)</h2>
-        <p class="muted">Map findings to standards like OWASP and NIST. Helps stakeholders understand regulatory impact.</p>
+        <p class="muted">Map findings to standards like <a href="https://owasp.org/www-project-top-ten/" target="_blank" rel="noopener noreferrer">OWASP</a> and NIST. Helps stakeholders understand regulatory impact.</p>
         ${complianceMatrix}
         <div class="table-frame table-scroll" style="margin-top:10px">
           <table class="management-table">
