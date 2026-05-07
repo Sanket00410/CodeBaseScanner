@@ -14,6 +14,7 @@ import {
   ToolManagerOtpResult,
   ToolManagerVerifyResult,
   ScanPreset,
+  ScanTargetType,
   UserRole,
 } from "./types";
 
@@ -34,6 +35,7 @@ declare global {
         requestedBy?: string;
         role?: UserRole;
         scanPreset?: ScanPreset;
+        targetType?: ScanTargetType;
         scmContext?: ScmDiffContext;
       }) => Promise<ScanView>;
       pauseScan: (scanId: string) => Promise<ScanControlActionResult>;

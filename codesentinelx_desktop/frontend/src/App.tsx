@@ -15,6 +15,7 @@ import {
   ScanProgress,
   ScanView,
   ScanPreset,
+  ScanTargetType,
   ThreatModelResult,
   ThreatModelReport,
   Severity,
@@ -853,6 +854,7 @@ export default function App(): React.JSX.Element {
   const [threatModelPath, setThreatModelPath] = useState("");
   const [threatModelFramework, setThreatModelFramework] = useState<ThreatModelFramework>("STRIDE");
   const [scanPreset, setScanPreset] = useState<ScanPreset>("standard");
+  const [scanTargetType, setScanTargetType] = useState<ScanTargetType>("auto");
   const [diffBaseRef, setDiffBaseRef] = useState("");
   const [diffHeadRef, setDiffHeadRef] = useState("");
   const [changedFilesManifestPath, setChangedFilesManifestPath] = useState("");
@@ -1577,6 +1579,7 @@ export default function App(): React.JSX.Element {
     const picked = await window.codeSentinelX.pickProjectFolder();
     if (picked) {
       setProjectPath(picked);
+      setScanTargetType("local");
     }
   };
 
@@ -1623,7 +1626,7 @@ export default function App(): React.JSX.Element {
     }
     const targetPath = projectPath.trim();
     if (!targetPath) {
-      setStatusText("Select a project file or folder before scanning.");
+      setStatusText("Select a target before scanning.");
       return;
     }
     const roleForScan = role;
@@ -1648,6 +1651,7 @@ export default function App(): React.JSX.Element {
         requestedBy: "local-user",
         role: roleForScan,
         scanPreset: presetForScan,
+        targetType: scanTargetType,
         scmContext,
       });
       let loadedResult = result;
@@ -2060,7 +2064,7 @@ export default function App(): React.JSX.Element {
 
   const copyProjectFolderPath = async (): Promise<void> => {
     if (!projectPath.trim()) {
-      setStatusText("No project file or folder selected yet.");
+      setStatusText("No target selected yet.");
       return;
     }
     await navigator.clipboard.writeText(projectPath.trim());
@@ -2156,7 +2160,7 @@ export default function App(): React.JSX.Element {
   >(
     () => ({
       file: [
-        { label: "Browse File or Folder", onSelect: browseProject },
+        { label: "Browse Local Target", onSelect: browseProject },
         { label: "Run Canonical Scan", disabled: !projectPath.trim() || !roleCaps.canRunScan, onSelect: runScan },
         { label: "Open Last Export", disabled: !lastExport, onSelect: openLastExport },
         { label: "Open Export Folder", disabled: !lastExport, onSelect: openLastExportFolder },
@@ -4684,7 +4688,7 @@ export default function App(): React.JSX.Element {
                 <span>Catalog entries: {profileStats.total}</span>
                 <span>Integrated references: {profileStats.integrated}</span>
                 <span>Desktop execution: disabled</span>
-                <span>Scope: local codebase folders only</span>
+                <span>Scope: codebase analysis only</span>
               </div>
               <input
                 value={toolSearchText}
@@ -5123,14 +5127,37 @@ export default function App(): React.JSX.Element {
       <main className="workspace">
         <header className="panel header">
           <div className="header-row">
-            <label htmlFor="projectPath">Codebase File or Folder</label>
+            <label htmlFor="projectPath">Target</label>
             <input
               id="projectPath"
               value={projectPath}
               onChange={(event) => setProjectPath(event.target.value)}
-              placeholder="C:\\projects\\critical-app"
+              placeholder={
+                scanTargetType === "http"
+                  ? "https://app.example.com"
+                  : scanTargetType === "ssh"
+                    ? "ssh://user@server:/repo"
+                    : "C:\\projects\\critical-app"
+              }
             />
-            <button type="button" onClick={browseProject}>
+            <select
+              value={scanTargetType}
+              aria-label="Target type"
+              title="Choose whether the target is a local file/folder, a website, or an SSH codebase target."
+              onChange={(event) => setScanTargetType(event.target.value as ScanTargetType)}
+              disabled={isScanning}
+            >
+              <option value="auto">Auto-detect</option>
+              <option value="local">Local file / folder</option>
+              <option value="http">Website (HTTP/HTTPS)</option>
+              <option value="ssh">SSH target</option>
+            </select>
+            <button
+              type="button"
+              onClick={browseProject}
+              disabled={scanTargetType !== "auto" && scanTargetType !== "local"}
+              title={scanTargetType !== "auto" && scanTargetType !== "local" ? "Use the target field to enter a website or SSH target." : "Browse for a local file or folder."}
+            >
               Browse
             </button>
             <button
@@ -5155,10 +5182,10 @@ export default function App(): React.JSX.Element {
               ))}
             </select>
             <div className="scan-controls">
-              <button
-                type="button"
-                onClick={pauseScan}
-                disabled={!selectedActiveSession || selectedActiveSession.status !== "running" || !roleCaps.canRunScan}
+                <button
+                  type="button"
+                  onClick={pauseScan}
+                  disabled={!selectedActiveSession || selectedActiveSession.status !== "running" || !roleCaps.canRunScan}
                 title={!roleCaps.canRunScan ? `Role ${role} cannot control scans.` : "Pause active scan"}
               >
                 || Pause

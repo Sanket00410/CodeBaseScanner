@@ -1,6 +1,7 @@
 export type Severity = "Critical" | "High" | "Medium" | "Low" | "Info";
 export type UserRole = "Admin" | "Security Analyst" | "Developer" | "Auditor" | "Management";
 export type ScanPreset = "fast" | "standard" | "deep";
+export type ScanTargetType = "auto" | "local" | "http" | "ssh";
 export type ThreatModelFramework = "STRIDE" | "DREAD" | "OWASP" | "PASTA";
 
 export interface ScmDiffContext {
@@ -16,6 +17,7 @@ export interface ScanRequest {
   requestedBy?: string;
   role?: UserRole;
   scanPreset?: ScanPreset;
+  targetType?: ScanTargetType;
   scmContext?: ScmDiffContext;
 }
 

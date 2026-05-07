@@ -1,6 +1,7 @@
 export type UserRole = "Admin" | "Security Analyst" | "Developer" | "Auditor" | "Management";
 export type Severity = "Critical" | "High" | "Medium" | "Low" | "Info";
 export type ScanPreset = "fast" | "standard" | "deep";
+export type ScanTargetType = "auto" | "local" | "http" | "ssh";
 export type ThreatModelFramework = "STRIDE" | "DREAD" | "OWASP" | "PASTA";
 export type ToolScanProfile = "codebase";
 export type ToolBootstrapMode = "core" | "full";

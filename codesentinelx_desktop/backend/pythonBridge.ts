@@ -44,7 +44,8 @@ export class PythonScannerBridge {
     const controlFile = path.join(os.tmpdir(), `codesentinelx-${scanId}-control.json`);
     await this.setControlState(controlFile, "running");
 
-    const normalizedTarget = normalizeTargetInput(request.projectPath);
+    const resolvedTargetType = resolveTargetType(request.projectPath, request.targetType);
+    const normalizedTarget = normalizeTargetInput(request.projectPath, resolvedTargetType);
     const scanPreset = request.scanPreset || "standard";
     const scanEnv = buildScanEnvironment(this.scannerRoot, controlFile, scanPreset, "Admin", request.scmContext);
 
@@ -55,7 +56,7 @@ export class PythonScannerBridge {
       "--path",
       normalizedTarget,
       "--target-type",
-      "local",
+      resolvedTargetType,
       "--format",
       "json",
       "--report-type",
@@ -106,9 +107,9 @@ export class PythonScannerBridge {
           scanId,
           stage: "running",
           progress: state.lastProgress,
-          message: `Scanner is processing local files and secure coding rules in native codebase mode (${scanPreset}).`,
-          status: "running",
-        });
+            message: `Scanner is processing ${resolvedTargetType} targets and secure coding rules in native analysis mode (${scanPreset}).`,
+            status: "running",
+          });
       }, 3000);
 
       const drainBuffer = (): void => {
@@ -516,11 +517,46 @@ function resolvePythonExecutable(scannerRoot: string): string {
   return "python";
 }
 
-function normalizeTargetInput(rawTarget: string): string {
+function resolveTargetType(rawTarget: string, requestedType?: ScanRequest["targetType"]): "auto" | "local" | "http" | "ssh" {
+  const explicit = String(requestedType || "auto").trim().toLowerCase();
+  if (explicit === "local" || explicit === "http" || explicit === "ssh" || explicit === "auto") {
+    if (explicit !== "auto") {
+      return explicit;
+    }
+  }
+
+  const target = rawTarget.trim();
+  if (/^ssh:\/\//i.test(target)) {
+    return "ssh";
+  }
+  if (/^https?:\/\//i.test(target) || /^\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?(?:\/.*)?$/.test(target) || /^localhost(?::\d+)?(?:\/.*)?$/i.test(target) || /^[a-z0-9.-]+\.[a-z]{2,}(?::\d+)?(?:\/.*)?$/i.test(target)) {
+    return "http";
+  }
+  return "local";
+}
+
+function normalizeTargetInput(rawTarget: string, targetType: "auto" | "local" | "http" | "ssh"): string {
   const target = rawTarget.trim();
   if (!target) {
-    throw new Error("Codebase folder is required.");
+    throw new Error(targetType === "http" ? "Website URL is required." : targetType === "ssh" ? "SSH target is required." : "Codebase folder is required.");
   }
+
+  if (targetType === "http") {
+    if (/^https?:\/\//i.test(target)) {
+      return target;
+    }
+    if (/^\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?(?:\/.*)?$/.test(target) || /^localhost(?::\d+)?(?:\/.*)?$/i.test(target) || /^[a-z0-9.-]+\.[a-z]{2,}(?::\d+)?(?:\/.*)?$/i.test(target)) {
+      return /^https?:\/\//i.test(target) ? target : `http://${target}`;
+    }
+    throw new Error("Website targets must be a valid http:// or https:// URL, hostname, localhost, or IP address.");
+  }
+  if (targetType === "ssh") {
+    if (/^ssh:\/\//i.test(target)) {
+      return target;
+    }
+    throw new Error("SSH targets must start with ssh:// and include the remote repository path.");
+  }
+
   if (
     /^ssh:\/\//i.test(target) ||
     /^https?:\/\//i.test(target) ||
@@ -528,8 +564,9 @@ function normalizeTargetInput(rawTarget: string): string {
     /^localhost(?::\d+)?(?:\/.*)?$/i.test(target) ||
     /^[a-z0-9.-]+\.[a-z]{2,}(?::\d+)?(?:\/.*)?$/i.test(target)
   ) {
-    throw new Error("Only local codebase folders are supported. Website, IP, and SSH targets are disabled.");
+    throw new Error("Remote targets require Website or SSH target mode.");
   }
+
   const resolved = path.resolve(target);
   if (!fs.existsSync(resolved)) {
     throw new Error("Selected codebase folder does not exist.");
