@@ -84,19 +84,7 @@ def _default_codebase_tools() -> list[str]:
 
 
 def _default_runtime_tools() -> list[str]:
-    return [
-        "runtime_http_probe",
-        "amass",
-        "ffuf",
-        "kube-bench",
-        "kube-hunter",
-        "nikto",
-        "nmap",
-        "nuclei",
-        "sqlmap",
-        "wapiti",
-        "zap-baseline",
-    ]
+    return ["runtime_http_probe"]
 
 
 def _default_codebase_tools_for_preset(preset: str) -> list[str]:

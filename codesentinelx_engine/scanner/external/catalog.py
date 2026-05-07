@@ -492,16 +492,6 @@ DEFAULT_ACTIVE_CODEBASE_TOOLS = [
 ]
 DEFAULT_ACTIVE_RUNTIME_TOOLS = [
     "runtime_http_probe",
-    "amass",
-    "ffuf",
-    "kube-bench",
-    "kube-hunter",
-    "nikto",
-    "nmap",
-    "nuclei",
-    "sqlmap",
-    "wapiti",
-    "zap-baseline",
 ]
 
 
