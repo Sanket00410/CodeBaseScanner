@@ -215,10 +215,24 @@ function parseFrameworkReference(value: string): { label: string; href: string; 
       display: text,
     };
   }
+  if (lower.includes("nist sc-8") || lower.includes("nist ca-7") || lower.includes("nist 800-53")) {
+    return {
+      label: "NIST SP 800-53 Rev. 5",
+      href: "https://csrc.nist.gov/Pubs/sp/800/53/r5/upd1/final",
+      display: text,
+    };
+  }
   if (lower === "nist") {
     return {
       label: "NIST",
       href: "https://csrc.nist.gov/",
+      display: text,
+    };
+  }
+  if (lower.includes("iso 27001")) {
+    return {
+      label: "ISO/IEC 27001:2022",
+      href: "https://www.iso.org/standard/27001?s=cpa",
       display: text,
     };
   }
@@ -243,10 +257,16 @@ function renderFrameworkReferenceList(values: string[]): React.ReactNode {
     if (!trimmed) {
       return null;
     }
+    const parts = trimmed.includes(",") ? trimmed.split(",").map((item) => item.trim()).filter(Boolean) : [trimmed];
     return (
       <React.Fragment key={`${trimmed}-${index}`}>
         {index > 0 ? ", " : ""}
-        {renderFrameworkReferenceLink(trimmed)}
+        {parts.map((part, partIndex) => (
+          <React.Fragment key={`${part}-${partIndex}`}>
+            {partIndex > 0 ? ", " : ""}
+            {renderFrameworkReferenceLink(part)}
+          </React.Fragment>
+        ))}
       </React.Fragment>
     );
   });

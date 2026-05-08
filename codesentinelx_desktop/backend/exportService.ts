@@ -3386,7 +3386,7 @@ function renderExistingHtml(scan: ScanView): string {
         <td><a href="#${escapeHtml(controlAnchorId)}" class="existing-control-link" data-target-id="${escapeHtml(controlAnchorId)}" data-instance-target-id="${escapeHtml(evidenceAnchorId)}">${escapeHtml(control.name)}</a></td>
         <td>${escapeHtml(control.category)}</td>
         <td>${escapeHtml(control.coverage_level)}</td>
-        <td>${linkifyFrameworkText(control.standard_mappings.join(", "))}</td>
+        <td>${control.standard_mappings.map((entry) => linkifyFrameworkText(entry)).join(", ")}</td>
         <td><a href="#${escapeHtml(evidenceAnchorId)}" class="existing-control-evidence-link" data-target-id="${escapeHtml(evidenceAnchorId)}" data-instance-target-id="${escapeHtml(evidenceAnchorId)}">View</a></td>
       </tr>`;
     })
@@ -7161,7 +7161,7 @@ function buildDeveloperSecureCodingPractices(findings: VulnerabilityFinding[]): 
 function renderDeveloperSecureCodingPracticesHtmlSection(findings: VulnerabilityFinding[]): string {
   const cards = buildDeveloperSecureCodingPractices(findings);
   const baselineRows = DEVELOPER_SECURE_CODING_BASELINE.map(
-    (item) => `<tr><td>${escapeHtml(item.label)}</td><td>${escapeHtml(item.detail)}</td></tr>`,
+    (item) => `<tr><td>${linkifyFrameworkText(item.label)}</td><td>${linkifyFrameworkText(item.detail)}</td></tr>`,
   ).join("");
   const practiceCards = cards.length
     ? cards
@@ -7170,7 +7170,7 @@ function renderDeveloperSecureCodingPracticesHtmlSection(findings: Vulnerability
             ? `<ul>${card.examples.map((entry) => `<li>${escapeHtml(entry)}</li>`).join("")}</ul>`
             : "";
           const standards = card.standards.length
-            ? `<ul>${card.standards.map((entry) => `<li>${escapeHtml(entry)}</li>`).join("")}</ul>`
+            ? `<ul>${card.standards.map((entry) => `<li>${linkifyFrameworkText(entry)}</li>`).join("")}</ul>`
             : "";
           const practices = card.practices.length
             ? `<ul>${card.practices.map((entry) => `<li>${escapeHtml(entry)}</li>`).join("")}</ul>`
@@ -7226,8 +7226,15 @@ function writeDeveloperSecureCodingPracticesPdfSection(doc: PDFKit.PDFDocument, 
   for (const card of cards.slice(0, 8)) {
     writePdfSectionHeader(doc, `${card.title} (${card.count})`);
     writeWrapped(doc, card.summary, 8);
+    for (const standard of card.standards) {
+      const reference = frameworkReference(standard);
+      if (reference?.href) {
+        writeLinkedTextLine(doc, "Standard", standard, reference.href);
+      } else {
+        writeWrapped(doc, `Standard: ${standard}`, 8);
+      }
+    }
     writePdfKeyValueTable(doc, [
-      { key: "Standards", value: card.standards.join(" | ") },
       { key: "Practices", value: card.practices.join(" | ") },
       { key: "Examples", value: card.examples.join(" | ") || "N/A" },
     ]);
@@ -7657,11 +7664,17 @@ function linkifyOwaspText(value: string): string {
     .replace(/OWASP API Security Top 10 2023/g, '<a href="https://owasp.org/www-project-api-security/" target="_blank" rel="noopener noreferrer">OWASP API Security Top 10 2023</a>')
     .replace(/OWASP API Top 10/g, '<a href="https://owasp.org/www-project-api-security/" target="_blank" rel="noopener noreferrer">OWASP API Top 10</a>')
     .replace(/OWASP ASVS 5\.0\.0/g, '<a href="https://owasp.org/www-project-application-security-verification-standard/" target="_blank" rel="noopener noreferrer">OWASP ASVS 5.0.0</a>')
+    .replace(/OWASP ASVS V\d+/g, '<a href="https://owasp.org/www-project-application-security-verification-standard/" target="_blank" rel="noopener noreferrer">$&</a>')
     .replace(/NIST SSDF SP 800-218/g, '<a href="https://csrc.nist.gov/publications/detail/sp/800-218/final" target="_blank" rel="noopener noreferrer">NIST SSDF SP 800-218</a>')
     .replace(/NIST SP 800-218/g, '<a href="https://csrc.nist.gov/publications/detail/sp/800-218/final" target="_blank" rel="noopener noreferrer">NIST SP 800-218</a>')
     .replace(/\bNIST\b(?!\s*(?:SSDF|SP\s*800-218))/g, '<a href="https://csrc.nist.gov/" target="_blank" rel="noopener noreferrer">NIST</a>')
     .replace(/OWASP WSTG 4\.2/g, '<a href="https://owasp.org/www-project-web-security-testing-guide/" target="_blank" rel="noopener noreferrer">OWASP WSTG 4.2</a>')
-    .replace(/OWASP WSTG/g, '<a href="https://owasp.org/www-project-web-security-testing-guide/" target="_blank" rel="noopener noreferrer">OWASP WSTG</a>');
+    .replace(/OWASP WSTG-INFO/g, '<a href="https://owasp.org/www-project-web-security-testing-guide/" target="_blank" rel="noopener noreferrer">OWASP WSTG-INFO</a>')
+    .replace(/OWASP WSTG/g, '<a href="https://owasp.org/www-project-web-security-testing-guide/" target="_blank" rel="noopener noreferrer">OWASP WSTG</a>')
+    .replace(/NIST SC-8/g, '<a href="https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final" target="_blank" rel="noopener noreferrer">NIST SC-8</a>')
+    .replace(/NIST CA-7/g, '<a href="https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final" target="_blank" rel="noopener noreferrer">NIST CA-7</a>')
+    .replace(/ISO 27001 A\.13/g, '<a href="https://www.iso.org/standard/27001?s=cpa" target="_blank" rel="noopener noreferrer">ISO 27001 A.13</a>')
+    .replace(/ISO 27001/g, '<a href="https://www.iso.org/standard/27001?s=cpa" target="_blank" rel="noopener noreferrer">ISO 27001</a>');
 }
 
 function frameworkReference(value: string): { label: string; href: string; display: string } | null {
@@ -7694,10 +7707,24 @@ function frameworkReference(value: string): { label: string; href: string; displ
       display: text,
     };
   }
+  if (lower.includes("nist sc-8") || lower.includes("nist ca-7") || lower.includes("nist 800-53")) {
+    return {
+      label: "NIST SP 800-53 Rev. 5",
+      href: "https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final",
+      display: text,
+    };
+  }
   if (lower === "nist") {
     return {
       label: "NIST",
       href: "https://csrc.nist.gov/",
+      display: text,
+    };
+  }
+  if (lower.includes("iso 27001")) {
+    return {
+      label: "ISO/IEC 27001:2022",
+      href: "https://www.iso.org/standard/27001?s=cpa",
       display: text,
     };
   }
@@ -10353,7 +10380,7 @@ function renderManagementComplianceMatrix(compliance: ProfileComplianceReport | 
       const gapWidth = Math.round((gap / total) * 100);
       const naWidth = Math.max(0, 100 - coveredWidth - gapWidth);
       return `<div class="matrix-card">
-        <div class="matrix-head"><strong>${escapeHtml(framework.label)}</strong><span>${mapped} mapped findings</span></div>
+        <div class="matrix-head"><strong>${linkifyFrameworkText(framework.label)}</strong><span>${mapped} mapped findings</span></div>
         <div class="matrix-bar">
           <span class="matrix-covered" style="width:${coveredWidth}%"></span>
           <span class="matrix-gap" style="width:${gapWidth}%"></span>
@@ -10415,7 +10442,7 @@ function renderManagementHtml(scan: ScanView, context?: ManagementReportContext)
         .map((framework) => {
           const summaryRow = framework.summary;
           return `<tr>
-            <td>${escapeHtml(framework.label)}</td>
+            <td>${linkifyFrameworkText(framework.label)}</td>
             <td>${Number(summaryRow.covered || 0)}</td>
             <td>${Number(summaryRow.gap || 0)}</td>
             <td>${Number(summaryRow.not_applicable || 0)}</td>
