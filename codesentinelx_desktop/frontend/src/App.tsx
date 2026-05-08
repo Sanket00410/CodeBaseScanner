@@ -185,6 +185,74 @@ function renderOwaspReferenceLink(label: string, href: string, title?: string): 
   );
 }
 
+function parseFrameworkReference(value: string): { label: string; href: string; display: string } | null {
+  const text = String(value || "").trim();
+  if (!text) {
+    return null;
+  }
+  const lower = text.toLowerCase();
+  if (lower.includes("owasp api top 10") || lower.includes("api security top 10")) {
+    return { label: "OWASP API Security Top 10", href: "https://owasp.org/www-project-api-security/", display: text };
+  }
+  if (lower.includes("owasp asvs")) {
+    return {
+      label: "OWASP ASVS",
+      href: "https://owasp.org/www-project-application-security-verification-standard/",
+      display: text,
+    };
+  }
+  if (lower.includes("owasp wstg")) {
+    return {
+      label: "OWASP WSTG",
+      href: "https://owasp.org/www-project-web-security-testing-guide/",
+      display: text,
+    };
+  }
+  if (lower.includes("nist ssdf") || lower.includes("sp 800-218")) {
+    return {
+      label: "NIST SSDF SP 800-218",
+      href: "https://csrc.nist.gov/publications/detail/sp/800-218/final",
+      display: text,
+    };
+  }
+  if (lower === "nist") {
+    return {
+      label: "NIST",
+      href: "https://csrc.nist.gov/",
+      display: text,
+    };
+  }
+  return null;
+}
+
+function renderFrameworkReferenceLink(value: string): React.ReactNode {
+  const reference = parseFrameworkReference(value);
+  if (!reference) {
+    return value || "";
+  }
+  return (
+    <a href={reference.href} target="_blank" rel="noreferrer" title={`Open official ${reference.label} page`}>
+      {reference.display}
+    </a>
+  );
+}
+
+function renderFrameworkReferenceList(values: string[]): React.ReactNode {
+  const items = values.map((value, index) => {
+    const trimmed = String(value || "").trim();
+    if (!trimmed) {
+      return null;
+    }
+    return (
+      <React.Fragment key={`${trimmed}-${index}`}>
+        {index > 0 ? ", " : ""}
+        {renderFrameworkReferenceLink(trimmed)}
+      </React.Fragment>
+    );
+  });
+  return items.length > 0 ? items : "";
+}
+
 const TABS: Array<{ key: AppTab; label: string; icon: string }> = [
   { key: "dashboard", label: "Code Risk Overview", icon: "CM" },
   { key: "threat-model", label: "Threat Model", icon: "TH" },
@@ -3832,7 +3900,7 @@ export default function App(): React.JSX.Element {
                     <td>{control.name}</td>
                     <td>{control.category}</td>
                     <td>{control.coverage_level}</td>
-                    <td>{control.standard_mappings.join(", ")}</td>
+                    <td>{renderFrameworkReferenceList(control.standard_mappings)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -3854,7 +3922,7 @@ export default function App(): React.JSX.Element {
               <tbody>
                 {report.compliance_matrix.map((item) => (
                   <tr key={`${item.standard}-${item.status}`}>
-                    <td>{item.standard}</td>
+                    <td>{renderFrameworkReferenceLink(item.standard)}</td>
                     <td>{item.control_count}</td>
                     <td>{item.status}</td>
                   </tr>
@@ -4116,8 +4184,8 @@ export default function App(): React.JSX.Element {
                 <div className="compliance-version-row">
                   <span>OWASP Top 10: {renderOwaspReferenceLink(compliance.framework_versions.owasp_top_10 || "OWASP Top 10", "https://owasp.org/www-project-top-ten/")}</span>
                   <span>OWASP API Top 10: {renderOwaspReferenceLink(compliance.framework_versions.owasp_api_top_10 || "OWASP API Top 10", "https://owasp.org/www-project-api-security/")}</span>
-                  <span>ASVS: {compliance.framework_versions.asvs}</span>
-                  <span>WSTG: {compliance.framework_versions.wstg}</span>
+                  <span>ASVS: {renderFrameworkReferenceLink(`OWASP ASVS ${compliance.framework_versions.asvs || ""}`)}</span>
+                  <span>WSTG: {renderFrameworkReferenceLink(`OWASP WSTG ${compliance.framework_versions.wstg || ""}`)}</span>
                 </div>
 
                 {(compliance.frameworks || []).map((framework) => (
@@ -4193,7 +4261,7 @@ export default function App(): React.JSX.Element {
               <tbody>
                 {scan.report.existing_implementation_report.compliance_matrix.map((item) => (
                   <tr key={`${item.standard}-${item.status}`}>
-                    <td>{item.standard}</td>
+                    <td>{renderFrameworkReferenceLink(item.standard)}</td>
                     <td>{item.control_count}</td>
                     <td>{item.status}</td>
                   </tr>

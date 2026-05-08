@@ -2046,7 +2046,7 @@ function writeExistingPdf(doc: PDFKit.PDFDocument, scan: ScanView): void {
       9,
     );
     writeLinkedTextLine(doc, "OWASP Top 10", String(profileCompliance.framework_versions?.owasp_top_10 || "N/A"), "https://owasp.org/www-project-top-ten/");
-    writeLinkedTextLine(doc, "OWASP API Top 10", String(profileCompliance.framework_versions?.owasp_api_top_10 || "N/A"), "https://owasp.org/www-project-api-security/");
+    writeLinkedTextLine(doc, "OWASP API Security Top 10", String(profileCompliance.framework_versions?.owasp_api_top_10 || "N/A"), "https://owasp.org/www-project-api-security/");
     writeLinkedTextLine(doc, "OWASP ASVS", String(profileCompliance.framework_versions?.asvs || "N/A"), "https://owasp.org/www-project-application-security-verification-standard/");
     writeLinkedTextLine(doc, "OWASP WSTG", String(profileCompliance.framework_versions?.wstg || "N/A"), "https://owasp.org/www-project-web-security-testing-guide/");
     writeLinkedTextLine(doc, "Reference", "OWASP Top 10 latest official published release is 2021.", "https://owasp.org/www-project-top-ten/");
@@ -3386,7 +3386,7 @@ function renderExistingHtml(scan: ScanView): string {
         <td><a href="#${escapeHtml(controlAnchorId)}" class="existing-control-link" data-target-id="${escapeHtml(controlAnchorId)}" data-instance-target-id="${escapeHtml(evidenceAnchorId)}">${escapeHtml(control.name)}</a></td>
         <td>${escapeHtml(control.category)}</td>
         <td>${escapeHtml(control.coverage_level)}</td>
-        <td>${escapeHtml(control.standard_mappings.join(", "))}</td>
+        <td>${linkifyFrameworkText(control.standard_mappings.join(", "))}</td>
         <td><a href="#${escapeHtml(evidenceAnchorId)}" class="existing-control-evidence-link" data-target-id="${escapeHtml(evidenceAnchorId)}" data-instance-target-id="${escapeHtml(evidenceAnchorId)}">View</a></td>
       </tr>`;
     })
@@ -3423,8 +3423,8 @@ function renderExistingHtml(scan: ScanView): string {
 
   const profileHeader = profileCompliance
     ? `<p class="meta"><strong>Profile:</strong> ${escapeHtml(profileCompliance.scan_profile_label)} (${escapeHtml(profileCompliance.scan_profile)})</p>
-  <p class="meta"><strong>Framework Versions:</strong> ${linkifyOwaspText(`OWASP Top 10 ${profileCompliance.framework_versions.owasp_top_10}`)} | ${linkifyOwaspText(`API Top 10 ${profileCompliance.framework_versions.owasp_api_top_10}`)} | ${linkifyOwaspText(`ASVS ${profileCompliance.framework_versions.asvs}`)} | ${linkifyOwaspText(`WSTG ${profileCompliance.framework_versions.wstg}`)}</p>
-  <p class="meta"><strong>Reference:</strong> ${linkifyOwaspText("OWASP Top 10 latest official published release is 2021.")}</p>`
+  <p class="meta"><strong>Framework Versions:</strong> ${linkifyFrameworkText(`OWASP Top 10 ${profileCompliance.framework_versions.owasp_top_10}`)} | ${linkifyFrameworkText(`OWASP API Security Top 10 ${profileCompliance.framework_versions.owasp_api_top_10}`)} | ${linkifyFrameworkText(`OWASP ASVS ${profileCompliance.framework_versions.asvs}`)} | ${linkifyFrameworkText(`OWASP WSTG ${profileCompliance.framework_versions.wstg}`)}</p>
+  <p class="meta"><strong>Reference:</strong> ${linkifyFrameworkText("OWASP Top 10 latest official published release is 2021.")}</p>`
     : "";
 
   const profileFrameworks = profileCompliance
@@ -6879,7 +6879,7 @@ const DEVELOPER_SECURE_CODING_BASELINE = [
     detail: "Use the OWASP Top 10 as the baseline language for design reviews, backlog grooming, and secure coding triage.",
   },
   {
-    label: "OWASP ASVS 4.0.3",
+    label: "OWASP ASVS 5.0.0",
     detail: "Translate implementation choices into explicit verification requirements for validation, auth, sessions, crypto, and logging.",
   },
   {
@@ -7105,7 +7105,7 @@ function resolveDeveloperPracticeProfile(finding: VulnerabilityFinding): Develop
       summary: "Review the surrounding code path against secure coding standards and tighten the implementation pattern.",
       standards: [
         "OWASP Top 10 2021",
-        "OWASP ASVS 4.0.3",
+        "OWASP ASVS 5.0.0",
         "NIST SSDF SP 800-218",
         "CERT Secure Coding / CWE guidance",
       ],
@@ -7198,7 +7198,6 @@ function renderDeveloperSecureCodingPracticesHtmlSection(findings: Vulnerability
   return `
   <section class="panel practice-panel">
     <h2>Developer Secure Coding Practices</h2>
-    <p class="muted">This section translates the scan into standards-backed coding practices for developers. It is grounded in ${linkifyOwaspText("OWASP Top 10 2021")}, ${linkifyOwaspText("OWASP ASVS 4.0.3")}, NIST SSDF SP 800-218, CWE guidance, CERT secure coding references, and platform hardening guidance where applicable.</p>
     <table>
       <thead><tr><th>Standard</th><th>How to use it in this report</th></tr></thead>
       <tbody>${baselineRows}</tbody>
@@ -7211,9 +7210,12 @@ function renderDeveloperSecureCodingPracticesHtmlSection(findings: Vulnerability
 function writeDeveloperSecureCodingPracticesPdfSection(doc: PDFKit.PDFDocument, findings: VulnerabilityFinding[]): void {
   const cards = buildDeveloperSecureCodingPractices(findings);
   writePdfSectionHeader(doc, "Developer Secure Coding Practices");
-  writeWrapped(doc, "Grounded in OWASP Top 10 2021, OWASP ASVS 4.0.3, NIST SSDF SP 800-218, CWE guidance, CERT secure coding, and platform hardening references.", 8);
+  writeWrapped(doc, "Grounded in OWASP Top 10 2021, OWASP API Security Top 10 2023, OWASP ASVS 5.0.0, OWASP WSTG 4.2, NIST SSDF SP 800-218, CWE guidance, CERT secure coding, and platform hardening references.", 8);
   writeLinkedTextLine(doc, "OWASP Top 10", "OWASP Top 10 2021", "https://owasp.org/www-project-top-ten/");
-  writeLinkedTextLine(doc, "OWASP ASVS", "OWASP ASVS 4.0.3", "https://owasp.org/www-project-application-security-verification-standard/");
+  writeLinkedTextLine(doc, "OWASP API Security Top 10", "OWASP API Security Top 10 2023", "https://owasp.org/www-project-api-security/");
+  writeLinkedTextLine(doc, "OWASP ASVS", "OWASP ASVS 5.0.0", "https://owasp.org/www-project-application-security-verification-standard/");
+  writeLinkedTextLine(doc, "OWASP WSTG", "OWASP WSTG 4.2", "https://owasp.org/www-project-web-security-testing-guide/");
+  writeLinkedTextLine(doc, "NIST SSDF", "NIST SSDF SP 800-218", "https://csrc.nist.gov/publications/detail/sp/800-218/final");
   writePdfKeyValueTable(doc, [
     { key: "OWASP Top 10", value: "Use it as the baseline risk language for code review and backlog triage." },
     { key: "OWASP ASVS", value: "Map implementation work to verification requirements instead of ad hoc fixes." },
@@ -7652,9 +7654,74 @@ function linkifyOwaspText(value: string): string {
   const text = String(value || "");
   return escapeHtml(text)
     .replace(/OWASP Top 10 2021/g, '<a href="https://owasp.org/www-project-top-ten/" target="_blank" rel="noopener noreferrer">OWASP Top 10 2021</a>')
+    .replace(/OWASP API Security Top 10 2023/g, '<a href="https://owasp.org/www-project-api-security/" target="_blank" rel="noopener noreferrer">OWASP API Security Top 10 2023</a>')
     .replace(/OWASP API Top 10/g, '<a href="https://owasp.org/www-project-api-security/" target="_blank" rel="noopener noreferrer">OWASP API Top 10</a>')
-    .replace(/OWASP ASVS 4\.0\.3/g, '<a href="https://owasp.org/www-project-application-security-verification-standard/" target="_blank" rel="noopener noreferrer">OWASP ASVS 4.0.3</a>')
+    .replace(/OWASP ASVS 5\.0\.0/g, '<a href="https://owasp.org/www-project-application-security-verification-standard/" target="_blank" rel="noopener noreferrer">OWASP ASVS 5.0.0</a>')
+    .replace(/NIST SSDF SP 800-218/g, '<a href="https://csrc.nist.gov/publications/detail/sp/800-218/final" target="_blank" rel="noopener noreferrer">NIST SSDF SP 800-218</a>')
+    .replace(/NIST SP 800-218/g, '<a href="https://csrc.nist.gov/publications/detail/sp/800-218/final" target="_blank" rel="noopener noreferrer">NIST SP 800-218</a>')
+    .replace(/\bNIST\b(?!\s*(?:SSDF|SP\s*800-218))/g, '<a href="https://csrc.nist.gov/" target="_blank" rel="noopener noreferrer">NIST</a>')
+    .replace(/OWASP WSTG 4\.2/g, '<a href="https://owasp.org/www-project-web-security-testing-guide/" target="_blank" rel="noopener noreferrer">OWASP WSTG 4.2</a>')
     .replace(/OWASP WSTG/g, '<a href="https://owasp.org/www-project-web-security-testing-guide/" target="_blank" rel="noopener noreferrer">OWASP WSTG</a>');
+}
+
+function frameworkReference(value: string): { label: string; href: string; display: string } | null {
+  const text = String(value || "").trim();
+  if (!text) {
+    return null;
+  }
+  const lower = text.toLowerCase();
+  if (lower.includes("owasp api top 10") || lower.includes("api security top 10")) {
+    return { label: "OWASP API Security Top 10", href: "https://owasp.org/www-project-api-security/", display: text };
+  }
+  if (lower.includes("owasp asvs")) {
+    return {
+      label: "OWASP ASVS",
+      href: "https://owasp.org/www-project-application-security-verification-standard/",
+      display: text,
+    };
+  }
+  if (lower.includes("owasp wstg")) {
+    return {
+      label: "OWASP WSTG",
+      href: "https://owasp.org/www-project-web-security-testing-guide/",
+      display: text,
+    };
+  }
+  if (lower.includes("nist ssdf") || lower.includes("sp 800-218")) {
+    return {
+      label: "NIST SSDF SP 800-218",
+      href: "https://csrc.nist.gov/publications/detail/sp/800-218/final",
+      display: text,
+    };
+  }
+  if (lower === "nist") {
+    return {
+      label: "NIST",
+      href: "https://csrc.nist.gov/",
+      display: text,
+    };
+  }
+  return null;
+}
+
+function frameworkUrlForLabel(label: string): string | null {
+  const reference = frameworkReference(label);
+  return reference?.href || null;
+}
+
+function linkifyFrameworkText(value: string): string {
+  const text = String(value || "");
+  return escapeHtml(text)
+    .replace(/OWASP Top 10 2021/g, '<a href="https://owasp.org/www-project-top-ten/" target="_blank" rel="noopener noreferrer">OWASP Top 10 2021</a>')
+    .replace(/OWASP API Security Top 10 2023/g, '<a href="https://owasp.org/www-project-api-security/" target="_blank" rel="noopener noreferrer">OWASP API Security Top 10 2023</a>')
+    .replace(/OWASP API Top 10/g, '<a href="https://owasp.org/www-project-api-security/" target="_blank" rel="noopener noreferrer">OWASP API Top 10</a>')
+    .replace(/OWASP ASVS 5\.0\.0/g, '<a href="https://owasp.org/www-project-application-security-verification-standard/" target="_blank" rel="noopener noreferrer">OWASP ASVS 5.0.0</a>')
+    .replace(/OWASP ASVS 4\.0\.3/g, '<a href="https://owasp.org/www-project-application-security-verification-standard/" target="_blank" rel="noopener noreferrer">OWASP ASVS 5.0.0</a>')
+    .replace(/OWASP WSTG 4\.2/g, '<a href="https://owasp.org/www-project-web-security-testing-guide/" target="_blank" rel="noopener noreferrer">OWASP WSTG 4.2</a>')
+    .replace(/OWASP WSTG/g, '<a href="https://owasp.org/www-project-web-security-testing-guide/" target="_blank" rel="noopener noreferrer">OWASP WSTG</a>')
+    .replace(/NIST SSDF SP 800-218/g, '<a href="https://csrc.nist.gov/publications/detail/sp/800-218/final" target="_blank" rel="noopener noreferrer">NIST SSDF SP 800-218</a>')
+    .replace(/NIST SP 800-218/g, '<a href="https://csrc.nist.gov/publications/detail/sp/800-218/final" target="_blank" rel="noopener noreferrer">NIST SP 800-218</a>')
+    .replace(/\bNIST\b(?!\s*(?:SSDF|SP\s*800-218))/g, '<a href="https://csrc.nist.gov/" target="_blank" rel="noopener noreferrer">NIST</a>');
 }
 
 function renderCveLinks(value: unknown): string {
@@ -9237,7 +9304,7 @@ function renderComplianceMatrixRows(items: Array<{ standard: string; control_cou
         return "";
       }
       return `<tr>
-        <td>${escapeHtml(standard)}</td>
+        <td>${linkifyFrameworkText(standard)}</td>
         <td align="center">${count}</td>
         <td>${escapeHtml(status)}</td>
       </tr>`;
@@ -10571,7 +10638,7 @@ function renderManagementHtml(scan: ScanView, context?: ManagementReportContext)
       ${compliance?.frameworks?.length ? `
       <div class="mg-card">
         <h2>9. Compliance Mapping (Matrix / Table Visualization)</h2>
-        <p class="muted">Map findings to standards like <a href="https://owasp.org/www-project-top-ten/" target="_blank" rel="noopener noreferrer">OWASP</a> and NIST. Helps stakeholders understand regulatory impact.</p>
+        <p class="muted">Map findings to standards like <a href="https://owasp.org/www-project-top-ten/" target="_blank" rel="noopener noreferrer">OWASP</a> and <a href="https://csrc.nist.gov/" target="_blank" rel="noopener noreferrer">NIST</a>. Helps stakeholders understand regulatory impact.</p>
         ${complianceMatrix}
         <div class="table-frame table-scroll" style="margin-top:10px">
           <table class="management-table">
@@ -10703,6 +10770,12 @@ function writeManagementPdf(doc: PDFKit.PDFDocument, scan: ScanView, context?: M
 
   if (compliance?.frameworks?.length) {
     writePdfSectionHeader(doc, "9. Compliance Mapping (Matrix / Table Visualization)");
+    for (const framework of compliance.frameworks.slice(0, 8)) {
+      const frameworkUrl = frameworkUrlForLabel(framework.label);
+      if (frameworkUrl) {
+        writeLinkedTextLine(doc, "Framework", String(framework.label || "Framework"), frameworkUrl);
+      }
+    }
     for (const framework of compliance.frameworks.slice(0, 12)) {
       writeWrapped(
         doc,
@@ -10732,6 +10805,7 @@ function writeManagementPdf(doc: PDFKit.PDFDocument, scan: ScanView, context?: M
     { key: "% Resolved", value: `${Number(riskScoreDashboard.resolved_percent || 0).toFixed(2)}%` },
   ]);
 }
+
 
 
 
