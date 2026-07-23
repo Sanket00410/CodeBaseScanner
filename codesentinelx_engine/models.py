@@ -8,6 +8,17 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+def _coerce_optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        return float(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+
+
 class Severity(str, Enum):
     CRITICAL = "Critical"
     HIGH = "High"
@@ -41,6 +52,8 @@ class Finding:
     evidence: str | None = None
     origin: str = ""
     provenance: dict[str, Any] = field(default_factory=dict)
+    cvss_score: float | None = None
+    cvss_vector: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -72,6 +85,8 @@ class Finding:
             evidence=str(payload.get("evidence") or "") or None,
             origin=str(payload.get("origin") or ""),
             provenance=provenance,
+            cvss_score=_coerce_optional_float(payload.get("cvss_score")),
+            cvss_vector=str(payload.get("cvss_vector") or "") or None,
         )
 
 

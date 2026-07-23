@@ -110,6 +110,92 @@ def test_report_builder_enriches_findings_with_confidence_cvss_and_poc_details(t
     assert "Affected Endpoint" in html
 
 
+def test_report_builder_exposes_attack_path_analysis_in_enriched_report_and_scope(tmp_path: Path) -> None:
+    (tmp_path / "app.py").write_text(
+        "user_id = request.args.get('id')\n"
+        "cursor.execute(f\"SELECT * FROM users WHERE id = {user_id}\")\n",
+        encoding="utf-8",
+    )
+    finding = Finding(
+        vulnerability_type="SQL Injection",
+        severity=Severity.CRITICAL,
+        file_path="app.py",
+        line_number=2,
+        business_impact="Database compromise",
+        recommendation="Use parameterized queries / prepared statements and strict input validation.",
+        reference="https://owasp.org/Top10/A03_2021-Injection/",
+        owasp_category="A03:2021 - Injection",
+        description="Dynamic SQL query construction can allow attacker-controlled query manipulation.",
+        rule_id="OWASP-A03-SQLI-001",
+        cwe="CWE-89",
+        evidence='cursor.execute(f"SELECT * FROM users WHERE id = {user_id}")',
+    )
+    report = build_report(
+        ScanResult(
+            target_path=str(tmp_path),
+            started_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(timezone.utc),
+            files_scanned=1,
+            findings=[finding],
+            errors=[],
+            existing_security_measures=[],
+            toolchain_status={},
+        )
+    )
+
+    enriched = report["vulnerability_fixed_code_report"]["findings"][0]
+    scoped = scope_findings_for_role(report["vulnerability_fixed_code_report"]["findings"], "Security Analyst")[0]
+
+    assert enriched["attack_path_analysis"]["summary"]
+    assert enriched["attack_path_analysis"]["steps"]
+    assert enriched["attack_path_analysis"]["impact"]
+    assert enriched["poc_details"]["attack_path_analysis"]["summary"] == enriched["attack_path_analysis"]["summary"]
+    assert scoped["attack_path_analysis"]["summary"] == enriched["attack_path_analysis"]["summary"]
+
+
+def test_report_builder_preserves_explicit_cvss_metadata_from_finding_model(tmp_path: Path) -> None:
+    (tmp_path / "app.py").write_text(
+        "user_id = request.args.get('id')\n"
+        "cursor.execute(f\"SELECT * FROM users WHERE id = {user_id}\")\n",
+        encoding="utf-8",
+    )
+    finding = Finding(
+        vulnerability_type="SQL Injection",
+        severity=Severity.CRITICAL,
+        file_path="app.py",
+        line_number=2,
+        business_impact="Database compromise",
+        recommendation="Use parameterized queries / prepared statements and strict input validation.",
+        reference="https://owasp.org/Top10/A03_2021-Injection/",
+        owasp_category="A03:2021 - Injection",
+        description="Dynamic SQL query construction can allow attacker-controlled query manipulation.",
+        rule_id="OWASP-A03-SQLI-001",
+        cwe="CWE-89",
+        evidence='cursor.execute(f"SELECT * FROM users WHERE id = {user_id}")',
+        cvss_score=7.5,
+        cvss_vector="AV:N/AC:L/PR:N/UI:R",
+    )
+    report = build_report(
+        ScanResult(
+            target_path=str(tmp_path),
+            started_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(timezone.utc),
+            files_scanned=1,
+            findings=[finding],
+            errors=[],
+            existing_security_measures=[],
+            toolchain_status={},
+        )
+    )
+
+    enriched = report["vulnerability_fixed_code_report"]["findings"][0]
+    scoped = scope_findings_for_role(report["vulnerability_fixed_code_report"]["findings"], "Security Analyst")[0]
+    assert enriched["cvss_score"] == 7.5
+    assert enriched["cvss_vector"] == "AV:N/AC:L/PR:N/UI:R"
+    assert scoped["cvss_score"] == 7.5
+    assert scoped["cvss_vector"] == "AV:N/AC:L/PR:N/UI:R"
+
+
 def test_report_builder_uses_provider_backed_ai_when_configured(tmp_path: Path, monkeypatch) -> None:
     (tmp_path / "app.py").write_text(
         "user_id = request.args.get('id')\n"

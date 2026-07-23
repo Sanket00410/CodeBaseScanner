@@ -4162,6 +4162,27 @@ export default function App(): React.JSX.Element {
                 </p>
                 <h4>Real Code Evidence</h4>
                 <pre>{selectedFinding.code_evidence_excerpt || selectedFinding.source_line_snippet || "No source context captured."}</pre>
+                <h4>Attack Path Analysis</h4>
+                {selectedFinding.attack_path_analysis ? (
+                  <div>
+                    <p><strong>Summary:</strong> {selectedFinding.attack_path_analysis.summary || "No summary captured."}</p>
+                    {selectedFinding.attack_path_analysis.steps && selectedFinding.attack_path_analysis.steps.length > 0 && (
+                      <ul>
+                        {selectedFinding.attack_path_analysis.steps.map((step, index) => (
+                          <li key={`${step}-${index}`}>{step}</li>
+                        ))}
+                      </ul>
+                    )}
+                    {selectedFinding.attack_path_analysis.impact && (
+                      <p><strong>Impact:</strong> {selectedFinding.attack_path_analysis.impact}</p>
+                    )}
+                    {selectedFinding.attack_path_analysis.remediation && (
+                      <p><strong>Remediation:</strong> {selectedFinding.attack_path_analysis.remediation}</p>
+                    )}
+                  </div>
+                ) : (
+                  <p>No structured attack-path analysis available.</p>
+                )}
                 <h4>Proof of Concept / Attack Example</h4>
                 <pre>
                   {selectedFinding.proof_of_concept ||

@@ -329,6 +329,13 @@ export interface VulnerabilityFinding {
   };
   attack_scenario?: string;
   exploitation_example?: string;
+  attack_path_analysis?: {
+    summary?: string;
+    steps?: string[];
+    impact?: string;
+    entry_point?: string;
+    remediation?: string;
+  };
   proof_of_concept?: string;
   proof_of_concept_template?: string;
   cve_ids?: string[];

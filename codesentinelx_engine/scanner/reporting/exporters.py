@@ -342,6 +342,15 @@ def _render_execution_results_html(item: dict) -> str:
         overview_rows.append(
             f"<tr><th>Risk</th><td>{html.escape(str(poc_details.get('risk', '')))}</td></tr>"
         )
+    attack_path_analysis = item.get("attack_path_analysis") or (poc_details.get("attack_path_analysis") or {})
+    if attack_path_analysis.get("summary"):
+        overview_rows.append(
+            f"<tr><th>Attack Path Summary</th><td>{html.escape(str(attack_path_analysis.get('summary', '')))}</td></tr>"
+        )
+    if attack_path_analysis.get("impact"):
+        overview_rows.append(
+            f"<tr><th>Attack Path Impact</th><td>{html.escape(str(attack_path_analysis.get('impact', '')))}</td></tr>"
+        )
     if poc_details.get("fix_example"):
         overview_rows.append(
             f"<tr><th>Fix Example</th><td>{html.escape(str(poc_details.get('fix_example', '')))}</td></tr>"
@@ -371,6 +380,18 @@ def _render_execution_results_html(item: dict) -> str:
         "<div class='execution-results'>",
         "<h4>Execution Overview</h4>",
         f"<table class='results'><tbody>{''.join(overview_rows)}</tbody></table>",
+        "<div class='fix-subtitle'>Attack Path Analysis</div>",
+        f"<pre class='execution-results-full'>{html.escape(str(attack_path_analysis.get('summary', 'No structured attack-path analysis was captured.')))}</pre>",
+    ]
+    if attack_path_analysis.get("steps"):
+        execution_blocks.append(
+            "<ul>" + "".join(f"<li>{html.escape(str(step))}</li>" for step in attack_path_analysis.get("steps", [])) + "</ul>"
+        )
+    if attack_path_analysis.get("remediation"):
+        execution_blocks.append(
+            f"<p><strong>Remediation:</strong> {html.escape(str(attack_path_analysis.get('remediation', '')))}</p>"
+        )
+    execution_blocks.extend([
         "<div class='fix-subtitle'>PoC Validation Output</div>",
         f"<pre class='execution-results-full'>{html.escape(proof or 'No PoC validation output was captured for this finding in this scan.')}</pre>",
         "<div class='fix-subtitle'>Active PoC Output</div>",
@@ -379,7 +400,7 @@ def _render_execution_results_html(item: dict) -> str:
         f"<pre class='execution-results-full'>Code Snippet:\n{html.escape(str(real_code_evidence.get('code_snippet', '')))}\n\nIssue Explanation:\n{html.escape(str(real_code_evidence.get('issue_explanation', '')))}\n\nFix Snippet:\n{html.escape(str(real_code_evidence.get('fix_snippet', '')))}</pre>",
         "<div class='fix-subtitle'>Post-Fix Output</div>",
         f"<pre class='execution-results-full'>{html.escape(str((fix_verification.get('post_fix_execution') or {}).get('output') or 'No post-fix verification output was captured for this finding in this scan.'))}</pre>",
-    ]
+    ])
     if fix_verification.get("build_verification"):
         execution_blocks.extend([
             "<div class='fix-subtitle'>Build/Test Output (Build)</div>",

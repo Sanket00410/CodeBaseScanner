@@ -415,6 +415,82 @@ def _module_name(file_path: str) -> str:
     return parts[0]
 
 
+def _build_attack_path_analysis(vulnerability_type: str, evidence: str | None, recommendation: str | None, file_path: str, line_number: int) -> dict[str, object]:
+    lowered = vulnerability_type.lower()
+    location = f"{file_path}:{line_number}" if file_path else "unknown"
+    if "sql injection" in lowered:
+        return {
+            "summary": "An attacker can inject crafted input into the vulnerable query path and alter database logic to access or manipulate data.",
+            "steps": [
+                "The attacker submits untrusted input through a request parameter or form field.",
+                f"The application concatenates that input into a database query at {location}.",
+                "The altered query bypasses expected filters or returns unauthorized records.",
+            ],
+            "impact": "Unauthorized data access, data tampering, and broader database compromise.",
+            "entry_point": evidence or "request input",
+            "remediation": recommendation or "Use parameterized queries and strict input validation.",
+        }
+    if "xss" in lowered:
+        return {
+            "summary": "The attacker can smuggle executable script content into rendered output and exploit the browser of a victim user.",
+            "steps": [
+                "The attacker submits script-like content through a request field or URL parameter.",
+                f"The application reflects the content at {location} without adequate escaping.",
+                "The browser executes the injected script in the victim context.",
+            ],
+            "impact": "Session theft, account takeover, and malicious page manipulation.",
+            "entry_point": evidence or "user-controlled rendering sink",
+            "remediation": recommendation or "Escape output and avoid unsafe DOM assignment.",
+        }
+    if "command injection" in lowered:
+        return {
+            "summary": "The attacker can redirect a command execution boundary so the application runs attacker-controlled system commands.",
+            "steps": [
+                "The attacker supplies crafted input to a shell or subprocess call.",
+                f"The code reaches a command execution sink at {location}.",
+                "The injected tokens alter runtime behavior and execute unauthorized commands.",
+            ],
+            "impact": "Remote code execution, host compromise, and lateral movement.",
+            "entry_point": evidence or "command execution boundary",
+            "remediation": recommendation or "Remove shell execution and enforce allowlisted arguments.",
+        }
+    if "deserialization" in lowered:
+        return {
+            "summary": "An attacker can supply crafted serialized content that reaches an unsafe deserializer and triggers unexpected code execution.",
+            "steps": [
+                "The attacker submits attacker-controlled serialized data to the application.",
+                f"The application deserializes it at {location} without schema validation.",
+                "The processing path triggers gadget behavior or unexpected object construction.",
+            ],
+            "impact": "Remote code execution, privilege escalation, and service compromise.",
+            "entry_point": evidence or "serialized input",
+            "remediation": recommendation or "Use safe deserializers and strict schema validation.",
+        }
+    if "secret" in lowered or "hardcoded" in lowered:
+        return {
+            "summary": "The attacker can discover embedded credentials or secrets in source and reuse them to access protected services.",
+            "steps": [
+                "The secret is stored directly in source, config, or build artifacts.",
+                f"The material is reachable from the repository path {location}.",
+                "An attacker or malicious insider reuses the credential to authenticate to downstream systems.",
+            ],
+            "impact": "Account takeover, unauthorized access, and downstream compromise.",
+            "entry_point": evidence or "hardcoded credential material",
+            "remediation": recommendation or "Rotate the secret and move it to a managed secret store.",
+        }
+    return {
+        "summary": "The attacker can exploit the weakness through the affected code path and turn it into unauthorized business impact.",
+        "steps": [
+            "The attacker reaches the vulnerable code path through untrusted input or weak trust boundaries.",
+            f"The weakness is exercised at {location}.",
+            "The resulting behavior can be chained with other issues to reach unauthorized outcomes.",
+        ],
+        "impact": "Unauthorized access, data exposure, or service abuse depending on the surrounding controls.",
+        "entry_point": evidence or "untrusted application input",
+        "remediation": recommendation or "Apply defense-in-depth controls and least-privilege access.",
+    }
+
+
 def _scenario_for(vulnerability_type: str) -> tuple[str, str, str, str]:
     lowered = vulnerability_type.lower()
     if "sql injection" in lowered:
@@ -1012,7 +1088,10 @@ def _enriched_findings(findings: list[Finding], target_root: str) -> list[dict]:
             finding.recommendation,
             finding.file_path,
         )
-        base["cvss_score"] = _severity_cvss(base["severity"])
+        explicit_cvss = finding.cvss_score if getattr(finding, "cvss_score", None) is not None else None
+        explicit_vector = finding.cvss_vector if getattr(finding, "cvss_vector", None) is not None else None
+        base["cvss_score"] = explicit_cvss if explicit_cvss is not None else _severity_cvss(base["severity"])
+        base["cvss_vector"] = explicit_vector or _derive_cvss_vector(base)
         base["vulnerability_title"] = finding.vulnerability_type
         base["cwe_id"] = finding.cwe or "N/A"
         normalized_owasp = normalize_owasp_top10_label(finding.owasp_category)
@@ -1020,10 +1099,22 @@ def _enriched_findings(findings: list[Finding], target_root: str) -> list[dict]:
         if normalized_owasp != finding.owasp_category:
             base["owasp_mapping_legacy"] = finding.owasp_category
         base["vulnerability_title"] = _resolved_vulnerability_title(base)
+        attack_path_analysis = _build_attack_path_analysis(
+            finding.vulnerability_type,
+            finding.evidence,
+            finding.recommendation,
+            finding.file_path,
+            finding.line_number,
+        )
         base["attack_scenario"] = attack_scenario
         base["exploitation_example"] = exploitation_example
         base["proof_of_concept_template"] = proof_of_concept_template
         base["proof_of_concept"] = proof_of_concept_template
+        base["attack_path_analysis"] = attack_path_analysis
+        base["poc_details"] = {
+            **(base.get("poc_details") or {}),
+            "attack_path_analysis": attack_path_analysis,
+        }
         base["secure_code_example"] = secure_fix_example
         base["affected_module"] = _module_name(finding.file_path)
         base["vulnerable_code_snippet"] = finding.evidence or ""
@@ -1032,9 +1123,14 @@ def _enriched_findings(findings: list[Finding], target_root: str) -> list[dict]:
         base["patch_preview"] = patch_preview
         base["autofix_confidence"] = autofix_confidence
         base["confidence"] = _derive_finding_confidence(base)
-        base["cvss_score"] = _severity_cvss(base["severity"])
-        base["cvss_vector"] = _derive_cvss_vector(base)
-        base["poc_details"] = _build_poc_details(base)
+        if base.get("cvss_score") is None:
+            base["cvss_score"] = _severity_cvss(base["severity"])
+        if not base.get("cvss_vector"):
+            base["cvss_vector"] = _derive_cvss_vector(base)
+        base["poc_details"] = {
+            **_build_poc_details(base),
+            "attack_path_analysis": attack_path_analysis,
+        }
         base["real_code_evidence"] = _build_real_code_evidence(base, target_root)
         base["occurrence_count"] = 1
         base["affected_locations"] = [_normalize_location(str(base.get("file_path") or "unknown"), int(base.get("line_number", 1) or 1))]
