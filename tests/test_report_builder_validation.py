@@ -57,6 +57,59 @@ def test_report_builder_populates_active_poc_and_fix_verification(tmp_path: Path
     assert "Example Fix Pattern" in html
 
 
+def test_report_builder_enriches_findings_with_confidence_cvss_and_poc_details(tmp_path: Path) -> None:
+    (tmp_path / "app.py").write_text(
+        "user_id = request.args.get('id')\n"
+        "cursor.execute(f\"SELECT * FROM users WHERE id = {user_id}\")\n",
+        encoding="utf-8",
+    )
+    finding = Finding(
+        vulnerability_type="SQL Injection",
+        severity=Severity.CRITICAL,
+        file_path="app.py",
+        line_number=2,
+        business_impact="Database compromise",
+        recommendation="Use parameterized queries / prepared statements and strict input validation.",
+        reference="https://owasp.org/Top10/A03_2021-Injection/",
+        owasp_category="A03:2021 - Injection",
+        description="Dynamic SQL query construction can allow attacker-controlled query manipulation.",
+        rule_id="OWASP-A03-SQLI-001",
+        cwe="CWE-89",
+        evidence='cursor.execute(f"SELECT * FROM users WHERE id = {user_id}")',
+    )
+    report = build_report(
+        ScanResult(
+            target_path=str(tmp_path),
+            started_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(timezone.utc),
+            files_scanned=1,
+            findings=[finding],
+            errors=[],
+            existing_security_measures=[],
+            toolchain_status={},
+        )
+    )
+
+    enriched = report["vulnerability_fixed_code_report"]["findings"][0]
+    assert enriched["confidence"] == "High"
+    assert enriched["cvss_score"] == 9.8
+    assert enriched["cvss_vector"] == "AV:N/AC:L/PR:N/UI:N"
+    assert enriched["cwe_id"] == "CWE-89"
+    assert enriched["poc_details"]["affected_endpoint"].endswith("app.py:2")
+    assert "OR 1=1" in enriched["poc_details"]["attack_example"]
+    assert enriched["poc_details"]["risk"]
+    assert enriched["real_code_evidence"]["code_snippet"].startswith("cursor.execute")
+    assert enriched["real_code_evidence"]["fix_snippet"]
+    assert enriched["occurrence_count"] == 1
+    assert enriched["affected_locations"] == ["app.py:2"]
+
+    html_output = ReportExporter(tmp_path).export_html(report, tmp_path / "report.html", "fixes")
+    html = html_output.read_text(encoding="utf-8")
+    assert "Confidence" in html
+    assert "CVSS" in html
+    assert "Affected Endpoint" in html
+
+
 def test_report_builder_uses_provider_backed_ai_when_configured(tmp_path: Path, monkeypatch) -> None:
     (tmp_path / "app.py").write_text(
         "user_id = request.args.get('id')\n"

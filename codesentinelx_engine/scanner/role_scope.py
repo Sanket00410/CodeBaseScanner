@@ -300,7 +300,7 @@ def _redact_finding_for_audit(finding: dict[str, Any]) -> dict[str, Any]:
 
 def scope_findings_for_role(findings: list[dict[str, Any]], role: str | None) -> list[dict[str, Any]]:
     scope = resolve_role_scope(role)
-    if scope.findings_empty:
+    if scope.findings_empty or scope.role == "Management":
         return []
     visible = [item for item in findings if item is not None]
     if not scope.redact_findings:

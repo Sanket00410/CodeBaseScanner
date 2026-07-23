@@ -302,9 +302,13 @@ def _render_execution_results_html(item: dict) -> str:
     fix_verification = item.get("fix_verification") or {}
     active_poc = item.get("active_poc") or {}
     proof = str(item.get("proof_of_concept") or "").strip()
+    poc_details = item.get("poc_details") or {}
+    real_code_evidence = item.get("real_code_evidence") or {}
 
     overview_rows = [
         f"<tr><th>Fix Verification Result</th><td>{html.escape(str(fix_verification.get('result', 'inconclusive')))}</td></tr>",
+        f"<tr><th>Confidence</th><td>{html.escape(str(item.get('confidence', 'Low')))}</td></tr>",
+        f"<tr><th>CVSS</th><td>{html.escape(str(item.get('cvss_score', 0.0)))} ({html.escape(str(item.get('cvss_vector', 'AV:N/AC:L/PR:N/UI:N')))})</td></tr>",
     ]
     if str(fix_verification.get("reason", "")).strip():
         overview_rows.append(
@@ -325,6 +329,30 @@ def _render_execution_results_html(item: dict) -> str:
     if str(active_poc.get("confidence", "")).strip():
         overview_rows.append(
             f"<tr><th>Active PoC Confidence</th><td>{html.escape(str(active_poc.get('confidence')))}</td></tr>"
+        )
+    if poc_details.get("affected_endpoint"):
+        overview_rows.append(
+            f"<tr><th>Affected Endpoint</th><td>{html.escape(str(poc_details.get('affected_endpoint', '')))}</td></tr>"
+        )
+    if poc_details.get("attack_example"):
+        overview_rows.append(
+            f"<tr><th>Attack Example</th><td>{html.escape(str(poc_details.get('attack_example', '')))}</td></tr>"
+        )
+    if poc_details.get("risk"):
+        overview_rows.append(
+            f"<tr><th>Risk</th><td>{html.escape(str(poc_details.get('risk', '')))}</td></tr>"
+        )
+    if poc_details.get("fix_example"):
+        overview_rows.append(
+            f"<tr><th>Fix Example</th><td>{html.escape(str(poc_details.get('fix_example', '')))}</td></tr>"
+        )
+    if item.get("affected_locations"):
+        overview_rows.append(
+            f"<tr><th>Affected Locations</th><td>{html.escape(', '.join(str(location) for location in item.get('affected_locations', [])))}</td></tr>"
+        )
+    if item.get("occurrence_count"):
+        overview_rows.append(
+            f"<tr><th>Occurrences</th><td>{html.escape(str(item.get('occurrence_count', '')))}</td></tr>"
         )
     if str((fix_verification.get("post_fix_execution") or {}).get("command", "")).strip():
         overview_rows.append(
@@ -347,6 +375,8 @@ def _render_execution_results_html(item: dict) -> str:
         f"<pre class='execution-results-full'>{html.escape(proof or 'No PoC validation output was captured for this finding in this scan.')}</pre>",
         "<div class='fix-subtitle'>Active PoC Output</div>",
         f"<pre class='execution-results-full'>{html.escape(str(active_poc.get('output') or 'No active PoC output was captured for this finding in this scan.'))}</pre>",
+        "<div class='fix-subtitle'>Real Code Evidence</div>",
+        f"<pre class='execution-results-full'>Code Snippet:\n{html.escape(str(real_code_evidence.get('code_snippet', '')))}\n\nIssue Explanation:\n{html.escape(str(real_code_evidence.get('issue_explanation', '')))}\n\nFix Snippet:\n{html.escape(str(real_code_evidence.get('fix_snippet', '')))}</pre>",
         "<div class='fix-subtitle'>Post-Fix Output</div>",
         f"<pre class='execution-results-full'>{html.escape(str((fix_verification.get('post_fix_execution') or {}).get('output') or 'No post-fix verification output was captured for this finding in this scan.'))}</pre>",
     ]

@@ -550,6 +550,124 @@ def _normalize_snippet(value: str | None) -> str:
     return re.sub(r"\s+", " ", value.strip())
 
 
+def _resolve_source_path(target_root: str, file_path: str) -> Path | None:
+    if not file_path:
+        return None
+    candidate = Path(file_path)
+    if candidate.is_absolute():
+        return candidate if candidate.exists() else None
+    root = Path(target_root).expanduser()
+    candidate_path = (root / candidate).resolve()
+    if candidate_path.exists():
+        return candidate_path
+    return None
+
+
+def _read_source_excerpt(target_root: str, file_path: str, line_number: int, context: int = 2) -> str:
+    source_path = _resolve_source_path(target_root, file_path)
+    if source_path is None or not source_path.is_file():
+        return ""
+    try:
+        lines = source_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return ""
+    start_line = max(1, int(line_number or 1) - context)
+    end_line = min(len(lines), int(line_number or 1) + context)
+    snippet_lines = [f"{index}: {lines[index - 1]}" for index in range(start_line, end_line + 1)]
+    return "\n".join(snippet_lines).strip()
+
+
+def _normalize_location(file_path: str, line_number: int | None = None) -> str:
+    path = str(file_path or "").strip().replace("\\", "/")
+    if not path:
+        return "unknown"
+    if line_number:
+        return f"{path}:{int(line_number)}"
+    return path
+
+
+def _derive_finding_confidence(item: dict) -> str:
+    active_poc = item.get("active_poc") or {}
+    active_status = _active_poc_status(active_poc)
+    if active_status == "verified":
+        return "High"
+    if active_status == "inconclusive":
+        return "Medium"
+    severity = str(item.get("severity") or "Info")
+    title = str(item.get("vulnerability_title") or item.get("vulnerability_type") or "").lower()
+    if severity in {"Critical", "High"}:
+        if any(token in title for token in ("sql", "injection", "xss", "secret", "credential", "auth", "authorization", "command", "path traversal", "deserialization")):
+            return "High"
+        return "Medium"
+    if severity == "Medium":
+        return "Medium"
+    return "Low"
+
+
+def _derive_cvss_vector(item: dict) -> str:
+    cwe = str(item.get("cwe_id") or item.get("cwe") or "").upper()
+    if cwe in {"CWE-89", "CWE-78", "CWE-79", "CWE-22", "CWE-502", "CWE-918"}:
+        return "AV:N/AC:L/PR:N/UI:N"
+    if cwe in {"CWE-327", "CWE-798"}:
+        return "AV:L/AC:L/PR:N/UI:N"
+    return "AV:N/AC:L/PR:N/UI:N"
+
+
+def _build_poc_details(item: dict) -> dict[str, str]:
+    location = _normalize_location(str(item.get("file_path") or "unknown"), int(item.get("line_number", 1) or 1))
+    title = str(item.get("vulnerability_title") or item.get("vulnerability_type") or "").lower()
+    if "sql injection" in title:
+        attack_example = "POST /login with id=' OR 1=1 --"
+        risk = "This can bypass authentication, expose unauthorized data, or alter application logic."
+        fix_example = "Use parameterized queries and bind user input as query parameters."
+    elif "xss" in title or "cross-site scripting" in title:
+        attack_example = "Submit <script>alert(document.domain)</script> through a reflected input field."
+        risk = "This can execute attacker-controlled script in a victim browser and steal session data."
+        fix_example = "Escape output and avoid unsafe DOM assignment APIs."
+    elif "secret" in title or "credential" in title or "hardcoded" in title:
+        attack_example = "Reuse the leaked token against the application’s API or service endpoint."
+        risk = "This can grant unauthorized access to protected services and data."
+        fix_example = "Move secrets to a managed vault and rotate the exposed value."
+    else:
+        attack_example = f"Submit crafted input to {location} and observe the unsafe behavior."
+        risk = "The weakness can be exploited to alter execution flow, expose protected data, or trigger unintended behavior."
+        fix_example = str(item.get("recommendation") or "Apply the remediation guidance shown in this report.")
+    return {
+        "affected_endpoint": location,
+        "attack_example": attack_example,
+        "risk": risk,
+        "fix_example": fix_example,
+    }
+
+
+def _build_real_code_evidence(item: dict, target_root: str) -> dict[str, str]:
+    code_snippet = str(item.get("vulnerable_code_snippet") or item.get("evidence") or item.get("original_code") or "").strip()
+    if not code_snippet:
+        code_snippet = _read_source_excerpt(target_root, str(item.get("file_path") or ""), int(item.get("line_number", 1) or 1))
+    issue_explanation = str(item.get("description") or item.get("business_impact") or "The report captured a security-sensitive pattern in the affected code path.").strip()
+    fix_snippet = str(item.get("fixed_code") or item.get("ai_suggested_fix") or item.get("secure_code_example") or item.get("recommendation") or "").strip()
+    return {
+        "code_snippet": code_snippet or "Source snippet unavailable from the scan evidence.",
+        "issue_explanation": issue_explanation,
+        "fix_snippet": fix_snippet or "Apply the remediation guidance shown in this report.",
+    }
+
+
+def _merge_affected_locations(current: dict, incoming: dict) -> list[str]:
+    merged: list[str] = []
+    seen: set[str] = set()
+    for item in (current, incoming):
+        for location in list(item.get("affected_locations") or []):
+            normalized = str(location or "").strip()
+            if normalized and normalized not in seen:
+                seen.add(normalized)
+                merged.append(normalized)
+    if not merged:
+        location = _normalize_location(str(current.get("file_path") or incoming.get("file_path") or "unknown"), int((current.get("line_number") or incoming.get("line_number") or 1) or 1))
+        merged = [location]
+    return merged
+
+
 def _normalize_rule_id(raw: str | None) -> str:
     value = str(raw or "").strip().upper()
     if not value:
@@ -880,7 +998,7 @@ def _fix_artifacts(vulnerability_type: str, evidence: str | None, recommendation
     return original, fixed, patch_preview, confidence
 
 
-def _enriched_findings(findings: list[Finding]) -> list[dict]:
+def _enriched_findings(findings: list[Finding], target_root: str) -> list[dict]:
     enriched: list[dict] = []
     for finding in findings:
         base = finding.to_dict()
@@ -913,6 +1031,13 @@ def _enriched_findings(findings: list[Finding]) -> list[dict]:
         base["fixed_code"] = fixed_code
         base["patch_preview"] = patch_preview
         base["autofix_confidence"] = autofix_confidence
+        base["confidence"] = _derive_finding_confidence(base)
+        base["cvss_score"] = _severity_cvss(base["severity"])
+        base["cvss_vector"] = _derive_cvss_vector(base)
+        base["poc_details"] = _build_poc_details(base)
+        base["real_code_evidence"] = _build_real_code_evidence(base, target_root)
+        base["occurrence_count"] = 1
+        base["affected_locations"] = [_normalize_location(str(base.get("file_path") or "unknown"), int(base.get("line_number", 1) or 1))]
         base["finding_uid"] = f"{base.get('rule_id', '')}::{base.get('file_path', '')}::{base.get('line_number', 0)}"
         base["evidence_sources"] = [str(base.get("rule_id", ""))]
         base["evidence_origins"] = [str(base.get("origin") or "rule_engine")]
@@ -975,6 +1100,8 @@ def _deduplicate_enriched_findings(findings: list[dict]) -> list[dict]:
             )
         current = unique.get(key)
         if current is None:
+            item["occurrence_count"] = 1
+            item["affected_locations"] = _merge_affected_locations(item, item)
             unique[key] = item
             continue
 
@@ -1004,6 +1131,8 @@ def _deduplicate_enriched_findings(findings: list[dict]) -> list[dict]:
                     if str(token).strip()
                 }
             )
+            merged["occurrence_count"] = int(current.get("occurrence_count", 1) or 1) + 1
+            merged["affected_locations"] = _merge_affected_locations(current, item)
             unique[key] = merged
         else:
             merged_sources = set(current.get("evidence_sources", [])) | {str(item.get("rule_id", ""))}
@@ -1024,6 +1153,8 @@ def _deduplicate_enriched_findings(findings: list[dict]) -> list[dict]:
                     if str(token).strip()
                 }
             )
+            current["occurrence_count"] = int(current.get("occurrence_count", 1) or 1) + 1
+            current["affected_locations"] = _merge_affected_locations(current, item)
             if not current.get("recommendation") and item.get("recommendation"):
                 current["recommendation"] = item["recommendation"]
             if not current.get("fixed_code") and item.get("fixed_code"):
@@ -2619,7 +2750,7 @@ def _apply_validation_and_ai(findings: list[dict], target_path: str, scan_role: 
 
 def build_report(scan_result: ScanResult) -> dict:
     scan_role = normalize_role(getattr(scan_result, "scan_role", None))
-    raw_enriched_all = _enriched_findings(scan_result.findings)
+    raw_enriched_all = _enriched_findings(scan_result.findings, scan_result.target_path)
     raw_enriched, noise_filtered_count = _filter_report_noise(raw_enriched_all)
     enriched_findings = _deduplicate_enriched_findings(raw_enriched)
     enriched_findings, advanced_features = _apply_validation_and_ai(enriched_findings, scan_result.target_path, scan_role)

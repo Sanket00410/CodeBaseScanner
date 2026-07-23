@@ -1027,16 +1027,47 @@ export default function App(): React.JSX.Element {
     return sortFindings(scan.report.vulnerability_fixed_code_report.findings || []);
   }, [scan]);
 
+  const baselineFindings = useMemo(() => {
+    if (!baselineScan) {
+      return [];
+    }
+    return sortFindings(baselineScan.report.vulnerability_fixed_code_report.findings || []);
+  }, [baselineScan]);
+
+  const currentFindingIds = useMemo(() => new Set(findings.map((item) => item.finding_uid)), [findings]);
+
   const baselineFindingIds = useMemo(() => {
     const ids = new Set<string>();
     if (!baselineScan) {
       return ids;
     }
-    for (const item of baselineScan.report.vulnerability_fixed_code_report.findings || []) {
+    for (const item of baselineFindings) {
       ids.add(item.finding_uid);
     }
     return ids;
+  }, [baselineFindings, baselineScan]);
+
+  const resolvedFindingCount = useMemo(
+    () => baselineFindings.filter((item) => !currentFindingIds.has(item.finding_uid)).length,
+    [baselineFindings, currentFindingIds],
+  );
+
+  const baselineRiskScore = useMemo(() => {
+    const summary = baselineScan?.report.vulnerability_fixed_code_report.summary;
+    return Number(summary?.risk_score || baselineScan?.report.executive_summary.risk_score || 0);
   }, [baselineScan]);
+
+  const currentRiskScore = useMemo(() => {
+    const summary = scan?.report.vulnerability_fixed_code_report.summary;
+    return Number(summary?.risk_score || scan?.report.executive_summary.risk_score || 0);
+  }, [scan]);
+
+  const riskReductionPercent = useMemo(() => {
+    if (!baselineRiskScore) {
+      return 0;
+    }
+    return ((baselineRiskScore - currentRiskScore) / baselineRiskScore) * 100;
+  }, [baselineRiskScore, currentRiskScore]);
 
   const filteredFindings = useMemo(() => {
     const query = searchText.trim().toLowerCase();
@@ -2687,6 +2718,9 @@ export default function App(): React.JSX.Element {
                     : vulnSummary.reviewed_findings || 0,
                 )}
               />
+              <MetricCard label="Total Findings" value={String(findings.length)} />
+              <MetricCard label="Fixes Completed" value={String(resolvedFindingCount)} />
+              <MetricCard label="Risk Reduction" value={formatPercent(riskReductionPercent)} />
               <MetricCard
                 label="Enterprise Status"
                 value={(enterpriseAssurance?.status || "blocked").toUpperCase()}
@@ -4094,6 +4128,23 @@ export default function App(): React.JSX.Element {
                     : "Not scored"}
                 </p>
                 <p>
+                  <strong>Fix Confidence:</strong>{" "}
+                  {typeof selectedFinding.ai_fix_confidence_score === "number"
+                    ? `${selectedFinding.ai_fix_confidence_label || "Medium"} (${selectedFinding.ai_fix_confidence_score.toFixed(2)})`
+                    : "Not scored"}
+                </p>
+                <p>
+                  <strong>CVSS Vector:</strong> {selectedFinding.cvss_vector || "Not captured"}
+                </p>
+                <p>
+                  <strong>Occurrences:</strong> {selectedFinding.occurrence_count ?? 1}
+                </p>
+                {selectedFinding.affected_locations && selectedFinding.affected_locations.length > 0 && (
+                  <p>
+                    <strong>Affected Locations:</strong> {selectedFinding.affected_locations.join(" • ")}
+                  </p>
+                )}
+                <p>
                   <strong>Remediation Confidence:</strong> {selectedFinding.remediation_confidence || "Not scored"}
                 </p>
                 {selectedFinding.dependency_reachability && selectedFinding.dependency_reachability.status !== "not_applicable" && (
@@ -4109,8 +4160,16 @@ export default function App(): React.JSX.Element {
                 <p>
                   <strong>Remediation:</strong> {selectedFinding.recommendation}
                 </p>
-                <h4>Code Evidence Excerpt</h4>
+                <h4>Real Code Evidence</h4>
                 <pre>{selectedFinding.code_evidence_excerpt || selectedFinding.source_line_snippet || "No source context captured."}</pre>
+                <h4>Proof of Concept / Attack Example</h4>
+                <pre>
+                  {selectedFinding.proof_of_concept ||
+                    selectedFinding.proof_of_concept_template ||
+                    selectedFinding.exploitation_example ||
+                    selectedFinding.attack_scenario ||
+                    "No proof-of-concept details captured."}
+                </pre>
                 <div className="code-grid">
                   <div>
                     <h4>Original Code</h4>

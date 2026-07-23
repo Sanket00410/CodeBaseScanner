@@ -304,6 +304,11 @@ export interface VulnerabilityFinding {
   code_owner?: string;
   rule_confidence?: number;
   rule_confidence_label?: string;
+  confidence_score?: number;
+  confidence_label?: string;
+  cvss_vector?: string;
+  affected_locations?: string[];
+  occurrence_count?: number;
   git_diff_file_changed?: boolean;
   git_diff_line_changed?: boolean;
   dependency_reachability?: {
