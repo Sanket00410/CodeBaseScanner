@@ -386,11 +386,16 @@ def scan_runtime_http_target(
     if progress_callback:
         progress_callback(100.0, "completed", normalized_base, "Runtime scan completed")
 
+    total_loc = 0
+    for resp in responses_by_url:
+        if isinstance(resp.get("body"), str):
+            total_loc += resp["body"].count("\n")
     return ScanResult(
         target_path=normalized_base,
         started_at=started,
         completed_at=completed,
         files_scanned=len(responses_by_url),
+        total_lines_of_code=total_loc,
         findings=findings,
         errors=errors,
         existing_security_measures=controls,
@@ -421,7 +426,7 @@ def scan_remote_ssh_target(
             ) from exc
 
         client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.set_missing_host_key_policy(paramiko.RejectPolicy())
 
         connect_args: dict[str, Any] = {
             "hostname": spec.host,
@@ -920,7 +925,16 @@ def _parse_ssh_target(target: str) -> RemoteSSHSpec:
 
     query = parse_qs(parsed.query or "")
     password = (query.get("password") or [None])[0] or os.getenv("USS_REMOTE_SSH_PASSWORD")
-    key_path = (query.get("key") or [None])[0] or os.getenv("USS_REMOTE_SSH_KEY_PATH")
+    key_path_raw = (query.get("key") or [None])[0]
+    if key_path_raw:
+        resolved_key = Path(key_path_raw).expanduser().resolve()
+        if not resolved_key.exists() or not resolved_key.is_file():
+            raise ValueError(f"SSH key path does not exist or is not a file: {key_path_raw}")
+        if resolved_key.stat().st_mode & 0o777 not in (0o400, 0o600):
+            raise ValueError(f"SSH key file permissions are too permissive: {key_path_raw}")
+        key_path = str(resolved_key)
+    else:
+        key_path = os.getenv("USS_REMOTE_SSH_KEY_PATH")
     port = parsed.port or int(os.getenv("USS_REMOTE_SSH_PORT", "22"))
 
     return RemoteSSHSpec(

@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -32,6 +33,7 @@ class ScanJob:
     completed_at: datetime | None = None
     findings_count: int = 0
     report: dict | None = None
+    professional_html: str | None = None
     errors: list[str] = field(default_factory=list)
 
 
@@ -49,6 +51,13 @@ ENGINE = ScanEngine(CONFIG)
 EXPORTER = ReportExporter(CONFIG.export_dir)
 
 app = FastAPI(title="CodeSentinelX", version="1.0.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[],
+    allow_credentials=False,
+    allow_methods=["GET"],
+    allow_headers=[],
+)
 app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=str(WEB_DIR / "templates"))
 
@@ -88,6 +97,31 @@ def _run_scan(scan_id: str) -> None:
 
     try:
         result = ENGINE.scan(job.target_path, progress_callback=progress_callback)
+        from codesentinelx_engine.scanner.reporting.report_schema import ReportSchemaConverter
+        from codesentinelx_engine.scanner.reporting.developer_report_renderer import DeveloperReportRenderer
+        from codesentinelx_engine.scanner.reporting.report_models import ScanMetadata
+        from codesentinelx_engine.scanner.reporting.exporters import ReportExporter
+
+        scan_meta = ScanMetadata(
+            scan_id=result.target_path,
+            scanner_version="2.0.0",
+            target_path=result.target_path,
+            files_scanned=result.files_scanned,
+            duration_seconds=result.duration_seconds,
+            started_at=result.started_at.isoformat() if result.started_at else "",
+            completed_at=result.completed_at.isoformat() if result.completed_at else "",
+            scan_environment="local",
+            tools_used=list(result.toolchain_status.keys()) if result.toolchain_status else [],
+            errors=result.errors,
+        )
+        converter = ReportSchemaConverter()
+        dev_report = converter.build_developer_report(
+            result.findings, result.target_path,
+            project_name=job.target_path.rstrip("/\\").split("/")[-1].split("\\")[-1] or "CodeSentinelX Scan",
+            scan_metadata=scan_meta,
+        )
+        renderer = DeveloperReportRenderer()
+        professional_html = renderer.render_html(dev_report)
         report = build_report(result)
         _update_job(
             scan_id,
@@ -99,6 +133,7 @@ def _run_scan(scan_id: str) -> None:
             completed_at=datetime.now(timezone.utc),
             findings_count=len(result.findings),
             report=report,
+            professional_html=professional_html,
             errors=result.errors,
         )
     except Exception as exc:  # pragma: no cover - operational safety branch
@@ -164,6 +199,16 @@ def scan_results(scan_id: str) -> dict:
     if job.status != "completed" or job.report is None:
         raise HTTPException(status_code=409, detail="Scan is not complete yet")
     return job.report
+
+
+@app.get("/api/scans/{scan_id}/professional-report", response_class=HTMLResponse)
+def professional_report(scan_id: str) -> HTMLResponse:
+    job = _get_scan_job(scan_id)
+    if job.status != "completed":
+        raise HTTPException(status_code=409, detail="Scan is not complete yet")
+    if job.professional_html is None:
+        raise HTTPException(status_code=404, detail="Professional report not available")
+    return HTMLResponse(content=job.professional_html)
 
 
 @app.get("/api/scans/{scan_id}/export")

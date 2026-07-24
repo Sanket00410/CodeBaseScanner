@@ -69,6 +69,10 @@ export class PythonScannerBridge {
     const stderrChunks: string[] = [];
     let streamBuffer = "";
     let lastProgress = 1;
+    let totalFiles = 0;
+    let scannedFiles = 0;
+    let findingsCount = 0;
+    const scanStartedAt = Date.now();
 
     await new Promise<void>((resolve, reject) => {
       const child = spawn(this.pythonPath, args, {
@@ -128,6 +132,19 @@ export class PythonScannerBridge {
             if (state) {
               state.lastProgress = lastProgress;
             }
+            if (parsed.totalFiles !== undefined) {
+              totalFiles = parsed.totalFiles;
+            }
+            if (parsed.scannedFiles !== undefined) {
+              scannedFiles = parsed.scannedFiles;
+            }
+            if (parsed.findingsCount !== undefined) {
+              findingsCount = parsed.findingsCount;
+            }
+            const elapsedMs = Date.now() - scanStartedAt;
+            const speed = elapsedMs > 0 && scannedFiles > 0 ? (scannedFiles / (elapsedMs / 1000)) : 0;
+            const remaining = totalFiles > 0 ? Math.max(0, totalFiles - scannedFiles) : 0;
+            const etaMs = speed > 0 ? (remaining / speed) * 1000 : 0;
             onProgress({
               scanId,
               stage: parsed.stage,
@@ -135,6 +152,12 @@ export class PythonScannerBridge {
               currentFile: parsed.currentFile,
               message: parsed.message,
               status: stageToStatus(parsed.stage),
+              totalFiles: totalFiles || undefined,
+              scannedFiles: scannedFiles || undefined,
+              elapsedMs,
+              etaMs: etaMs > 0 ? Math.round(etaMs) : undefined,
+              scanSpeed: speed > 0 ? Math.round(speed * 10) / 10 : undefined,
+              findingsCount: findingsCount || undefined,
             });
             continue;
           }
@@ -583,7 +606,15 @@ function normalizeTargetInput(rawTarget: string, targetType: "auto" | "local" | 
   return resolved;
 }
 
-function parseProgressLine(line: string): { progress: number; stage: string; currentFile?: string; message: string } | null {
+function parseProgressLine(line: string): {
+  progress: number;
+  stage: string;
+  currentFile?: string;
+  message: string;
+  totalFiles?: number;
+  scannedFiles?: number;
+  findingsCount?: number;
+} | null {
   const match = line.match(/^\[\s*(\d+(?:\.\d+)?)%\]\s*([^|]+?)(?:\s*\|\s*([^|]+))?(?:\s*\|\s*(.+))?$/);
   if (!match) {
     return null;
@@ -594,11 +625,34 @@ function parseProgressLine(line: string): { progress: number; stage: string; cur
   const currentFile = (match[3] || "").trim();
   const message = (match[4] || stage).trim();
 
+  let totalFiles: number | undefined;
+  let scannedFiles: number | undefined;
+  let findingsCount: number | undefined;
+
+  const fileCountMatch = message.match(/Scanned\s+file\s+(\d+)(?:\s+of|\/)\s*(\d+)/i);
+  if (fileCountMatch) {
+    scannedFiles = Number.parseInt(fileCountMatch[1], 10);
+    totalFiles = Number.parseInt(fileCountMatch[2], 10);
+  }
+
+  const findingsMatch = message.match(/(?:found|findings?):\s*(\d+)/i);
+  if (findingsMatch) {
+    findingsCount = Number.parseInt(findingsMatch[1], 10);
+  }
+
+  const discoverMatch = message.match(/Discovered\s+(\d+)\s+files/i);
+  if (discoverMatch) {
+    totalFiles = Number.parseInt(discoverMatch[1], 10);
+  }
+
   return {
     progress: Number.isFinite(progress) ? progress : 0,
     stage,
     currentFile: currentFile || undefined,
     message,
+    totalFiles: totalFiles && Number.isFinite(totalFiles) ? totalFiles : undefined,
+    scannedFiles: scannedFiles && Number.isFinite(scannedFiles) ? scannedFiles : undefined,
+    findingsCount: findingsCount && Number.isFinite(findingsCount) ? findingsCount : undefined,
   };
 }
 

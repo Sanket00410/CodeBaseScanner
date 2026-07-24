@@ -7,6 +7,12 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Python build artifacts
+*.egg-info/
+*.egg
+dist/
+build/
+
 # pytest cache
 .pytest_cache/
 
@@ -14,8 +20,6 @@ __pycache__/
 node_modules/
 
 # Build output folders
-build/
-dist/
 dist-main/
 release/
 
@@ -32,14 +36,12 @@ tmp-check.json
 .DS_Store
 Thumbs.db
 .vscode/
+.idea/
 
 # Toolchain folder (binaries, dependencies)
 .toolchain/
 
 # Electron build outputs
-electron/
-
-# Other generated/export folders
 exports-smoke/
 exports/
 

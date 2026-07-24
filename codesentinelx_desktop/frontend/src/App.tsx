@@ -2,6 +2,7 @@
 
 import BrandMark from "./components/BrandMark";
 import GlobeBackdrop from "./components/GlobeBackdrop";
+import ScanDashboard from "./components/ScanDashboard";
 import {
   AuditLogEntry,
   EnterpriseAssuranceSummary,
@@ -573,6 +574,12 @@ interface ActiveScanSession {
   startedAt: string;
   updatedAt: string;
   resultReady: boolean;
+  totalFiles?: number;
+  scannedFiles?: number;
+  elapsedMs?: number;
+  etaMs?: number;
+  scanSpeed?: number;
+  findingsCount?: number;
 }
 
 function aggregateFindingsByFile(findings: VulnerabilityFinding[]): FileFindingAggregate[] {
@@ -981,6 +988,8 @@ export default function App(): React.JSX.Element {
   const [reportPreviewSrc, setReportPreviewSrc] = useState("");
   const [previewReportType, setPreviewReportType] = useState<ExportType | "">("");
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const [isProfessionalLoading, setIsProfessionalLoading] = useState(false);
+  const [professionalHtml, setProfessionalHtml] = useState("");
   const [dashboardSection, setDashboardSection] = useState<DashboardSection>("overview");
   const [existingSection, setExistingSection] = useState<ExistingSection>("summary");
   const [vulnerabilitySection, setVulnerabilitySection] = useState<VulnerabilitySection>("queue");
@@ -1346,6 +1355,12 @@ export default function App(): React.JSX.Element {
             startedAt: current?.startedAt || now,
             updatedAt: now,
             resultReady: current?.resultReady || payload.status === "completed",
+            totalFiles: payload.totalFiles ?? current?.totalFiles,
+            scannedFiles: payload.scannedFiles ?? current?.scannedFiles,
+            elapsedMs: payload.elapsedMs,
+            etaMs: payload.etaMs,
+            scanSpeed: payload.scanSpeed,
+            findingsCount: payload.findingsCount ?? current?.findingsCount,
           },
         };
       });
@@ -2144,6 +2159,52 @@ export default function App(): React.JSX.Element {
       setReportPreviewSrc("");
       setPreviewReportType("");
       setIsPreviewLoading(false);
+  };
+
+  const previewProfessionalReport = async (): Promise<void> => {
+    if (!scan) {
+      setStatusText("No scan loaded for professional report preview.");
+      return;
+    }
+    setIsProfessionalLoading(true);
+    try {
+      const html = await window.codeSentinelX.renderProfessionalHtml({
+        scanId: scan.scanId,
+        projectName: projectPath.split(/[\\/]/).pop() || "CodeSentinelX Scan",
+      });
+      setProfessionalHtml(html);
+      setStatusText("Professional report preview loaded.");
+    } catch (error) {
+      setProfessionalHtml("");
+      setStatusText(`Failed to render professional report: ${String(error)}`);
+    } finally {
+      setIsProfessionalLoading(false);
+    }
+  };
+
+  const exportProfessionalReport = async (): Promise<void> => {
+    if (!scan) {
+      setStatusText("No scan loaded for professional report export.");
+      return;
+    }
+    setIsExporting(true);
+    try {
+      const outputPath = await window.codeSentinelX.exportProfessional({
+        scanId: scan.scanId,
+        projectName: projectPath.split(/[\\/]/).pop() || "CodeSentinelX Scan",
+      });
+      setLastExport(outputPath);
+      setStatusText(`Professional report exported: ${outputPath}`);
+    } catch (error) {
+      setStatusText(`Failed to export professional report: ${String(error)}`);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const closeProfessionalPreview = (): void => {
+    setProfessionalHtml("");
+    setIsProfessionalLoading(false);
   };
 
   const closeWindowMenu = (): void => {
@@ -5157,9 +5218,24 @@ export default function App(): React.JSX.Element {
               Finalizing evidence and reports. Scan is still running...
             </p>
           )}
+          {selectedActiveSession && selectedActiveSession.scannedFiles !== undefined && (
+            <ScanDashboard
+              progress={selectedActiveSession.progress}
+              stage={selectedActiveSession.stage}
+              currentFile={selectedActiveSession.currentFile || ""}
+              message={selectedActiveSession.message}
+              totalFiles={selectedActiveSession.totalFiles || 0}
+              scannedFiles={selectedActiveSession.scannedFiles || 0}
+              elapsedMs={selectedActiveSession.elapsedMs || selectedSessionElapsed * 1000}
+              etaMs={selectedActiveSession.etaMs || 0}
+              scanSpeed={selectedActiveSession.scanSpeed || 0}
+              findingsCount={selectedActiveSession.findingsCount || 0}
+              status={selectedActiveSession.status}
+              targetPath={selectedActiveSession.target}
+            />
+          )}
           {activeScanSessions.length > 0 && (
             <div className="session-list">
-              <p className="session-list-label">Scan Sessions</p>
               {activeScanSessions.slice(0, 8).map((session) => {
                 const live = session.status === "running" || session.status === "paused";
                 return (
@@ -5287,6 +5363,26 @@ export default function App(): React.JSX.Element {
               <button type="button" onClick={openLastExport} disabled={!lastExport}>
                 Open Last Export
               </button>
+            </div>
+
+            <div className="professional-export-section">
+              <p className="muted-text">Professional Pentest Report</p>
+              <div className="button-row">
+                <button
+                  type="button"
+                  onClick={previewProfessionalReport}
+                  disabled={!scan || isProfessionalLoading}
+                >
+                  {isProfessionalLoading ? "Rendering..." : "Preview Professional Report"}
+                </button>
+                <button
+                  type="button"
+                  onClick={exportProfessionalReport}
+                  disabled={!scan || isExporting}
+                >
+                  Export Professional HTML
+                </button>
+              </div>
             </div>
           </div>
         </section>
@@ -5513,6 +5609,36 @@ export default function App(): React.JSX.Element {
                 className="report-preview-frame"
                 srcDoc={reportPreviewSrc}
                 title="CodeSentinelX Report Preview"
+                sandbox="allow-same-origin allow-scripts"
+              />
+            )}
+          </section>
+        )}
+
+        {(isProfessionalLoading || professionalHtml) && (
+          <section className="panel preview-dock">
+            <div className="preview-dock-head">
+              <h3>Professional Pentest Report</h3>
+              <div className="button-row">
+                <button type="button" onClick={closeProfessionalPreview}>
+                  Close Preview
+                </button>
+                <button
+                  type="button"
+                  onClick={exportProfessionalReport}
+                  disabled={!scan || isExporting}
+                >
+                  Export HTML
+                </button>
+              </div>
+            </div>
+            {isProfessionalLoading ? (
+              <p className="muted-text">Generating professional report...</p>
+            ) : (
+              <iframe
+                className="report-preview-frame"
+                srcDoc={professionalHtml}
+                title="CodeSentinelX Professional Report Preview"
                 sandbox="allow-same-origin allow-scripts"
               />
             )}

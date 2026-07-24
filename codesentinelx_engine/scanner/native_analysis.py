@@ -44,6 +44,9 @@ class NativeCodeScanner:
                         file_path=file_path,
                         line_number=match.line_number,
                         evidence=match.evidence_summary(),
+                        code_snippet=match.code_snippet,
+                        flow_path_steps=match.flow_steps,
+                        confidence_score=match.confidence,
                     )
                 )
                 if len(findings) >= self.max_findings_per_file:

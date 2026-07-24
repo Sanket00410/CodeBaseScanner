@@ -828,6 +828,12 @@ export interface ScanProgress {
   message: string;
   currentFile?: string;
   status: "running" | "paused" | "completed" | "failed" | "stopped";
+  totalFiles?: number;
+  scannedFiles?: number;
+  elapsedMs?: number;
+  etaMs?: number;
+  scanSpeed?: number;
+  findingsCount?: number;
 }
 
 export interface ScanControlActionResult {

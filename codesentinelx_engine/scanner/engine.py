@@ -32,6 +32,15 @@ LOGGER = logging.getLogger(__name__)
 
 ProgressCallback = Callable[[float, str, str | None, str | None], None]
 
+
+def count_file_lines(file_path: str) -> int:
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+            return sum(1 for _ in f)
+    except Exception:
+        return 0
+
+
 ALWAYS_RELEVANT_TOOLS = {"semgrep", "gitleaks"}
 ACTIVE_CODEBASE_TOOLS = {"semgrep", "gitleaks", "checkov", "hadolint", "osv-scanner"}
 TOOL_FILE_HINTS: dict[str, dict[str, set[str]]] = {
@@ -478,7 +487,7 @@ class ScanEngine:
                         progress,
                         "scanning_files",
                         str(relative_path),
-                        f"Scanned file {index}/{len(files)}{cache_note}",
+                        f"Scanned file {index}/{len(files)}{cache_note} | findings: {len(findings)}",
                     )
                 error = payload.get("error")
                 if error:
@@ -547,7 +556,7 @@ class ScanEngine:
                                 progress,
                                 "scanning_files",
                                 str(relative_path),
-                                f"Scanned file {index}/{len(files)}{cache_note}",
+                                f"Scanned file {index}/{len(files)}{cache_note} | findings: {len(findings)}",
                             )
                         error = payload.get("error")
                         if error:
@@ -820,11 +829,13 @@ class ScanEngine:
         if progress_callback:
             progress_callback(100.0, "completed", None, "Scan completed")
 
+        total_loc = sum(count_file_lines(f) for f in files)
         return ScanResult(
             target_path=str(target),
             started_at=started_at,
             completed_at=completed_at,
             files_scanned=len(files),
+            total_lines_of_code=total_loc,
             scan_role=self.role_scope.role,
             findings=findings,
             errors=errors,

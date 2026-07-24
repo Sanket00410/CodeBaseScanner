@@ -28,6 +28,12 @@ export interface ScanProgressPayload {
   message: string;
   currentFile?: string;
   status: "running" | "paused" | "completed" | "failed" | "stopped";
+  totalFiles?: number;
+  scannedFiles?: number;
+  elapsedMs?: number;
+  etaMs?: number;
+  scanSpeed?: number;
+  findingsCount?: number;
 }
 
 export interface ScanControlActionResult {
@@ -41,7 +47,7 @@ export interface ExportRequest {
   scanId: string;
   role?: UserRole;
   reportType: "existing" | "vulnerability" | "fixes" | "finding_details" | "combined" | "management";
-  format: "json" | "xml" | "html" | "pdf" | "sarif" | "csv" | "patch";
+  format: "json" | "xml" | "html" | "pdf" | "sarif" | "csv" | "markdown" | "patch";
   reportStyle?: "classic" | "modern";
   managementContext?: ManagementReportContext;
 }
@@ -719,6 +725,10 @@ export interface VulnerabilityFixedCodeReport {
     raw_findings_total: number;
     duplicate_findings_removed: number;
     suppressed_by_policy?: number;
+    files_scanned?: number;
+    total_lines_of_code?: number;
+    duration_seconds?: number;
+    errors?: string[];
     severity_distribution: Record<string, number>;
     risk_score: number;
     risk_rating: string;
@@ -790,6 +800,9 @@ export interface ExecutiveSummary {
   generated_at: string;
   scan_role?: string;
   files_scanned: number;
+  total_lines_of_code?: number;
+  duration_seconds?: number;
+  errors?: string[];
   total_vulnerabilities: number;
   deduplicated_vulnerabilities?: number;
   duplicate_findings_removed?: number;

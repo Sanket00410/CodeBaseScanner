@@ -1114,6 +1114,78 @@ class ReportExporter:
         output_path.write_text(json.dumps(sarif, indent=2), encoding="utf-8")
         return output_path
 
+    def export_markdown(self, report: dict, output_path: Path, report_type: str = "combined") -> Path:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = self._select_payload(report, report_type)
+        rows: list[str] = []
+
+        exec_summary = payload.get("executive_summary", {})
+        rows.append(f"# Security Scan Report\n")
+        rows.append(f"**Target:** {exec_summary.get('target_path', 'N/A')}")
+        rows.append(f"**Generated:** {exec_summary.get('generated_at', 'N/A')}")
+        rows.append(f"**Risk Score:** {exec_summary.get('risk_score', 'N/A')} ({exec_summary.get('risk_rating', 'N/A')})")
+        rows.append(f"**Files Scanned:** {exec_summary.get('files_scanned', 'N/A')}")
+        rows.append(f"**Total Vulnerabilities:** {exec_summary.get('total_vulnerabilities', 'N/A')}")
+        rows.append(f"**Active Risk Findings:** {exec_summary.get('active_risk_findings', 'N/A')}")
+        rows.append("")
+
+        if exec_summary.get("severity_distribution"):
+            rows.append("## Severity Distribution\n")
+            rows.append("| Severity | Count |")
+            rows.append("|----------|-------|")
+            for sev in ["Critical", "High", "Medium", "Low", "Info"]:
+                count = exec_summary["severity_distribution"].get(sev, 0)
+                if count:
+                    rows.append(f"| {sev} | {count} |")
+            rows.append("")
+
+        vuln_report = payload.get("vulnerability_fixed_code_report", {})
+        findings = vuln_report.get("findings", [])
+        if findings:
+            rows.append(f"## Detailed Findings ({len(findings)})\n")
+            for idx, finding in enumerate(findings, 1):
+                rows.append(f"### {idx}. {finding.get('vulnerability_type', 'Unknown')}")
+                rows.append(f"- **Severity:** {finding.get('severity', 'N/A')}")
+                rows.append(f"- **CWE:** {finding.get('cwe', 'N/A')}")
+                rows.append(f"- **OWASP:** {finding.get('owasp_category', 'N/A')}")
+                rows.append(f"- **File:** {finding.get('file_path', 'N/A')}:{finding.get('line_number', 'N/A')}")
+                rows.append(f"- **Description:** {finding.get('description', 'N/A')}")
+                rows.append(f"- **Impact:** {finding.get('business_impact', 'N/A')}")
+                rows.append(f"- **Remediation:** {finding.get('recommendation', 'N/A')}")
+                if finding.get("evidence"):
+                    rows.append(f"- **Evidence:** `{finding['evidence']}`")
+                rows.append("")
+
+        output_path.write_text("\n".join(rows), encoding="utf-8")
+        return output_path
+
+    def export_csv(self, report: dict, output_path: Path, report_type: str = "combined") -> Path:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = self._select_payload(report, report_type)
+        import csv as csv_module
+        import io
+
+        vuln_report = payload.get("vulnerability_fixed_code_report", {})
+        findings = vuln_report.get("findings", [])
+        buf = io.StringIO()
+        writer = csv_module.writer(buf)
+        writer.writerow(["Severity", "Vulnerability Type", "CWE", "OWASP", "File", "Line", "Description", "Impact", "Remediation"])
+        for finding in findings:
+            writer.writerow([
+                finding.get("severity", ""),
+                finding.get("vulnerability_type", ""),
+                finding.get("cwe", ""),
+                finding.get("owasp_category", ""),
+                finding.get("file_path", ""),
+                finding.get("line_number", ""),
+                finding.get("description", ""),
+                finding.get("business_impact", ""),
+                finding.get("recommendation", ""),
+            ])
+
+        output_path.write_text(buf.getvalue(), encoding="utf-8")
+        return output_path
+
     def export(self, report: dict, fmt: str, output_path: Path | None = None, report_type: str = "combined") -> Path:
         export_root = self._ensure_export_dir()
         normalized_fmt = fmt.lower()
@@ -1143,6 +1215,11 @@ class ReportExporter:
             if normalized_report in {"existing", "fixes"}:
                 raise ValueError("SARIF export is only available for vulnerability report or combined report.")
             return self.export_sarif(report, output_path)
+
+        if normalized_fmt == "markdown" or normalized_fmt == "md":
+            return self.export_markdown(report, output_path, report_type=normalized_report)
+        if normalized_fmt == "csv":
+            return self.export_csv(report, output_path, report_type=normalized_report)
 
         raise ValueError(f"Unsupported export format: {fmt}")
 

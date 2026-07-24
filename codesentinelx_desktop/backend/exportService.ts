@@ -2,7 +2,10 @@ import { createWriteStream, existsSync, mkdirSync, readFileSync } from "node:fs"
 import { promises as fs } from "node:fs";
 import fsSync from "node:fs";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
+import { spawn } from "node:child_process";
 
+import { app } from "electron";
 import PDFDocument from "pdfkit";
 
 import {
@@ -1365,9 +1368,98 @@ function escapeInlineJson(value: unknown): string {
 
 export class ExportService {
   private readonly htmlCache = new Map<string, string>();
+  private scannerRoot = "";
+  private pythonPath = "";
 
   constructor(private readonly outputDir: string) {
     mkdirSync(this.outputDir, { recursive: true });
+  }
+
+  configurePython(scannerRoot: string, pythonPath: string): void {
+    this.scannerRoot = scannerRoot;
+    this.pythonPath = pythonPath;
+  }
+
+  async renderProfessionalReportHtml(scan: ScanView, projectName?: string): Promise<string> {
+    if (!this.scannerRoot || !this.pythonPath) {
+      throw new Error("Python environment is not configured for professional report generation.");
+    }
+
+    const findings = scan.report.vulnerability_fixed_code_report.findings || [];
+    const targetPath = scan.report.vulnerability_fixed_code_report.target_path || scan.projectPath;
+
+    const tempId = randomUUID();
+    const tempInput = path.join(app.getPath("temp"), `csx-findings-${tempId}.json`);
+    const tempOutput = path.join(app.getPath("temp"), `csx-professional-${tempId}.html`);
+
+    try {
+      const summary = scan.report.vulnerability_fixed_code_report.summary;
+      const execSummary = scan.report.executive_summary;
+      const findingsJson = JSON.stringify({
+        target_path: targetPath,
+        files_scanned: summary.files_scanned || execSummary.files_scanned || 0,
+        total_lines_of_code: summary.total_lines_of_code || execSummary.total_lines_of_code || 0,
+        duration_seconds: scan.report.executive_summary.duration_seconds || 0,
+        errors: summary.errors || execSummary.errors || [],
+        findings: findings.map((f) => ({
+          vulnerability_type: f.vulnerability_title || f.rule_id,
+          severity: f.severity,
+          file_path: f.file_path,
+          line_number: f.line_number || 1,
+          business_impact: f.description || f.business_impact || "",
+          recommendation: f.recommendation || "",
+          reference: "",
+          owasp_category: f.owasp_mapping || "",
+          description: f.description || f.business_impact || "",
+          rule_id: f.rule_id || "",
+          cwe: f.cwe_id || null,
+          cvss_score: f.cvss_score ?? null,
+          cvss_vector: null,
+        })),
+      });
+
+      await fs.writeFile(tempInput, findingsJson, "utf-8");
+
+      const args = [
+        "-m",
+        "codesentinelx_engine.cli",
+        "generate-report",
+        "--input",
+        tempInput,
+        "--output",
+        tempOutput,
+        "--project-name",
+        projectName || "CodeSentinelX Scan",
+      ];
+
+      await new Promise<void>((resolve, reject) => {
+        const child = spawn(this.pythonPath, args, {
+          cwd: this.scannerRoot,
+          windowsHide: true,
+          env: { ...process.env, PYTHONUTF8: "1" },
+        });
+
+        let stderr = "";
+        child.stderr.on("data", (buf) => {
+          stderr += String(buf);
+        });
+
+        child.on("error", reject);
+        child.on("close", (code) => {
+          if (code === 0) {
+            resolve();
+          } else {
+            reject(new Error(stderr || `Professional report generation failed with exit code ${code}`));
+          }
+        });
+      });
+
+      const html = await fs.readFile(tempOutput, "utf-8");
+      return html;
+    } finally {
+      await fs.unlink(tempInput).catch(() => undefined);
+      await fs.unlink(tempOutput).catch(() => undefined);
+    }
   }
 
   async getUserGuideMarkdown(repoRoot: string): Promise<{ markdown: string; markdownPath: string }> {

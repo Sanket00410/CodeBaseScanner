@@ -21,7 +21,20 @@ class NativeFlowRule:
     supported_extensions: tuple[str, ...]
     cwe: str | None = None
 
-    def build_finding(self, *, file_path: Path, line_number: int, evidence: str | None = None) -> Finding:
+    def build_finding(self, *, file_path: Path, line_number: int, evidence: str | None = None,
+                      code_snippet: str = "", flow_path_steps: list | None = None,
+                      confidence_score: float = 0.0) -> Finding:
+        from codesentinelx_engine.models import FlowPathStepData
+        steps_data = []
+        if flow_path_steps:
+            for s in flow_path_steps:
+                steps_data.append(FlowPathStepData(
+                    step_type=getattr(s, "step_type", ""),
+                    line_number=getattr(s, "line_number", 0),
+                    code=getattr(s, "code", ""),
+                    description=getattr(s, "description", ""),
+                    variable=getattr(s, "variable", ""),
+                ))
         return Finding(
             vulnerability_type=self.vulnerability_type,
             severity=self.severity,
@@ -36,6 +49,9 @@ class NativeFlowRule:
             cwe=self.cwe,
             evidence=evidence,
             origin="native_code",
+            code_snippet=code_snippet,
+            flow_steps=steps_data,
+            confidence_score=confidence_score,
             provenance={
                 "source": "native_code",
                 "language": self.language,

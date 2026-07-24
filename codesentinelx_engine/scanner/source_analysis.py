@@ -19,6 +19,15 @@ JS_FAMILIES = {"xss", "unsafe-eval", "prototype-pollution", "sql-injection", "co
 
 
 @dataclass(slots=True)
+class FlowPathStep:
+    step_type: str  # "Source", "Assignment", "Concatenation", "FunctionCall", "Sink"
+    line_number: int
+    code: str
+    description: str
+    variable: str = ""
+
+
+@dataclass(slots=True)
 class FlowMatch:
     family: str
     line_number: int
@@ -29,6 +38,8 @@ class FlowMatch:
     confidence: float = 0.0
     details: str = ""
     trace: list[str] = field(default_factory=list)
+    code_snippet: str = ""
+    flow_steps: list[FlowPathStep] = field(default_factory=list)
 
     def evidence_summary(self) -> str:
         parts = [f"sink={self.sink}"]
@@ -47,6 +58,7 @@ class _TaintState:
     sanitized: bool = False
     dynamic: bool = False
     sql_like: bool = False
+    flow_steps: list[FlowPathStep] = field(default_factory=list)
 
     def merge(self, other: _TaintState | None) -> _TaintState | None:
         if other is None:
@@ -57,6 +69,7 @@ class _TaintState:
             sanitized=self.sanitized or other.sanitized,
             dynamic=self.dynamic or other.dynamic,
             sql_like=self.sql_like or other.sql_like,
+            flow_steps=list(self.flow_steps) + list(other.flow_steps),
         )
 
 
@@ -154,39 +167,45 @@ def _is_request_expr(node: ast.AST) -> bool:
     return any(pattern in text for pattern in PY_SOURCE_PATTERNS) or text.startswith("input(")
 
 
-def _expr_taint(node: ast.AST | None, env: dict[str, _TaintState]) -> _TaintState | None:
+def _expr_taint(node: ast.AST | None, env: dict[str, _TaintState], source_lines_map: dict[int, str] | None = None) -> _TaintState | None:
     if node is None:
         return None
     if isinstance(node, ast.Name):
         state = env.get(node.id)
-        return (
-            _TaintState(
+        if state:
+            return _TaintState(
                 set(state.source_vars),
                 set(state.source_lines),
                 state.sanitized,
                 state.dynamic,
                 state.sql_like,
+                list(state.flow_steps),
             )
-            if state
-            else None
-        )
+        return None
     if _is_request_expr(node):
-        return _TaintState({"request_input"}, {getattr(node, "lineno", 0)}, False, False, False)
+        lineno = getattr(node, "lineno", 0)
+        code = source_lines_map.get(lineno, "") if source_lines_map else ""
+        return _TaintState(
+            {"request_input"}, {lineno}, False, False, False,
+            flow_steps=[FlowPathStep("Source", lineno, code, "User input entry point", "request_input")],
+        )
     if isinstance(node, ast.Call):
         name = _call_name(node)
         if name in PY_SANITIZERS and node.args:
-            inner = _expr_taint(node.args[0], env)
+            inner = _expr_taint(node.args[0], env, source_lines_map)
             if inner:
                 inner.sanitized = True
+                inner.flow_steps.append(FlowPathStep("FunctionCall", getattr(node, "lineno", 0), source_lines_map.get(getattr(node, "lineno", 0), "") if source_lines_map else "", f"Sanitized by {name}", ""))
                 return inner
         if name in PY_REDIRECT_SANITIZERS and node.args:
-            inner = _expr_taint(node.args[0], env)
+            inner = _expr_taint(node.args[0], env, source_lines_map)
             if inner:
                 inner.sanitized = True
+                inner.flow_steps.append(FlowPathStep("FunctionCall", getattr(node, "lineno", 0), source_lines_map.get(getattr(node, "lineno", 0), "") if source_lines_map else "", f"Redirect validation by {name}", ""))
                 return inner
         combined: _TaintState | None = None
         for arg in node.args:
-            state = _expr_taint(arg, env)
+            state = _expr_taint(arg, env, source_lines_map)
             if state:
                 combined = state if combined is None else combined.merge(state)
         return combined
@@ -197,46 +216,55 @@ def _expr_taint(node: ast.AST | None, env: dict[str, _TaintState]) -> _TaintStat
             if isinstance(value, ast.Constant) and isinstance(value.value, str):
                 text = value.value.lower()
                 sql_like = sql_like or any(keyword in text for keyword in ("select ", "insert ", "update ", "delete ", " where ", " from "))
-            state = _expr_taint(value, env)
+            state = _expr_taint(value, env, source_lines_map)
             if state:
                 state.dynamic = True
                 state.sql_like = state.sql_like or sql_like
                 combined = state if combined is None else combined.merge(state)
         if combined:
             combined.sql_like = combined.sql_like or sql_like
+            lineno = getattr(node, "lineno", 0)
+            code = source_lines_map.get(lineno, "") if source_lines_map else ""
+            combined.flow_steps.append(FlowPathStep("Concatenation", lineno, code, "F-string interpolation", ""))
         return combined
     if isinstance(node, ast.FormattedValue):
-        return _expr_taint(node.value, env)
+        return _expr_taint(node.value, env, source_lines_map)
     if isinstance(node, ast.BinOp):
-        left = _expr_taint(node.left, env)
-        right = _expr_taint(node.right, env)
+        left = _expr_taint(node.left, env, source_lines_map)
+        right = _expr_taint(node.right, env, source_lines_map)
         sql_like = False
         for side in (node.left, node.right):
             if isinstance(side, ast.Constant) and isinstance(side.value, str):
                 text = side.value.lower()
                 sql_like = sql_like or any(keyword in text for keyword in ("select ", "insert ", "update ", "delete ", " where ", " from "))
+        base = left or right
         if left and right:
             merged = left.merge(right)
             if merged:
                 merged.dynamic = True
                 merged.sql_like = merged.sql_like or sql_like
+                lineno = getattr(node, "lineno", 0)
+                code = source_lines_map.get(lineno, "") if source_lines_map else ""
+                merged.flow_steps.append(FlowPathStep("Concatenation", lineno, code, "String concatenation", ""))
             return merged
-        base = left or right
         if base:
             base.dynamic = True
             base.sql_like = base.sql_like or sql_like
+            lineno = getattr(node, "lineno", 0)
+            code = source_lines_map.get(lineno, "") if source_lines_map else ""
+            base.flow_steps.append(FlowPathStep("Concatenation", lineno, code, "String concatenation", ""))
         return base
     if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
         combined: _TaintState | None = None
         for element in node.elts:
-            state = _expr_taint(element, env)
+            state = _expr_taint(element, env, source_lines_map)
             if state:
                 combined = state if combined is None else combined.merge(state)
         return combined
     if isinstance(node, ast.Dict):
         combined: _TaintState | None = None
         for value in node.values:
-            state = _expr_taint(value, env)
+            state = _expr_taint(value, env, source_lines_map)
             if state:
                 combined = state if combined is None else combined.merge(state)
         return combined
@@ -244,17 +272,25 @@ def _expr_taint(node: ast.AST | None, env: dict[str, _TaintState]) -> _TaintStat
 
 
 class _PythonAnalyzer(ast.NodeVisitor):
-    def __init__(self, family: str) -> None:
+    def __init__(self, family: str, source_lines_map: dict[int, str] | None = None) -> None:
         self.family = family
         self.env: dict[str, _TaintState] = {}
         self.matches: list[FlowMatch] = []
+        self.source_lines_map = source_lines_map or {}
 
     def visit_Assign(self, node: ast.Assign) -> None:  # noqa: N802
-        state = _expr_taint(node.value, self.env)
+        state = _expr_taint(node.value, self.env, self.source_lines_map)
         for target in node.targets:
             if isinstance(target, ast.Name):
                 if state:
-                    self.env[target.id] = state
+                    copied = _TaintState(
+                        set(state.source_vars), set(state.source_lines), state.sanitized,
+                        state.dynamic, state.sql_like, list(state.flow_steps),
+                    )
+                    lineno = getattr(node, "lineno", 0)
+                    code_line = self.source_lines_map.get(lineno, "")
+                    copied.flow_steps.append(FlowPathStep("Assignment", lineno, code_line, f"Assigned to {target.id}", target.id))
+                    self.env[target.id] = copied
                 elif target.id in self.env:
                     del self.env[target.id]
         self.generic_visit(node)
@@ -282,10 +318,18 @@ class _PythonAnalyzer(ast.NodeVisitor):
     def _append(self, node: ast.Call, sink: str, state: _TaintState | None, confidence: float, details: str) -> None:
         if state is None:
             return
+        lineno = getattr(node, "lineno", 1)
+        sink_code = self.source_lines_map.get(lineno, "")
+        flow_steps = list(state.flow_steps)
+        flow_steps.append(FlowPathStep("Sink", lineno, sink_code, f"Reaches {sink}", ""))
+        code_start = min((s.line_number for s in flow_steps if s.line_number), default=lineno)
+        code_end = lineno
+        snippet_parts = [self.source_lines_map.get(i, "") for i in range(code_start, code_end + 1) if self.source_lines_map.get(i)]
+        code_snippet = "\n".join(snippet_parts) if snippet_parts else ""
         self.matches.append(
             FlowMatch(
                 family=self.family,
-                line_number=getattr(node, "lineno", 1),
+                line_number=lineno,
                 sink=sink,
                 source_vars=sorted(state.source_vars),
                 source_lines=sorted(line for line in state.source_lines if line),
@@ -293,6 +337,8 @@ class _PythonAnalyzer(ast.NodeVisitor):
                 confidence=confidence,
                 details=details,
                 trace=[details],
+                code_snippet=code_snippet,
+                flow_steps=flow_steps,
             )
         )
 
@@ -391,7 +437,9 @@ def _analyze_python(content: str, family: str) -> list[FlowMatch]:
         tree = ast.parse(content)
     except SyntaxError:
         return []
-    analyzer = _PythonAnalyzer(family)
+    lines = content.splitlines()
+    source_lines_map = {i + 1: lines[i] for i in range(len(lines))}
+    analyzer = _PythonAnalyzer(family, source_lines_map)
     analyzer.visit(tree)
     return analyzer.matches
 
@@ -426,6 +474,7 @@ def _analyze_js(content: str, family: str) -> list[FlowMatch]:
             if state:
                 state.source_lines.add(idx)
                 state.source_vars.add(name)
+                state.flow_steps.append(FlowPathStep("Source" if "request" in expr.lower() or "location" in expr.lower() or "props" in expr or "query" in expr.lower() else "Assignment", idx, raw_line, f"Assigned to {name}", name))
                 env[name] = state
             elif name in env:
                 del env[name]
@@ -472,6 +521,11 @@ def _analyze_js(content: str, family: str) -> list[FlowMatch]:
                     if not any(token in lowered for token in ("select ", "insert ", "update ", "delete ", " where ", " from ", "${", "+")):
                         continue
                 confidence = 0.9 if not state.sanitized else 0.68
+                flow_steps = list(state.flow_steps)
+                flow_steps.append(FlowPathStep("Sink", idx, raw_line, f"Reaches {sink}", ""))
+                code_start = min((s.line_number for s in flow_steps if s.line_number), default=idx)
+                code_parts = [lines[i - 1] for i in range(code_start, idx + 1)] if lines else []
+                code_snippet = "\n".join(code_parts) if code_parts else ""
                 matches.append(
                     FlowMatch(
                         family=family,
@@ -483,6 +537,8 @@ def _analyze_js(content: str, family: str) -> list[FlowMatch]:
                         confidence=confidence,
                         details="request-controlled data reaches JavaScript sink",
                         trace=[f"{','.join(sorted(state.source_vars)) or 'request_input'} -> {sink}"],
+                        code_snippet=code_snippet,
+                        flow_steps=flow_steps,
                     )
                 )
     return matches

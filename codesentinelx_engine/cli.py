@@ -55,6 +55,7 @@ def run_scan(
     auth_header_name: str | None = None,
     auth_header_value: str | None = None,
     role: str | None = None,
+    pipeline: str = "legacy",
 ) -> int:
     config = ScannerConfig.from_env(role)
     configure_logging(config.log_level)
@@ -62,6 +63,10 @@ def run_scan(
     progress = _cli_progress if show_progress else None
     if auth_token:
         os.environ["USS_RUNTIME_AUTH_TOKEN"] = auth_token.strip()
+        import sys
+        for i, arg in enumerate(sys.argv):
+            if "auth-token" in arg and i + 1 < len(sys.argv):
+                sys.argv[i + 1] = "***REDACTED***"
     if auth_cookie:
         os.environ["USS_RUNTIME_AUTH_COOKIE"] = auth_cookie.strip()
     if auth_header_name and auth_header_value:
@@ -83,46 +88,90 @@ def run_scan(
     if show_progress:
         print("")
 
-    report = build_report(result)
-    export_dir = config.export_dir
-    if not export_dir.is_absolute():
-        export_dir = (Path.cwd() / export_dir).resolve()
+    if pipeline == "professional":
+        from codesentinelx_engine.scanner.reporting.report_schema import ReportSchemaConverter
+        from codesentinelx_engine.scanner.reporting.developer_report_renderer import DeveloperReportRenderer
+        from codesentinelx_engine.scanner.reporting.report_models import ScanMetadata
 
-    exporter = ReportExporter(export_dir)
-    exported_paths: list[Path] = []
+        scan_meta = ScanMetadata(
+            scan_id=result.target_path,
+            scanner_version="2.0.0",
+            target_path=result.target_path,
+            files_scanned=result.files_scanned,
+            total_lines_of_code=result.total_lines_of_code,
+            duration_seconds=result.duration_seconds,
+            started_at=result.started_at.isoformat() if result.started_at else "",
+            completed_at=result.completed_at.isoformat() if result.completed_at else "",
+            scan_environment="local",
+            tools_used=list(result.toolchain_status.keys()) if result.toolchain_status else [],
+            errors=result.errors,
+        )
 
-    if split_reports:
-        if fmt.lower() == "sarif":
-            raise ValueError("SARIF cannot be used with --split-reports. Use --report-type vulnerability for SARIF export.")
+        converter = ReportSchemaConverter()
+        renderer = DeveloperReportRenderer()
+        dev_report = converter.build_developer_report(
+            result.findings, result.target_path,
+            project_name=Path(path).name or "CodeSentinelX Scan",
+            scan_metadata=scan_meta,
+        )
+        html_content = renderer.render_html(dev_report)
+
+        export_dir = config.export_dir
+        if not export_dir.is_absolute():
+            export_dir = (Path.cwd() / export_dir).resolve()
+        export_dir.mkdir(parents=True, exist_ok=True)
+
         if output:
-            base = Path(output).expanduser().resolve()
-            output_existing = base.with_name(f"{base.stem}_existing{base.suffix or f'.{fmt.lower()}'}")
-            output_vuln = base.with_name(f"{base.stem}_vulnerability{base.suffix or f'.{fmt.lower()}'}")
-            output_fixes = base.with_name(f"{base.stem}_fixes{base.suffix or f'.{fmt.lower()}'}")
-            exported_paths.append(exporter.export(report, fmt.lower(), output_existing, report_type="existing"))
-            exported_paths.append(exporter.export(report, fmt.lower(), output_vuln, report_type="vulnerability"))
-            exported_paths.append(exporter.export(report, fmt.lower(), output_fixes, report_type="fixes"))
+            output_path = Path(output).expanduser().resolve()
         else:
-            output_existing = _resolve_export_path(fmt, None, config, report_type="existing")
-            output_vuln = _resolve_export_path(fmt, None, config, report_type="vulnerability")
-            output_fixes = _resolve_export_path(fmt, None, config, report_type="fixes")
-            exported_paths.append(exporter.export(report, fmt.lower(), output_existing, report_type="existing"))
-            exported_paths.append(exporter.export(report, fmt.lower(), output_vuln, report_type="vulnerability"))
-            exported_paths.append(exporter.export(report, fmt.lower(), output_fixes, report_type="fixes"))
-    else:
-        if fmt.lower() == "sarif" and report_type.lower() in {"existing", "fixes"}:
-            raise ValueError("SARIF is available only for vulnerability or combined report types.")
-        output_path = _resolve_export_path(fmt, output, config, report_type=report_type.lower())
-        exported_paths.append(exporter.export(report, fmt.lower(), output_path, report_type=report_type.lower()))
+            output_path = export_dir / "developer_report.html"
 
-    summary = report["executive_summary"]
-    print("Scan completed")
-    print(f"Target: {summary['target_path']}")
-    print(f"Files scanned: {summary['files_scanned']}")
-    print(f"Total vulnerabilities: {summary['total_vulnerabilities']}")
-    print(f"Risk score: {summary['risk_score']} ({summary['risk_rating']})")
-    for exported in exported_paths:
-        print(f"Exported report: {exported}")
+        output_path.write_text(html_content, encoding="utf-8")
+        print(f"Scan completed (professional pipeline)")
+        print(f"Target: {result.target_path}")
+        print(f"Total vulnerabilities: {len(result.findings)}")
+        print(f"Exported report: {output_path}")
+    else:
+        report = build_report(result)
+        export_dir = config.export_dir
+        if not export_dir.is_absolute():
+            export_dir = (Path.cwd() / export_dir).resolve()
+
+        exporter = ReportExporter(export_dir)
+        exported_paths: list[Path] = []
+
+        if split_reports:
+            if fmt.lower() == "sarif":
+                raise ValueError("SARIF cannot be used with --split-reports. Use --report-type vulnerability for SARIF export.")
+            if output:
+                base = Path(output).expanduser().resolve()
+                output_existing = base.with_name(f"{base.stem}_existing{base.suffix or f'.{fmt.lower()}'}")
+                output_vuln = base.with_name(f"{base.stem}_vulnerability{base.suffix or f'.{fmt.lower()}'}")
+                output_fixes = base.with_name(f"{base.stem}_fixes{base.suffix or f'.{fmt.lower()}'}")
+                exported_paths.append(exporter.export(report, fmt.lower(), output_existing, report_type="existing"))
+                exported_paths.append(exporter.export(report, fmt.lower(), output_vuln, report_type="vulnerability"))
+                exported_paths.append(exporter.export(report, fmt.lower(), output_fixes, report_type="fixes"))
+            else:
+                output_existing = _resolve_export_path(fmt, None, config, report_type="existing")
+                output_vuln = _resolve_export_path(fmt, None, config, report_type="vulnerability")
+                output_fixes = _resolve_export_path(fmt, None, config, report_type="fixes")
+                exported_paths.append(exporter.export(report, fmt.lower(), output_existing, report_type="existing"))
+                exported_paths.append(exporter.export(report, fmt.lower(), output_vuln, report_type="vulnerability"))
+                exported_paths.append(exporter.export(report, fmt.lower(), output_fixes, report_type="fixes"))
+        else:
+            if fmt.lower() == "sarif" and report_type.lower() in {"existing", "fixes"}:
+                raise ValueError("SARIF is available only for vulnerability or combined report types.")
+            output_path = _resolve_export_path(fmt, output, config, report_type=report_type.lower())
+            exported_paths.append(exporter.export(report, fmt.lower(), output_path, report_type=report_type.lower()))
+
+        summary = report["executive_summary"]
+        print("Scan completed")
+        print(f"Target: {summary['target_path']}")
+        print(f"Files scanned: {summary['files_scanned']}")
+        print(f"Total vulnerabilities: {summary['total_vulnerabilities']}")
+        print(f"Risk score: {summary['risk_score']} ({summary['risk_rating']})")
+        for exported in exported_paths:
+            print(f"Exported report: {exported}")
 
     if result.errors:
         print("Warnings:")
@@ -225,6 +274,90 @@ def run_bootstrap_tools_filtered(path: str | None = None, tools_csv: str | None 
     return 0
 
 
+def run_generate_report(
+    input_path: str,
+    output_path: str | None,
+    project_name: str = "CodeSentinelX Scan",
+) -> int:
+    import json
+
+    from codesentinelx_engine.models import Finding, Severity
+    from codesentinelx_engine.scanner.reporting.report_schema import ReportSchemaConverter
+    from codesentinelx_engine.scanner.reporting.developer_report_renderer import DeveloperReportRenderer
+    from codesentinelx_engine.scanner.reporting.report_models import ScanMetadata
+
+    input_file = Path(input_path).expanduser().resolve()
+    if not input_file.exists():
+        print(f"Error: Input file not found: {input_file}")
+        return 1
+
+    raw = json.loads(input_file.read_text(encoding="utf-8"))
+
+    findings_data: list[dict] = []
+    target_path = ""
+    if isinstance(raw, dict):
+        target_path = str(
+            raw.get("target_path")
+            or raw.get("vulnerability_fixed_code_report", {}).get("target_path", "")
+        )
+        findings_data = raw.get("findings") or raw.get(
+            "vulnerability_fixed_code_report", {}
+        ).get("findings", [])
+    elif isinstance(raw, list):
+        findings_data = raw
+
+    findings: list[Finding] = []
+    for fd in findings_data:
+        sev_raw = str(fd.get("severity") or "Info")
+        try:
+            sev = Severity(sev_raw)
+        except ValueError:
+            sev = Severity.INFO
+        findings.append(Finding(
+            vulnerability_type=fd.get("vulnerability_type") or fd.get("title") or fd.get("rule_id", "Unknown"),
+            severity=sev,
+            file_path=fd.get("file_path") or fd.get("path", ""),
+            line_number=int(fd.get("line_number") or fd.get("line") or 0),
+            business_impact=fd.get("business_impact") or fd.get("description", ""),
+            recommendation=fd.get("recommendation") or fd.get("fix", ""),
+            reference=fd.get("reference", ""),
+            owasp_category=fd.get("owasp_category") or fd.get("owasp_mapping", ""),
+            description=fd.get("description") or fd.get("business_impact", ""),
+            rule_id=fd.get("rule_id") or fd.get("id", ""),
+            cwe=fd.get("cwe") or fd.get("cwe_id"),
+            cvss_score=fd.get("cvss_score"),
+            cvss_vector=fd.get("cvss_vector"),
+        ))
+
+    scan_meta = ScanMetadata(
+        scan_id=target_path,
+        scanner_version="2.0.0",
+        target_path=target_path,
+        files_scanned=raw.get("files_scanned", 0) if isinstance(raw, dict) else 0,
+        total_lines_of_code=raw.get("total_lines_of_code", 0) if isinstance(raw, dict) else 0,
+        duration_seconds=float(raw.get("duration_seconds", 0)) if isinstance(raw, dict) else 0.0,
+        errors=raw.get("errors", []) if isinstance(raw, dict) else [],
+    )
+
+    converter = ReportSchemaConverter()
+    renderer = DeveloperReportRenderer()
+    dev_report = converter.build_developer_report(
+        findings, target_path, project_name=project_name,
+        scan_metadata=scan_meta,
+    )
+    html_content = renderer.render_html(dev_report)
+
+    if output_path:
+        out = Path(output_path).expanduser().resolve()
+    else:
+        out = input_file.with_suffix(".professional.html")
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(html_content, encoding="utf-8")
+    print(f"Professional report generated: {out}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="codesentinelx",
@@ -243,7 +376,7 @@ def build_parser() -> argparse.ArgumentParser:
     scan_parser.add_argument(
         "--format",
         default="json",
-        choices=["json", "html", "pdf", "sarif"],
+        choices=["json", "html", "pdf", "sarif", "markdown", "csv"],
         help="Report export format",
     )
     scan_parser.add_argument(
@@ -273,6 +406,12 @@ def build_parser() -> argparse.ArgumentParser:
     scan_parser.add_argument("--auth-cookie", help="Runtime authenticated crawl: cookie header value")
     scan_parser.add_argument("--auth-header-name", help="Runtime authenticated crawl: custom header name")
     scan_parser.add_argument("--auth-header-value", help="Runtime authenticated crawl: custom header value")
+    scan_parser.add_argument(
+        "--pipeline",
+        default="legacy",
+        choices=["legacy", "professional"],
+        help="Report pipeline: 'legacy' (default) or 'professional' (new HTML-based pipeline)",
+    )
 
     serve_parser = subparsers.add_parser("serve", help="Run interactive web UI")
     serve_parser.add_argument("--host", default="127.0.0.1", help="Host interface")
@@ -293,6 +432,25 @@ def build_parser() -> argparse.ArgumentParser:
         default="all",
         choices=["all", "codebase", "runtime"],
         help="Bootstrap by target profile when --tools is not provided",
+    )
+
+    report_parser = subparsers.add_parser(
+        "generate-report",
+        help="Generate professional HTML report from existing scan JSON output",
+    )
+    report_parser.add_argument(
+        "--input",
+        required=True,
+        help="Path to JSON scan output file (UniversalScanReport format)",
+    )
+    report_parser.add_argument(
+        "--output",
+        help="Output file path for generated HTML report",
+    )
+    report_parser.add_argument(
+        "--project-name",
+        default="CodeSentinelX Scan",
+        help="Project name to display in the report",
     )
 
     return parser
@@ -316,15 +474,20 @@ def main(argv: list[str] | None = None) -> int:
             auth_header_name=args.auth_header_name,
             auth_header_value=args.auth_header_value,
             role=args.role,
+            pipeline=args.pipeline,
         )
-
-    if args.command == "serve":
+    elif args.command == "serve":
         return run_serve(args.host, args.port, args.reload)
-
-    if args.command == "bootstrap-tools":
+    elif args.command == "bootstrap-tools":
         if args.tools or args.target_mode != "all":
             return run_bootstrap_tools_filtered(args.path, args.tools, args.target_mode)
         return run_bootstrap_tools(args.path)
+    elif args.command == "generate-report":
+        return run_generate_report(
+            args.input,
+            args.output,
+            project_name=args.project_name,
+        )
 
     parser.print_help()
     return 1

@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { URL } from "node:url";
 
 import { ExportService } from "../backend/exportService";
 import { findingIdentity } from "../backend/reportAdapter";
@@ -36,9 +37,50 @@ let storeFilePath = "";
 let toolRunDirPath = "";
 let exportDirPath = "";
 
+function isDevUrlAllowed(url: string): boolean {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    const allowedHosts = new Set(["localhost", "127.0.0.1", "[::1]"]);
+    if (!allowedHosts.has(parsed.hostname)) return false;
+    const allowedSchemes = new Set(["http:", "https:"]);
+    if (!allowedSchemes.has(parsed.protocol)) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function addCspHeaders(): void {
+  const isProduction = app.isPackaged;
+  const scriptSrc = isProduction ? "'self'" : "'self' 'unsafe-eval' 'unsafe-inline'";
+  const connectSrc = isProduction ? "'self'" : "'self' ws://localhost:* http://localhost:*";
+  electron.session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const csp = [
+      "default-src 'self'",
+      `script-src ${scriptSrc}`,
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob:",
+      "font-src 'self'",
+      `connect-src ${connectSrc}`,
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "object-src 'none'",
+    ].join("; ");
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        "Content-Security-Policy": [csp],
+      },
+    });
+  });
+}
+
 function createWindow(): void {
   const preloadPath = path.join(__dirname, "preload.js");
   const windowIconPath = path.join(app.getAppPath(), "build", "icon.png");
+  const isProduction = app.isPackaged;
   mainWindow = new BrowserWindow({
     width: 1560,
     height: 980,
@@ -56,15 +98,17 @@ function createWindow(): void {
       preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
-      devTools: true,
+      sandbox: true,
+      devTools: !isProduction,
     },
   });
   mainWindow.setMenuBarVisibility(false);
   mainWindow.removeMenu();
 
+  addCspHeaders();
+
   const devUrl = process.env.ELECTRON_START_URL;
-  if (devUrl) {
+  if (devUrl && !isProduction && isDevUrlAllowed(devUrl)) {
     mainWindow.loadURL(devUrl).catch((error: unknown) => log.error("Failed to load renderer dev URL", error));
   } else {
     const indexPath = path.join(__dirname, "..", "..", "dist", "frontend", "index.html");
@@ -120,7 +164,7 @@ function decodeReportRoleFromPath(relativePath: string): string {
 }
 
 function isExportReportFile(fileName: string): boolean {
-  return /^(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2}(?:-\d{3})?)_([A-Za-z0-9._-]+)_(.+)\.(html|pdf|json|xml|csv|patch|sairf)$/i.test(fileName);
+  return /^(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2}(?:-\d{3})?)_([A-Za-z0-9._-]+)_(.+)\.(html|pdf|json|xml|csv|patch|sarif)$/i.test(fileName);
 }
 
 app.whenReady().then(async () => {
@@ -175,6 +219,7 @@ app.whenReady().then(async () => {
     store = await ScanStore.create(storeFilePath);
     scannerBridge = new PythonScannerBridge(scannerRootPath);
     exportService = new ExportService(exportDir);
+    exportService.configurePython(scannerRootPath, scannerBridge["pythonPath"]);
     threatModelService = new ThreatModelService(path.join(app.getPath("documents"), "CodeSentinelX_Reports"));
     toolManager = new ToolManager(scannerRootPath, toolRunDirPath);
     toolAccessAuth = new ToolAccessAuthService();
@@ -449,7 +494,7 @@ ipcMain.handle("report:history", async () => {
     .map((fullPath) => {
       const fileName = path.basename(fullPath);
       const relativePath = path.relative(exportDirPath, fullPath);
-      const parsed = /^(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2}(?:-\d{3})?)_([A-Za-z0-9._-]+)_(.+)\.(html|pdf|json|xml|csv|patch|sairf)$/i.exec(fileName);
+      const parsed = /^(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2}(?:-\d{3})?)_([A-Za-z0-9._-]+)_(.+)\.(html|pdf|json|xml|csv|patch|sarif)$/i.exec(fileName);
       let generatedAt = "";
       let reportType = "unknown";
       let target = "";
@@ -625,11 +670,62 @@ ipcMain.handle(
   },
 );
 
+ipcMain.handle(
+  "scan:renderProfessionalHtml",
+  async (_event, payload: { scanId: string; projectName?: string }) => {
+    if (!store || !exportService) {
+      throw new Error("Report renderer is unavailable.");
+    }
+    const scan = store.getScanView(payload.scanId);
+    if (!scan) {
+      throw new Error(`Scan ${payload.scanId} not found.`);
+    }
+    return exportService.renderProfessionalReportHtml(scan, payload.projectName);
+  },
+);
+
+ipcMain.handle(
+  "scan:exportProfessional",
+  async (_event, payload: { scanId: string; projectName?: string }) => {
+    if (!store || !exportService) {
+      throw new Error("Export service is unavailable.");
+    }
+    const scan = store.getScanView(payload.scanId);
+    if (!scan) {
+      throw new Error(`Scan ${payload.scanId} not found.`);
+    }
+    const html = await exportService.renderProfessionalReportHtml(scan, payload.projectName);
+    const destination = exportService.resolveOutputPath(scan, "vulnerability", "html", undefined, undefined);
+    const professionalDestination = destination.replace(/\.html$/, ".professional.html");
+    await fs.promises.mkdir(path.dirname(professionalDestination), { recursive: true });
+    await fs.promises.writeFile(professionalDestination, html, "utf-8");
+    await store.addAudit({
+      scanId: payload.scanId,
+      action: "report.professional_exported",
+      actor: "local-user",
+      role: "Admin",
+      details: `Exported professional HTML report -> ${professionalDestination}`,
+    });
+    return professionalDestination;
+  },
+);
+
 ipcMain.handle("shell:openPath", async (_event, targetPath: string) => {
-  if (!targetPath) {
+  if (!targetPath || typeof targetPath !== "string") {
     return "No path provided.";
   }
-  return electron.shell.openPath(targetPath);
+  const resolved = path.resolve(targetPath);
+  if (!fs.existsSync(resolved)) {
+    return "Path does not exist.";
+  }
+  const userDataDir = app.getPath("userData");
+  const documentsDir = app.getPath("documents");
+  const allowedParents = [userDataDir, documentsDir, os.tmpdir(), app.getPath("home")];
+  const isAllowed = allowedParents.some((parent) => resolved.startsWith(parent + path.sep) || resolved === parent);
+  if (!isAllowed) {
+    return "Access denied: cannot open paths outside allowed directories.";
+  }
+  return electron.shell.openPath(resolved);
 });
 
 ipcMain.handle("audit:list", (_event, scanId?: string) => {

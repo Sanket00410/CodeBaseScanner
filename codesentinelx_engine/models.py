@@ -37,6 +37,15 @@ SEVERITY_ORDER: dict[Severity, int] = {
 
 
 @dataclass(slots=True)
+class FlowPathStepData:
+    step_type: str = ""
+    line_number: int = 0
+    code: str = ""
+    description: str = ""
+    variable: str = ""
+
+
+@dataclass(slots=True)
 class Finding:
     vulnerability_type: str
     severity: Severity
@@ -54,6 +63,9 @@ class Finding:
     provenance: dict[str, Any] = field(default_factory=dict)
     cvss_score: float | None = None
     cvss_vector: str | None = None
+    code_snippet: str = ""
+    flow_steps: list[FlowPathStepData] = field(default_factory=list)
+    confidence_score: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -111,6 +123,7 @@ class ScanResult:
     started_at: datetime
     completed_at: datetime
     files_scanned: int
+    total_lines_of_code: int = 0
     scan_role: str = "Security Analyst"
     findings: list[Finding] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)

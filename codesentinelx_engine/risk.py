@@ -1,16 +1,31 @@
 from __future__ import annotations
 
 from collections import Counter
+from typing import Any
 
 from codesentinelx_engine.models import Finding, Severity
 
-SEVERITY_WEIGHT = {
+SEVERITY_WEIGHT: dict[Severity | str, int] = {
     Severity.CRITICAL: 10,
     Severity.HIGH: 7,
     Severity.MEDIUM: 4,
     Severity.LOW: 1,
     Severity.INFO: 0,
+    "Critical": 10,
+    "High": 7,
+    "Medium": 4,
+    "Low": 1,
+    "Info": 0,
 }
+
+
+def _resolve_serverity(severity: Any) -> Any:
+    if isinstance(severity, Severity):
+        return severity
+    if isinstance(severity, str):
+        sev_map = {"critical": "Critical", "high": "High", "medium": "Medium", "low": "Low", "info": "Info", "informational": "Info"}
+        return sev_map.get(severity.lower(), "Info")
+    return Severity.INFO
 
 
 def severity_distribution(findings: list[Finding]) -> dict[str, int]:
@@ -24,11 +39,11 @@ def severity_distribution(findings: list[Finding]) -> dict[str, int]:
     }
 
 
-def calculate_risk_score(findings: list[Finding]) -> float:
+def calculate_risk_score(findings: list) -> float:
     if not findings:
         return 0.0
 
-    weighted_sum = sum(SEVERITY_WEIGHT[item.severity] for item in findings)
+    weighted_sum = sum(SEVERITY_WEIGHT[_resolve_serverity(item.severity)] for item in findings)
     max_weighted_sum = len(findings) * SEVERITY_WEIGHT[Severity.CRITICAL]
 
     severity_factor = (weighted_sum / max_weighted_sum) * 60.0

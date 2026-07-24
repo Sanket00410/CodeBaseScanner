@@ -66,6 +66,8 @@ declare global {
         reportStyle?: "classic" | "modern";
         managementContext?: ManagementReportContext;
       }) => Promise<string>;
+      renderProfessionalHtml: (payload: { scanId: string; projectName?: string }) => Promise<string>;
+      exportProfessional: (payload: { scanId: string; projectName?: string }) => Promise<string>;
       openPath: (targetPath: string) => Promise<string>;
       listAuditLogs: (scanId?: string) => Promise<AuditLogEntry[]>;
       getToolAccessConfig: (payload?: { authToken?: string }) => Promise<ToolManagerAuthConfig>;
