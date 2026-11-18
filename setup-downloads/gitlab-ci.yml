@@ -1,0 +1,32 @@
+stages:
+  - security
+
+codesentinelx_native_sast:
+  stage: security
+  image: python:3.11
+  variables:
+    USS_USE_EXTERNAL_TOOLS: "0"
+    USS_AUTO_BOOTSTRAP_TOOLS: "0"
+    USS_EXPORT_DIR: "$CI_PROJECT_DIR/reports"
+    USS_PLATFORM_DATABASE: "$CI_PROJECT_DIR/reports/workspace.sqlite3"
+  before_script:
+    # Set this CI variable to an approved immutable scanner wheel URL (with a
+    # SHA-256 URL fragment) or your pinned internal package requirement.
+    # The package must contain the current scan and ci-gate commands.
+    - test -n "$CSX_ENGINE_PACKAGE"
+    - python -m pip install "$CSX_ENGINE_PACKAGE"
+  script:
+    - codesentinelx scan --path . --target-type local --role "Security Analyst" --format json --output reports/sast.json --no-progress
+    - codesentinelx ci-gate --report reports/sast.json --fail-on high --sarif reports/sast.sarif
+  artifacts:
+    when: always
+    paths:
+      - reports/sast.json
+      - reports/sast.sarif
+    expire_in: 7 days
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+# Configure merge checks to require a successful security job. A scanner failure
+# or invalid report remains a failed job; findings and SARIF use the same scan.

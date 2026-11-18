@@ -1,0 +1,71 @@
+name: CodeSentinelX pull-request security
+
+on:
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-sast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Configure repository variables and a read-only token for your approved
+      # scanner source. This example does not publish a source repository URL.
+      CSX_ENGINE_REPOSITORY: ${{ vars.CSX_ENGINE_REPOSITORY }}
+      CSX_ENGINE_COMMIT: ${{ vars.CSX_ENGINE_COMMIT }}
+      USS_USE_EXTERNAL_TOOLS: "0"
+      USS_AUTO_BOOTSTRAP_TOOLS: "0"
+      USS_EXPORT_DIR: ${{ github.workspace }}/reports
+      USS_PLATFORM_DATABASE: ${{ github.workspace }}/reports/workspace.sqlite3
+    steps:
+      - name: Checkout application
+        uses: actions/checkout@v4
+        with:
+          path: application
+          persist-credentials: false
+      - name: Validate approved scanner configuration
+        shell: bash
+        run: |
+          test -n "$CSX_ENGINE_REPOSITORY"
+          [[ "$CSX_ENGINE_COMMIT" =~ ^[0-9a-fA-F]{40}$ ]]
+      - name: Checkout approved scanner revision
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.CSX_ENGINE_REPOSITORY }}
+          ref: ${{ vars.CSX_ENGINE_COMMIT }}
+          token: ${{ secrets.CSX_ENGINE_READ_TOKEN }}
+          path: scanner
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install approved scanner
+        run: python -m pip install ./scanner
+      - name: Scan application once
+        run: >-
+          codesentinelx scan --path application --target-type local
+          --role "Security Analyst" --format json
+          --output reports/sast.json --no-progress
+      - name: Export SARIF and enforce high-severity gate
+        run: >-
+          codesentinelx ci-gate --report reports/sast.json
+          --fail-on high --sarif reports/sast.sarif
+      - name: Retain findings even when the gate blocks
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codesentinelx-sast
+          path: |
+            reports/sast.json
+            reports/sast.sarif
+          if-no-files-found: error
+          retention-days: 7
+
+# Select this workflow as a required check in branch protection.
+# Fork PRs cannot read private scanner secrets: arrange an approved runner or
+# artifact strategy. Never switch this to pull_request_target to expose secrets.
