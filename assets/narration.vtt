@@ -1,0 +1,1021 @@
+WEBVTT
+
+1
+00:00:00.120 --> 00:00:08.127
+Welcome to Code Sentinel X. Investigate how risk appeared, when it happened, who changed it, the blast radius, and prevention.
+
+2
+00:00:09.120 --> 00:00:16.720
+These five questions lead every investigation. Evidence connects each answer to a change, deployment, snapshot, or resource.
+
+3
+00:00:17.120 --> 00:00:21.765
+Start the guided tour through the products and investigations.
+
+4
+00:00:22.120 --> 00:00:24.799
+Select Next to open Cloud Security.
+
+5
+00:00:25.120 --> 00:00:27.670
+Return to the previous chapter.
+
+6
+00:00:28.120 --> 00:00:30.400
+Close the guided tour.
+
+7
+00:00:31.120 --> 00:00:38.347
+Cloud Security. A Terraform deployment widened permissions and opened a path to customer data.
+
+8
+00:00:39.120 --> 00:00:47.214
+Maya Chen introduced the change. The linked deployment records when it reached the environment. Fourteen example assets are reachable.
+
+9
+00:00:48.120 --> 00:00:53.838
+Open the completed assessment. All applicable engines contribute to one combined product report.
+
+10
+00:00:54.120 --> 00:00:57.490
+AWS role connector evidence.
+
+11
+00:00:58.120 --> 00:00:59.830
+Close this evidence panel.
+
+12
+00:01:00.120 --> 00:01:02.250
+Prowler evidence.
+
+13
+00:01:04.120 --> 00:01:05.830
+Close this evidence panel.
+
+14
+00:01:06.120 --> 00:01:08.925
+Cloud Custodian evidence.
+
+15
+00:01:10.120 --> 00:01:11.830
+Close this evidence panel.
+
+16
+00:01:12.120 --> 00:01:14.540
+ScoutSuite evidence.
+
+17
+00:01:16.120 --> 00:01:17.830
+Close this evidence panel.
+
+18
+00:01:18.120 --> 00:01:20.190
+Trivy evidence.
+
+19
+00:01:22.120 --> 00:01:23.830
+Close this evidence panel.
+
+20
+00:01:24.120 --> 00:01:26.540
+Syft evidence.
+
+21
+00:01:28.120 --> 00:01:29.830
+Close this evidence panel.
+
+22
+00:01:30.120 --> 00:01:31.980
+Grype evidence.
+
+23
+00:01:34.120 --> 00:01:35.830
+Close this evidence panel.
+
+24
+00:01:36.120 --> 00:01:38.260
+Checkov evidence.
+
+25
+00:01:40.120 --> 00:01:41.830
+Close this evidence panel.
+
+26
+00:01:42.120 --> 00:01:44.515
+Kubescape evidence.
+
+27
+00:01:46.120 --> 00:01:47.830
+Close this evidence panel.
+
+28
+00:01:48.120 --> 00:01:50.450
+kube-bench evidence.
+
+29
+00:01:52.120 --> 00:01:53.830
+Close this evidence panel.
+
+30
+00:01:54.120 --> 00:01:56.495
+Cartography evidence.
+
+31
+00:01:58.120 --> 00:01:59.830
+Close this evidence panel.
+
+32
+00:02:00.120 --> 00:02:02.190
+Falco evidence.
+
+33
+00:02:04.120 --> 00:02:05.830
+Close this evidence panel.
+
+34
+00:02:06.120 --> 00:02:08.965
+Open Policy Agent evidence.
+
+35
+00:02:10.120 --> 00:02:11.830
+Close this evidence panel.
+
+36
+00:02:12.120 --> 00:02:14.410
+ClamAV evidence.
+
+37
+00:02:16.120 --> 00:02:17.830
+Close this evidence panel.
+
+38
+00:02:18.120 --> 00:02:21.841
+Review unique findings, with every contributing engine preserved.
+
+39
+00:02:22.120 --> 00:02:27.245
+Inspect public access configuration on customer exports.
+
+40
+00:02:28.120 --> 00:02:31.753
+Trace the responsible change and affected scope.
+
+41
+00:02:32.120 --> 00:02:33.835
+Mark this finding reviewed.
+
+42
+00:02:34.120 --> 00:02:39.250
+Inspect application role grants wildcard s3 actions.
+
+43
+00:02:40.120 --> 00:02:43.753
+Trace the responsible change and affected scope.
+
+44
+00:02:44.120 --> 00:02:45.835
+Mark this finding reviewed.
+
+45
+00:02:46.120 --> 00:02:50.990
+Inspect kubernetes workload can read namespace secrets.
+
+46
+00:02:52.120 --> 00:02:55.753
+Trace the responsible change and affected scope.
+
+47
+00:02:56.120 --> 00:02:57.835
+Mark this finding reviewed.
+
+48
+00:02:58.120 --> 00:03:02.985
+Inspect container runs with privileged security context.
+
+49
+00:03:04.120 --> 00:03:07.753
+Trace the responsible change and affected scope.
+
+50
+00:03:08.120 --> 00:03:09.835
+Mark this finding reviewed.
+
+51
+00:03:10.120 --> 00:03:14.965
+Inspect unexpected shell process in application container.
+
+52
+00:03:16.120 --> 00:03:19.753
+Trace the responsible change and affected scope.
+
+53
+00:03:20.120 --> 00:03:21.835
+Mark this finding reviewed.
+
+54
+00:03:22.120 --> 00:03:25.875
+Open the combined Cloud Security report.
+
+55
+00:03:27.120 --> 00:03:30.795
+Review the cause and five incident answers.
+
+56
+00:03:31.120 --> 00:03:39.865
+The Time Machine connects actors, commits and deployments to snapshots, the timeline, and the resulting path.
+
+57
+00:03:40.120 --> 00:03:43.845
+Code Security has a dedicated report.
+
+58
+00:03:44.120 --> 00:03:47.488
+Application Security has a dedicated report.
+
+59
+00:03:48.120 --> 00:03:51.190
+Review the evidence and remediation.
+
+60
+00:03:52.120 --> 00:03:55.855
+AI Security has a dedicated report.
+
+61
+00:03:56.120 --> 00:03:59.335
+Review the cited weakness mappings.
+
+62
+00:04:00.120 --> 00:04:03.505
+Review actions owners and validation.
+
+63
+00:04:04.120 --> 00:04:07.745
+Review engine coverage and evidence sources.
+
+64
+00:04:08.120 --> 00:04:09.830
+Close this evidence panel.
+
+65
+00:04:10.120 --> 00:04:17.134
+Code Security. A source change replaced bound SQL parameters with an unsafe query.
+
+66
+00:04:18.120 --> 00:04:26.028
+Alex Rivera introduced the change. The linked deployment records when it reached the environment. Three API routes share the affected query helper.
+
+67
+00:04:27.120 --> 00:04:32.839
+Open the completed assessment. All applicable engines contribute to one combined product report.
+
+68
+00:04:33.120 --> 00:04:35.825
+CodeSentinelX evidence.
+
+69
+00:04:37.120 --> 00:04:38.830
+Close this evidence panel.
+
+70
+00:04:39.120 --> 00:04:41.200
+Semgrep evidence.
+
+71
+00:04:43.120 --> 00:04:44.830
+Close this evidence panel.
+
+72
+00:04:45.120 --> 00:04:47.310
+Gitleaks evidence.
+
+73
+00:04:49.120 --> 00:04:50.830
+Close this evidence panel.
+
+74
+00:04:51.120 --> 00:04:53.395
+TruffleHog evidence.
+
+75
+00:04:55.120 --> 00:04:56.830
+Close this evidence panel.
+
+76
+00:04:57.120 --> 00:04:59.260
+Checkov evidence.
+
+77
+00:05:01.120 --> 00:05:02.830
+Close this evidence panel.
+
+78
+00:05:03.120 --> 00:05:05.190
+Trivy evidence.
+
+79
+00:05:07.120 --> 00:05:08.830
+Close this evidence panel.
+
+80
+00:05:09.120 --> 00:05:11.540
+Syft evidence.
+
+81
+00:05:13.120 --> 00:05:14.830
+Close this evidence panel.
+
+82
+00:05:15.120 --> 00:05:16.980
+Grype evidence.
+
+83
+00:05:19.120 --> 00:05:20.830
+Close this evidence panel.
+
+84
+00:05:21.120 --> 00:05:23.965
+Open Policy Agent evidence.
+
+85
+00:05:25.120 --> 00:05:26.830
+Close this evidence panel.
+
+86
+00:05:27.120 --> 00:05:29.410
+ClamAV evidence.
+
+87
+00:05:31.120 --> 00:05:32.830
+Close this evidence panel.
+
+88
+00:05:33.120 --> 00:05:36.841
+Review unique findings, with every contributing engine preserved.
+
+89
+00:05:37.120 --> 00:05:42.505
+Inspect user input reaches a dynamically built sql query.
+
+90
+00:05:43.120 --> 00:05:46.753
+Trace the responsible change and affected scope.
+
+91
+00:05:47.120 --> 00:05:48.835
+Mark this finding reviewed.
+
+92
+00:05:49.120 --> 00:05:54.355
+Inspect credential-shaped value committed to test configuration.
+
+93
+00:05:55.120 --> 00:05:58.753
+Trace the responsible change and affected scope.
+
+94
+00:05:59.120 --> 00:06:00.835
+Mark this finding reviewed.
+
+95
+00:06:01.120 --> 00:06:05.895
+Inspect terraform permits unrestricted database ingress.
+
+96
+00:06:07.120 --> 00:06:10.753
+Trace the responsible change and affected scope.
+
+97
+00:06:11.120 --> 00:06:12.835
+Mark this finding reviewed.
+
+98
+00:06:13.120 --> 00:06:17.840
+Inspect legacy dependency requires a security review.
+
+99
+00:06:19.120 --> 00:06:22.753
+Trace the responsible change and affected scope.
+
+100
+00:06:23.120 --> 00:06:24.835
+Mark this finding reviewed.
+
+101
+00:06:25.120 --> 00:06:28.765
+Open the combined Code Security report.
+
+102
+00:06:30.120 --> 00:06:33.795
+Review the cause and five incident answers.
+
+103
+00:06:34.120 --> 00:06:42.865
+The Time Machine connects actors, commits and deployments to snapshots, the timeline, and the resulting path.
+
+104
+00:06:43.120 --> 00:06:46.190
+Review the evidence and remediation.
+
+105
+00:06:47.120 --> 00:06:50.488
+Application Security has a dedicated report.
+
+106
+00:06:51.120 --> 00:06:54.609
+Cloud Security has a dedicated report.
+
+107
+00:06:55.120 --> 00:06:58.855
+AI Security has a dedicated report.
+
+108
+00:06:59.120 --> 00:07:02.335
+Review the cited weakness mappings.
+
+109
+00:07:03.120 --> 00:07:06.505
+Review actions owners and validation.
+
+110
+00:07:07.120 --> 00:07:10.745
+Review engine coverage and evidence sources.
+
+111
+00:07:11.120 --> 00:07:12.830
+Close this evidence panel.
+
+112
+00:07:13.120 --> 00:07:20.189
+Application Security. A gateway release removed browser protections from the observed routes.
+
+113
+00:07:21.120 --> 00:07:29.166
+Jordan Patel introduced the change. The linked deployment records when it reached the environment. Four observed routes have changed response protections.
+
+114
+00:07:30.120 --> 00:07:35.839
+Open the completed assessment. All applicable engines contribute to one combined product report.
+
+115
+00:07:36.120 --> 00:07:39.575
+HTTP posture review evidence.
+
+116
+00:07:40.120 --> 00:07:41.830
+Close this evidence panel.
+
+117
+00:07:42.120 --> 00:07:44.325
+Nuclei evidence.
+
+118
+00:07:46.120 --> 00:07:47.830
+Close this evidence panel.
+
+119
+00:07:48.120 --> 00:07:50.985
+OWASP ZAP Baseline evidence.
+
+120
+00:07:52.120 --> 00:07:53.830
+Close this evidence panel.
+
+121
+00:07:54.120 --> 00:07:57.841
+Review unique findings, with every contributing engine preserved.
+
+122
+00:07:58.120 --> 00:08:02.635
+Inspect content security policy header is absent.
+
+123
+00:08:04.120 --> 00:08:07.753
+Trace the responsible change and affected scope.
+
+124
+00:08:08.120 --> 00:08:09.835
+Mark this finding reviewed.
+
+125
+00:08:10.120 --> 00:08:14.545
+Inspect content type sniffing protection is absent.
+
+126
+00:08:16.120 --> 00:08:19.753
+Trace the responsible change and affected scope.
+
+127
+00:08:20.120 --> 00:08:21.835
+Mark this finding reviewed.
+
+128
+00:08:22.120 --> 00:08:27.025
+Inspect session cookie lacks an explicit samesite policy.
+
+129
+00:08:28.120 --> 00:08:31.753
+Trace the responsible change and affected scope.
+
+130
+00:08:32.120 --> 00:08:33.835
+Mark this finding reviewed.
+
+131
+00:08:34.120 --> 00:08:39.255
+Inspect verbose framework error response exposes internals.
+
+132
+00:08:40.120 --> 00:08:43.753
+Trace the responsible change and affected scope.
+
+133
+00:08:44.120 --> 00:08:45.835
+Mark this finding reviewed.
+
+134
+00:08:46.120 --> 00:08:50.280
+Open the combined Application Security report.
+
+135
+00:08:51.120 --> 00:08:54.795
+Review the cause and five incident answers.
+
+136
+00:08:55.120 --> 00:09:03.865
+The Time Machine connects actors, commits and deployments to snapshots, the timeline, and the resulting path.
+
+137
+00:09:04.120 --> 00:09:07.845
+Code Security has a dedicated report.
+
+138
+00:09:08.120 --> 00:09:11.190
+Review the evidence and remediation.
+
+139
+00:09:12.120 --> 00:09:15.609
+Cloud Security has a dedicated report.
+
+140
+00:09:16.120 --> 00:09:19.855
+AI Security has a dedicated report.
+
+141
+00:09:20.120 --> 00:09:23.335
+Review the cited weakness mappings.
+
+142
+00:09:24.120 --> 00:09:27.505
+Review actions owners and validation.
+
+143
+00:09:28.120 --> 00:09:31.745
+Review engine coverage and evidence sources.
+
+144
+00:09:32.120 --> 00:09:33.830
+Close this evidence panel.
+
+145
+00:09:34.120 --> 00:09:41.880
+AI Security. An assistant release weakened instruction handling and privileged tool approval.
+
+146
+00:09:42.120 --> 00:09:50.652
+Sam Taylor introduced the change. The linked deployment records when it reached the environment. Two privileged tool interfaces are in scope.
+
+147
+00:09:51.120 --> 00:09:56.839
+Open the completed assessment. All applicable engines contribute to one combined product report.
+
+148
+00:09:57.120 --> 00:10:00.280
+AI application review evidence.
+
+149
+00:10:01.120 --> 00:10:02.830
+Close this evidence panel.
+
+150
+00:10:03.120 --> 00:10:05.125
+garak evidence.
+
+151
+00:10:07.120 --> 00:10:08.830
+Close this evidence panel.
+
+152
+00:10:09.120 --> 00:10:11.785
+PyRIT evidence.
+
+153
+00:10:13.120 --> 00:10:14.830
+Close this evidence panel.
+
+154
+00:10:15.120 --> 00:10:18.841
+Review unique findings, with every contributing engine preserved.
+
+155
+00:10:19.120 --> 00:10:24.310
+Inspect remote model code execution is explicitly enabled.
+
+156
+00:10:25.120 --> 00:10:28.753
+Trace the responsible change and affected scope.
+
+157
+00:10:29.120 --> 00:10:30.835
+Mark this finding reviewed.
+
+158
+00:10:31.120 --> 00:10:36.390
+Inspect assistant follows an instruction embedded in retrieved text.
+
+159
+00:10:37.120 --> 00:10:40.753
+Trace the responsible change and affected scope.
+
+160
+00:10:41.120 --> 00:10:42.835
+Mark this finding reviewed.
+
+161
+00:10:43.120 --> 00:10:48.380
+Inspect assistant proposes a privileged tool action without approval.
+
+162
+00:10:49.120 --> 00:10:52.753
+Trace the responsible change and affected scope.
+
+163
+00:10:53.120 --> 00:10:54.835
+Mark this finding reviewed.
+
+164
+00:10:55.120 --> 00:10:58.740
+Open the combined AI Security report.
+
+165
+00:11:00.120 --> 00:11:03.795
+Review the cause and five incident answers.
+
+166
+00:11:04.120 --> 00:11:12.865
+The Time Machine connects actors, commits and deployments to snapshots, the timeline, and the resulting path.
+
+167
+00:11:13.120 --> 00:11:16.845
+Code Security has a dedicated report.
+
+168
+00:11:17.120 --> 00:11:20.488
+Application Security has a dedicated report.
+
+169
+00:11:21.120 --> 00:11:24.609
+Cloud Security has a dedicated report.
+
+170
+00:11:25.120 --> 00:11:28.190
+Review the evidence and remediation.
+
+171
+00:11:29.120 --> 00:11:32.335
+Review the cited weakness mappings.
+
+172
+00:11:33.120 --> 00:11:36.505
+Review actions owners and validation.
+
+173
+00:11:37.120 --> 00:11:40.745
+Review engine coverage and evidence sources.
+
+174
+00:11:41.120 --> 00:11:42.830
+Close this evidence panel.
+
+175
+00:11:43.120 --> 00:11:48.595
+Investigate the change using linked snapshots and deployment records.
+
+176
+00:11:50.120 --> 00:11:54.565
+Compare the environment thirty days before detection.
+
+177
+00:11:55.120 --> 00:11:59.700
+Compare the environment fifteen days before detection.
+
+178
+00:12:00.120 --> 00:12:04.040
+Review the last recorded state before the change.
+
+179
+00:12:05.120 --> 00:12:09.080
+Compare the state after the responsible deployment.
+
+180
+00:12:10.120 --> 00:12:14.670
+Switch to the Cloud Security historical investigation.
+
+181
+00:12:15.120 --> 00:12:19.115
+Follow the merged change into its linked deployment.
+
+182
+00:12:20.120 --> 00:12:24.795
+The deployment introduced the change on October thirteenth.
+
+183
+00:12:25.120 --> 00:12:29.360
+Maya Chen, through the recorded deployment service.
+
+184
+00:12:30.120 --> 00:12:33.650
+Fourteen example assets are reachable.
+
+185
+00:12:35.120 --> 00:12:39.575
+Restore scoped permissions and block wildcard actions before deployment.
+
+186
+00:12:40.120 --> 00:12:44.555
+Switch to the Code Security historical investigation.
+
+187
+00:12:45.120 --> 00:12:49.115
+Follow the merged change into its linked deployment.
+
+188
+00:12:50.120 --> 00:12:54.795
+The deployment introduced the change on October thirteenth.
+
+189
+00:12:55.120 --> 00:12:59.590
+Alex Rivera, through the recorded deployment service.
+
+190
+00:13:00.120 --> 00:13:04.330
+Three API routes share the affected query helper.
+
+191
+00:13:05.120 --> 00:13:09.427
+Restore bound parameters and add an injection regression test.
+
+192
+00:13:10.120 --> 00:13:14.603
+Switch to the Application Security historical investigation.
+
+193
+00:13:15.120 --> 00:13:19.115
+Follow the merged change into its linked deployment.
+
+194
+00:13:20.120 --> 00:13:24.795
+The deployment introduced the change on October thirteenth.
+
+195
+00:13:25.120 --> 00:13:29.680
+Jordan Patel, through the recorded deployment service.
+
+196
+00:13:30.120 --> 00:13:34.525
+Four observed routes have changed response protections.
+
+197
+00:13:35.120 --> 00:13:39.675
+Restore gateway protections and retest the same routes.
+
+198
+00:13:40.120 --> 00:13:44.570
+Switch to the AI Security historical investigation.
+
+199
+00:13:45.120 --> 00:13:49.115
+Follow the merged change into its linked deployment.
+
+200
+00:13:50.120 --> 00:13:54.795
+The deployment introduced the change on October thirteenth.
+
+201
+00:13:55.120 --> 00:13:59.410
+Sam Taylor, through the recorded deployment service.
+
+202
+00:14:00.120 --> 00:14:04.085
+Two privileged tool interfaces are in scope.
+
+203
+00:14:05.120 --> 00:14:09.735
+Enforce tool authorization and approval outside the model.
+
+204
+00:14:10.120 --> 00:14:16.431
+Twelve granted actions but three observed. Review the nine unobserved actions before removal.
+
+205
+00:14:17.120 --> 00:14:24.696
+Four product reports use one schema. Engine evidence is combined and formats are export choices.
+
+206
+00:14:25.120 --> 00:14:28.270
+Choose a report export format.
+
+207
+00:14:29.120 --> 00:14:30.708
+Web page.
+
+208
+00:14:31.120 --> 00:14:32.753
+PDF.
+
+209
+00:14:33.120 --> 00:14:34.450
+JSON.
+
+210
+00:14:35.120 --> 00:14:36.805
+CSV.
+
+211
+00:14:37.120 --> 00:14:38.805
+XML.
+
+212
+00:14:39.120 --> 00:14:40.685
+SARIF.
+
+213
+00:14:41.120 --> 00:14:42.735
+Markdown.
+
+214
+00:14:43.120 --> 00:14:44.717
+Plain text.
+
+215
+00:14:45.120 --> 00:14:46.875
+Fix patch.
+
+216
+00:14:47.120 --> 00:14:48.775
+Word document.
+
+217
+00:14:49.120 --> 00:14:50.815
+Excel workbook.
+
+218
+00:14:51.120 --> 00:14:54.270
+Choose a report export format.
+
+219
+00:14:55.120 --> 00:14:56.708
+Web page.
+
+220
+00:14:57.120 --> 00:14:58.753
+PDF.
+
+221
+00:14:59.120 --> 00:15:00.450
+JSON.
+
+222
+00:15:01.120 --> 00:15:02.805
+CSV.
+
+223
+00:15:03.120 --> 00:15:04.805
+XML.
+
+224
+00:15:05.120 --> 00:15:06.685
+SARIF.
+
+225
+00:15:07.120 --> 00:15:08.735
+Markdown.
+
+226
+00:15:09.120 --> 00:15:10.717
+Plain text.
+
+227
+00:15:11.120 --> 00:15:12.875
+Fix patch.
+
+228
+00:15:13.120 --> 00:15:14.775
+Word document.
+
+229
+00:15:15.120 --> 00:15:16.815
+Excel workbook.
+
+230
+00:15:17.120 --> 00:15:20.270
+Choose a report export format.
+
+231
+00:15:21.120 --> 00:15:22.708
+Web page.
+
+232
+00:15:23.120 --> 00:15:24.753
+PDF.
+
+233
+00:15:25.120 --> 00:15:26.450
+JSON.
+
+234
+00:15:27.120 --> 00:15:28.805
+CSV.
+
+235
+00:15:29.120 --> 00:15:30.805
+XML.
+
+236
+00:15:31.120 --> 00:15:32.685
+SARIF.
+
+237
+00:15:33.120 --> 00:15:34.735
+Markdown.
+
+238
+00:15:35.120 --> 00:15:36.717
+Plain text.
+
+239
+00:15:37.120 --> 00:15:38.875
+Fix patch.
+
+240
+00:15:39.120 --> 00:15:40.775
+Word document.
+
+241
+00:15:41.120 --> 00:15:42.815
+Excel workbook.
+
+242
+00:15:43.120 --> 00:15:46.270
+Choose a report export format.
+
+243
+00:15:47.120 --> 00:15:48.708
+Web page.
+
+244
+00:15:49.120 --> 00:15:50.753
+PDF.
+
+245
+00:15:51.120 --> 00:15:52.450
+JSON.
+
+246
+00:15:53.120 --> 00:15:54.805
+CSV.
+
+247
+00:15:55.120 --> 00:15:56.805
+XML.
+
+248
+00:15:57.120 --> 00:15:58.685
+SARIF.
+
+249
+00:15:59.120 --> 00:16:00.735
+Markdown.
+
+250
+00:16:01.120 --> 00:16:02.717
+Plain text.
+
+251
+00:16:03.120 --> 00:16:04.875
+Fix patch.
+
+252
+00:16:05.120 --> 00:16:06.775
+Word document.
+
+253
+00:16:07.120 --> 00:16:08.815
+Excel workbook.
+
+254
+00:16:09.120 --> 00:16:15.060
+Connect the responsible change to historical state affected scope and prevention.
+
+255
+00:16:17.120 --> 00:16:23.182
+Explore Code Sentinel X. Inspect a completed assessment and follow the investigation into its report.
