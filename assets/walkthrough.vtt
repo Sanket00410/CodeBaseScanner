@@ -1,0 +1,1276 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:09.000
+Explain how risk became possible
+CodeSentinelX connects a security finding to the change behind it: how it happened, when, who changed it, its blast radius and prevention. Explore a complete Aster Commerce example dataset.
+
+2
+00:00:09.000 --> 00:00:17.000
+Five questions in one investigation
+The overview answers all five questions using a permission-change example. Every answer is linked to a commit, deployment, snapshot or resource observation.
+
+3
+00:00:17.000 --> 00:00:22.000
+Take the guided product tour
+The guided tour moves through the four products, historical investigation and reports. Next, Previous and Close control the tour.
+
+4
+00:00:22.000 --> 00:00:25.000
+Next product chapter
+Next opens Cloud Security and its responsible-change story.
+
+5
+00:00:25.000 --> 00:00:28.000
+Previous chapter
+Previous returns to the overview.
+
+6
+00:00:28.000 --> 00:00:31.000
+Explore independently
+Close the coach to explore the completed assessments.
+
+7
+00:00:31.000 --> 00:00:39.000
+Cloud security investigation
+PR #214 replaced scoped S3 permissions with a wildcard. Terraform run-881 applied the policy; the workload-to-customer-data edge appeared two minutes later.
+
+8
+00:00:39.000 --> 00:00:48.000
+Who, when and blast radius
+Maya Chen (dev.a) introduced commit abc1234. Deployment run-881 changed the environment at 2026-10-13T14:02:00Z. 14 reachable assets in the example inventory, including customer-data, export-history and orders backup objects.
+
+9
+00:00:48.000 --> 00:00:54.000
+View the completed scan
+The demo opens a completed assessment directly. All applicable engines contribute to the same product report; no setup or live scanning is needed to explore it.
+
+10
+00:00:54.000 --> 00:00:58.000
+AWS role connector evidence
+Account inventory: IAM role, EC2 instance, S3 bucket, EKS cluster. Matching observations remain linked to one finding while preserving each engine source.
+
+11
+00:00:58.000 --> 00:01:00.000
+Return to combined scan results
+Close the engine evidence and continue reviewing the assessment.
+
+12
+00:01:00.000 --> 00:01:04.000
+Prowler evidence
+2 observations linked to combined findings Matching observations remain linked to one finding while preserving each engine source.
+
+13
+00:01:04.000 --> 00:01:06.000
+Return to combined scan results
+Close the engine evidence and continue reviewing the assessment.
+
+14
+00:01:06.000 --> 00:01:10.000
+Cloud Custodian evidence
+2 observations linked to combined findings Matching observations remain linked to one finding while preserving each engine source.
+
+15
+00:01:10.000 --> 00:01:12.000
+Return to combined scan results
+Close the engine evidence and continue reviewing the assessment.
+
+16
+00:01:12.000 --> 00:01:16.000
+ScoutSuite evidence
+1 observations linked to combined findings Matching observations remain linked to one finding while preserving each engine source.
+
+17
+00:01:16.000 --> 00:01:18.000
+Return to combined scan results
+Close the engine evidence and continue reviewing the assessment.
+
+18
+00:01:18.000 --> 00:01:22.000
+Trivy evidence
+1 observations linked to combined findings Matching observations remain linked to one finding while preserving each engine source.
+
+19
+00:01:22.000 --> 00:01:24.000
+Return to combined scan results
+Close the engine evidence and continue reviewing the assessment.
+
+20
+00:01:24.000 --> 00:01:28.000
+Syft evidence
+SBOM inventory: orders-api, application image and three example packages. Matching observations remain linked to one finding while preserving each engine source.
+
+21
+00:01:28.000 --> 00:01:30.000
+Return to combined scan results
+Close the engine evidence and continue reviewing the assessment.
+
+22
+00:01:30.000 --> 00:01:34.000
+Grype evidence
+Assessment context retained; no additional findings in this scenario. Matching observations remain linked to one finding while preserving each engine source.
+
+23
+00:01:34.000 --> 00:01:36.000
+Return to combined scan results
+Close the engine evidence and continue reviewing the assessment.
+
+24
+00:01:36.000 --> 00:01:40.000
+Checkov evidence
+1 observations linked to combined findings Matching observations remain linked to one finding while preserving each engine source.
+
+25
+00:01:40.000 --> 00:01:42.000
+Return to combined scan results
+Close the engine evidence and continue reviewing the assessment.
+
+26
+00:01:42.000 --> 00:01:46.000
+Kubescape evidence
+2 observations linked to combined findings Matching observations remain linked to one finding while preserving each engine source.
+
+27
+00:01:46.000 --> 00:01:48.000
+Return to combined scan results
+Close the engine evidence and continue reviewing the assessment.
+
+28
+00:01:48.000 --> 00:01:52.000
+kube-bench evidence
+1 observations linked to combined findings Matching observations remain linked to one finding while preserving each engine source.
+
+29
+00:01:52.000 --> 00:01:54.000
+Return to combined scan results
+Close the engine evidence and continue reviewing the assessment.
+
+30
+00:01:54.000 --> 00:01:58.000
+Cartography evidence
+Asset graph: EC2 workload, IAM role, S3 bucket and related resources. Matching observations remain linked to one finding while preserving each engine source.
+
+31
+00:01:58.000 --> 00:02:00.000
+Return to combined scan results
+Close the engine evidence and continue reviewing the assessment.
+
+32
+00:02:00.000 --> 00:02:04.000
+Falco evidence
+1 observations linked to combined findings Matching observations remain linked to one finding while preserving each engine source.
+
+33
+00:02:04.000 --> 00:02:06.000
+Return to combined scan results
+Close the engine evidence and continue reviewing the assessment.
+
+34
+00:02:06.000 --> 00:02:10.000
+Open Policy Agent evidence
+Assessment context retained; no additional findings in this scenario. Matching observations remain linked to one finding while preserving each engine source.
+
+35
+00:02:10.000 --> 00:02:12.000
+Return to combined scan results
+Close the engine evidence and continue reviewing the assessment.
+
+36
+00:02:12.000 --> 00:02:16.000
+ClamAV evidence
+Three example training files reviewed; no example signature matches. Matching observations remain linked to one finding while preserving each engine source.
+
+37
+00:02:16.000 --> 00:02:18.000
+Return to combined scan results
+Close the engine evidence and continue reviewing the assessment.
+
+38
+00:02:18.000 --> 00:02:22.000
+Unique findings and combined sources
+Return to the product workspace. Matching engine observations are combined, so findings are not repeated for each tool.
+
+39
+00:02:22.000 --> 00:02:28.000
+Public access configuration on customer exports
+Review the bucket policy and access-point configuration, block unnecessary public access, then verify the effective access from an authorized test context.
+
+40
+00:02:28.000 --> 00:02:32.000
+Read the responsible-change answers
+The finding records why, how, introduction, first observation, actor, commit, deployment, root cause, blast radius and prevention.
+
+41
+00:02:32.000 --> 00:02:34.000
+Review the finding
+Mark reviewed updates this visit’s review state. Remediation still requires a validated fix and reassessment.
+
+42
+00:02:34.000 --> 00:02:40.000
+Application role grants wildcard S3 actions
+Replace wildcard actions and resources with reviewed application requirements. Test seasonal tasks and effective authorization before rollout.
+
+43
+00:02:40.000 --> 00:02:44.000
+Read the responsible-change answers
+The finding records why, how, introduction, first observation, actor, commit, deployment, root cause, blast radius and prevention.
+
+44
+00:02:44.000 --> 00:02:46.000
+Review the finding
+Mark reviewed updates this visit’s review state. Remediation still requires a validated fix and reassessment.
+
+45
+00:02:46.000 --> 00:02:52.000
+Kubernetes workload can read namespace secrets
+Reduce the service account role to named secrets and validate the workload.
+
+46
+00:02:52.000 --> 00:02:56.000
+Read the responsible-change answers
+The finding records why, how, introduction, first observation, actor, commit, deployment, root cause, blast radius and prevention.
+
+47
+00:02:56.000 --> 00:02:58.000
+Review the finding
+Mark reviewed updates this visit’s review state. Remediation still requires a validated fix and reassessment.
+
+48
+00:02:58.000 --> 00:03:04.000
+Container runs with privileged security context
+Drop privileged mode, require non-root and enforce admission policies.
+
+49
+00:03:04.000 --> 00:03:08.000
+Read the responsible-change answers
+The finding records why, how, introduction, first observation, actor, commit, deployment, root cause, blast radius and prevention.
+
+50
+00:03:08.000 --> 00:03:10.000
+Review the finding
+Mark reviewed updates this visit’s review state. Remediation still requires a validated fix and reassessment.
+
+51
+00:03:10.000 --> 00:03:16.000
+Unexpected shell process in application container
+Review the recorded process and deployment; a shell alone does not prove compromise.
+
+52
+00:03:16.000 --> 00:03:20.000
+Read the responsible-change answers
+The finding records why, how, introduction, first observation, actor, commit, deployment, root cause, blast radius and prevention.
+
+53
+00:03:20.000 --> 00:03:22.000
+Review the finding
+Mark reviewed updates this visit’s review state. Remediation still requires a validated fix and reassessment.
+
+54
+00:03:22.000 --> 00:03:27.000
+Open the complete product report
+This is one combined report for Cloud security. It uses the same investigation schema as the other three products.
+
+55
+00:03:27.000 --> 00:03:31.000
+Cloud security report · executive summary
+The executive summary leads with the responsible change, combined finding counts and all five incident questions.
+
+56
+00:03:31.000 --> 00:03:40.000
+Cloud security report · time machine
+Time Machine links the root cause, actor, commit and deployment to snapshots, timeline, comparison, path and investigator explanation.
+
+57
+00:03:40.000 --> 00:03:44.000
+Cloud security report · sast
+The shared SAST section retains source evidence when relevant to this report. Other product assessments have their own dedicated report.
+
+58
+00:03:44.000 --> 00:03:48.000
+Cloud security report · dast
+The shared DAST section retains observed application behavior and route scope when relevant.
+
+59
+00:03:48.000 --> 00:03:52.000
+Cloud security report · cloud
+The shared Cloud section retains resource, identity and change evidence when relevant.
+
+60
+00:03:52.000 --> 00:03:56.000
+Cloud security report · ai
+The shared AI Security section retains configuration and evaluation evidence when relevant.
+
+61
+00:03:56.000 --> 00:04:00.000
+Cloud security report · framework mapping
+Framework coverage is presented separately from evidence and remediation. A report is not a compliance certification.
+
+62
+00:04:00.000 --> 00:04:04.000
+Cloud security report · remediation plan
+The remediation plan specifies the finding, scoped action, responsible team and same-scope validation.
+
+63
+00:04:04.000 --> 00:04:08.000
+Cloud security report · appendix
+The appendix retains combined engine coverage, evidence sources and the demo dataset methodology.
+
+64
+00:04:08.000 --> 00:04:10.000
+Close the report preview
+The full report is also available as a standalone printable page.
+
+65
+00:04:10.000 --> 00:04:18.000
+Code security investigation
+PR #228 replaced parameter binding with an interpolated query at orders/api.py:42. Release 284 deployed that revision; the source diff links the finding to the change.
+
+66
+00:04:18.000 --> 00:04:27.000
+Who, when and blast radius
+Alex Rivera (dev.b) introduced commit b7c82de. Deployment orders-release-284 changed the environment at 2026-10-13T10:06:00Z. Three API routes share this query helper; the application database role can read the example users and orders tables.
+
+67
+00:04:27.000 --> 00:04:33.000
+View the completed scan
+The demo opens a completed assessment directly. All applicable engines contribute to the same product report; no setup or live scanning is needed to explore it.
+
+68
+00:04:33.000 --> 00:04:37.000
+CodeSentinelX evidence
+1 observations linked to combined findings Matching observations remain linked to one finding while preserving each engine source.
+
+69
+00:04:37.000 --> 00:04:39.000
+Return to combined scan results
+Close the engine evidence and continue reviewing the assessment.
+
+70
+00:04:39.000 --> 00:04:43.000
+Semgrep evidence
+1 observations linked to combined findings Matching observations remain linked to one finding while preserving each engine source.
+
+71
+00:04:43.000 --> 00:04:45.000
+Return to combined scan results
+Close the engine evidence and continue reviewing the assessment.
+
+72
+00:04:45.000 --> 00:04:49.000
+Gitleaks evidence
+1 observations linked to combined findings Matching observations remain linked to one finding while preserving each engine source.
+
+73
+00:04:49.000 --> 00:04:51.000
+Return to combined scan results
+Close the engine evidence and continue reviewing the assessment.
+
+74
+00:04:51.000 --> 00:04:55.000
+TruffleHog evidence
+1 observations linked to combined findings Matching observations remain linked to one finding while preserving each engine source.
+
+75
+00:04:55.000 --> 00:04:57.000
+Return to combined scan results
+Close the engine evidence and continue reviewing the assessment.
+
+76
+00:04:57.000 --> 00:05:01.000
+Checkov evidence
+1 observations linked to combined findings Matching observations remain linked to one finding while preserving each engine source.
+
+77
+00:05:01.000 --> 00:05:03.000
+Return to combined scan results
+Close the engine evidence and continue reviewing the assessment.
+
+78
+00:05:03.000 --> 00:05:07.000
+Trivy evidence
+2 observations linked to combined findings Matching observations remain linked to one finding while preserving each engine source.
+
+79
+00:05:07.000 --> 00:05:09.000
+Return to combined scan results
+Close the engine evidence and continue reviewing the assessment.
+
+80
+00:05:09.000 --> 00:05:13.000
+Syft evidence
+SBOM inventory: orders-api, application image and three example packages. Matching observations remain linked to one finding while preserving each engine source.
+
+81
+00:05:13.000 --> 00:05:15.000
+Return to combined scan results
+Close the engine evidence and continue reviewing the assessment.
+
+82
+00:05:15.000 --> 00:05:19.000
+Grype evidence
+1 observations linked to combined findings Matching observations remain linked to one finding while preserving each engine source.
+
+83
+00:05:19.000 --> 00:05:21.000
+Return to combined scan results
+Close the engine evidence and continue reviewing the assessment.
+
+84
+00:05:21.000 --> 00:05:25.000
+Open Policy Agent evidence
+1 observations linked to combined findings Matching observations remain linked to one finding while preserving each engine source.
+
+85
+00:05:25.000 --> 00:05:27.000
+Return to combined scan results
+Close the engine evidence and continue reviewing the assessment.
+
+86
+00:05:27.000 --> 00:05:31.000
+ClamAV evidence
+Three example training files reviewed; no example signature matches. Matching observations remain linked to one finding while preserving each engine source.
+
+87
+00:05:31.000 --> 00:05:33.000
+Return to combined scan results
+Close the engine evidence and continue reviewing the assessment.
+
+88
+00:05:33.000 --> 00:05:37.000
+Unique findings and combined sources
+Return to the product workspace. Matching engine observations are combined, so findings are not repeated for each tool.
+
+89
+00:05:37.000 --> 00:05:43.000
+User input reaches a dynamically built SQL query
+Use the parameter-binding API for your actual database driver. The placeholder syntax depends on that driver. Add a regression test and reassess the same code.
+
+90
+00:05:43.000 --> 00:05:47.000
+Read the responsible-change answers
+The finding records why, how, introduction, first observation, actor, commit, deployment, root cause, blast radius and prevention.
+
+91
+00:05:47.000 --> 00:05:49.000
+Review the finding
+Mark reviewed updates this visit’s review state. Remediation still requires a validated fix and reassessment.
+
+92
+00:05:49.000 --> 00:05:55.000
+Credential-shaped value committed to test configuration
+Use secret storage. For a real credential revoke it, rotate dependent systems and inspect use.
+
+93
+00:05:55.000 --> 00:05:59.000
+Read the responsible-change answers
+The finding records why, how, introduction, first observation, actor, commit, deployment, root cause, blast radius and prevention.
+
+94
+00:05:59.000 --> 00:06:01.000
+Review the finding
+Mark reviewed updates this visit’s review state. Remediation still requires a validated fix and reassessment.
+
+95
+00:06:01.000 --> 00:06:07.000
+Terraform permits unrestricted database ingress
+Restrict ingress to application security groups and test connectivity.
+
+96
+00:06:07.000 --> 00:06:11.000
+Read the responsible-change answers
+The finding records why, how, introduction, first observation, actor, commit, deployment, root cause, blast radius and prevention.
+
+97
+00:06:11.000 --> 00:06:13.000
+Review the finding
+Mark reviewed updates this visit’s review state. Remediation still requires a validated fix and reassessment.
+
+98
+00:06:13.000 --> 00:06:19.000
+Legacy dependency requires a security review
+Upgrade to a reviewed supported release and verify advisory applicability; this fictional package has no real advisory.
+
+99
+00:06:19.000 --> 00:06:23.000
+Read the responsible-change answers
+The finding records why, how, introduction, first observation, actor, commit, deployment, root cause, blast radius and prevention.
+
+100
+00:06:23.000 --> 00:06:25.000
+Review the finding
+Mark reviewed updates this visit’s review state. Remediation still requires a validated fix and reassessment.
+
+101
+00:06:25.000 --> 00:06:30.000
+Open the complete product report
+This is one combined report for Code security. It uses the same investigation schema as the other three products.
+
+102
+00:06:30.000 --> 00:06:34.000
+Code security report · executive summary
+The executive summary leads with the responsible change, combined finding counts and all five incident questions.
+
+103
+00:06:34.000 --> 00:06:43.000
+Code security report · time machine
+Time Machine links the root cause, actor, commit and deployment to snapshots, timeline, comparison, path and investigator explanation.
+
+104
+00:06:43.000 --> 00:06:47.000
+Code security report · sast
+The shared SAST section retains source evidence when relevant to this report. Other product assessments have their own dedicated report.
+
+105
+00:06:47.000 --> 00:06:51.000
+Code security report · dast
+The shared DAST section retains observed application behavior and route scope when relevant.
+
+106
+00:06:51.000 --> 00:06:55.000
+Code security report · cloud
+The shared Cloud section retains resource, identity and change evidence when relevant.
+
+107
+00:06:55.000 --> 00:06:59.000
+Code security report · ai
+The shared AI Security section retains configuration and evaluation evidence when relevant.
+
+108
+00:06:59.000 --> 00:07:03.000
+Code security report · framework mapping
+Framework coverage is presented separately from evidence and remediation. A report is not a compliance certification.
+
+109
+00:07:03.000 --> 00:07:07.000
+Code security report · remediation plan
+The remediation plan specifies the finding, scoped action, responsible team and same-scope validation.
+
+110
+00:07:07.000 --> 00:07:11.000
+Code security report · appendix
+The appendix retains combined engine coverage, evidence sources and the demo dataset methodology.
+
+111
+00:07:11.000 --> 00:07:13.000
+Close the report preview
+The full report is also available as a standalone printable page.
+
+112
+00:07:13.000 --> 00:07:21.000
+Application security investigation
+PR #231 removed the response-hardening middleware from the gateway configuration. Release 412 changed the observed headers and cookie attributes on the same scoped routes.
+
+113
+00:07:21.000 --> 00:07:30.000
+Who, when and blast radius
+Jordan Patel (dev.c) introduced commit c4d91fa. Deployment edge-release-412 changed the environment at 2026-10-13T12:20:00Z. Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation.
+
+114
+00:07:30.000 --> 00:07:36.000
+View the completed scan
+The demo opens a completed assessment directly. All applicable engines contribute to the same product report; no setup or live scanning is needed to explore it.
+
+115
+00:07:36.000 --> 00:07:40.000
+HTTP posture review evidence
+2 observations linked to combined findings Matching observations remain linked to one finding while preserving each engine source.
+
+116
+00:07:40.000 --> 00:07:42.000
+Return to combined scan results
+Close the engine evidence and continue reviewing the assessment.
+
+117
+00:07:42.000 --> 00:07:46.000
+Nuclei evidence
+3 observations linked to combined findings Matching observations remain linked to one finding while preserving each engine source.
+
+118
+00:07:46.000 --> 00:07:48.000
+Return to combined scan results
+Close the engine evidence and continue reviewing the assessment.
+
+119
+00:07:48.000 --> 00:07:52.000
+OWASP ZAP Baseline evidence
+4 observations linked to combined findings Matching observations remain linked to one finding while preserving each engine source.
+
+120
+00:07:52.000 --> 00:07:54.000
+Return to combined scan results
+Close the engine evidence and continue reviewing the assessment.
+
+121
+00:07:54.000 --> 00:07:58.000
+Unique findings and combined sources
+Return to the product workspace. Matching engine observations are combined, so findings are not repeated for each tool.
+
+122
+00:07:58.000 --> 00:08:04.000
+Content Security Policy header is absent
+Design a policy for the application’s actual scripts and content sources. Test with report-only deployment where appropriate before enforcement.
+
+123
+00:08:04.000 --> 00:08:08.000
+Read the responsible-change answers
+The finding records why, how, introduction, first observation, actor, commit, deployment, root cause, blast radius and prevention.
+
+124
+00:08:08.000 --> 00:08:10.000
+Review the finding
+Mark reviewed updates this visit’s review state. Remediation still requires a validated fix and reassessment.
+
+125
+00:08:10.000 --> 00:08:16.000
+Content type sniffing protection is absent
+Serve appropriate content types and add X-Content-Type-Options: nosniff to application responses.
+
+126
+00:08:16.000 --> 00:08:20.000
+Read the responsible-change answers
+The finding records why, how, introduction, first observation, actor, commit, deployment, root cause, blast radius and prevention.
+
+127
+00:08:20.000 --> 00:08:22.000
+Review the finding
+Mark reviewed updates this visit’s review state. Remediation still requires a validated fix and reassessment.
+
+128
+00:08:22.000 --> 00:08:28.000
+Session cookie lacks an explicit SameSite policy
+Choose a SameSite policy appropriate to authentication and test cross-site flows.
+
+129
+00:08:28.000 --> 00:08:32.000
+Read the responsible-change answers
+The finding records why, how, introduction, first observation, actor, commit, deployment, root cause, blast radius and prevention.
+
+130
+00:08:32.000 --> 00:08:34.000
+Review the finding
+Mark reviewed updates this visit’s review state. Remediation still requires a validated fix and reassessment.
+
+131
+00:08:34.000 --> 00:08:40.000
+Verbose framework error response exposes internals
+Return a generic error and retain details in access-controlled server logs.
+
+132
+00:08:40.000 --> 00:08:44.000
+Read the responsible-change answers
+The finding records why, how, introduction, first observation, actor, commit, deployment, root cause, blast radius and prevention.
+
+133
+00:08:44.000 --> 00:08:46.000
+Review the finding
+Mark reviewed updates this visit’s review state. Remediation still requires a validated fix and reassessment.
+
+134
+00:08:46.000 --> 00:08:51.000
+Open the complete product report
+This is one combined report for Application security. It uses the same investigation schema as the other three products.
+
+135
+00:08:51.000 --> 00:08:55.000
+Application security report · executive summary
+The executive summary leads with the responsible change, combined finding counts and all five incident questions.
+
+136
+00:08:55.000 --> 00:09:04.000
+Application security report · time machine
+Time Machine links the root cause, actor, commit and deployment to snapshots, timeline, comparison, path and investigator explanation.
+
+137
+00:09:04.000 --> 00:09:08.000
+Application security report · sast
+The shared SAST section retains source evidence when relevant to this report. Other product assessments have their own dedicated report.
+
+138
+00:09:08.000 --> 00:09:12.000
+Application security report · dast
+The shared DAST section retains observed application behavior and route scope when relevant.
+
+139
+00:09:12.000 --> 00:09:16.000
+Application security report · cloud
+The shared Cloud section retains resource, identity and change evidence when relevant.
+
+140
+00:09:16.000 --> 00:09:20.000
+Application security report · ai
+The shared AI Security section retains configuration and evaluation evidence when relevant.
+
+141
+00:09:20.000 --> 00:09:24.000
+Application security report · framework mapping
+Framework coverage is presented separately from evidence and remediation. A report is not a compliance certification.
+
+142
+00:09:24.000 --> 00:09:28.000
+Application security report · remediation plan
+The remediation plan specifies the finding, scoped action, responsible team and same-scope validation.
+
+143
+00:09:28.000 --> 00:09:32.000
+Application security report · appendix
+The appendix retains combined engine coverage, evidence sources and the demo dataset methodology.
+
+144
+00:09:32.000 --> 00:09:34.000
+Close the report preview
+The full report is also available as a standalone printable page.
+
+145
+00:09:34.000 --> 00:09:42.000
+AI security investigation
+PR #239 changed the retrieval prompt and tool policy. Release 19 allowed the example canary instruction and proposed an export action without the expected approval step.
+
+146
+00:09:42.000 --> 00:09:51.000
+Who, when and blast radius
+Sam Taylor (dev.d) introduced commit d92ab61. Deployment assistant-release-19 changed the environment at 2026-10-13T16:45:00Z. Two privileged tool interfaces are in scenario scope: customer export and refund creation. One failing synthetic retrieval case and one unauthorized tool proposal are retained as evidence.
+
+147
+00:09:51.000 --> 00:09:57.000
+View the completed scan
+The demo opens a completed assessment directly. All applicable engines contribute to the same product report; no setup or live scanning is needed to explore it.
+
+148
+00:09:57.000 --> 00:10:01.000
+AI application review evidence
+1 observations linked to combined findings Matching observations remain linked to one finding while preserving each engine source.
+
+149
+00:10:01.000 --> 00:10:03.000
+Return to combined scan results
+Close the engine evidence and continue reviewing the assessment.
+
+150
+00:10:03.000 --> 00:10:07.000
+garak evidence
+1 observations linked to combined findings Matching observations remain linked to one finding while preserving each engine source.
+
+151
+00:10:07.000 --> 00:10:09.000
+Return to combined scan results
+Close the engine evidence and continue reviewing the assessment.
+
+152
+00:10:09.000 --> 00:10:13.000
+PyRIT evidence
+2 observations linked to combined findings Matching observations remain linked to one finding while preserving each engine source.
+
+153
+00:10:13.000 --> 00:10:15.000
+Return to combined scan results
+Close the engine evidence and continue reviewing the assessment.
+
+154
+00:10:15.000 --> 00:10:19.000
+Unique findings and combined sources
+Return to the product workspace. Matching engine observations are combined, so findings are not repeated for each tool.
+
+155
+00:10:19.000 --> 00:10:25.000
+Remote model code execution is explicitly enabled
+Prefer loading that does not require repository code. If custom code is necessary, review its contents, pin an immutable revision and isolate execution.
+
+156
+00:10:25.000 --> 00:10:29.000
+Read the responsible-change answers
+The finding records why, how, introduction, first observation, actor, commit, deployment, root cause, blast radius and prevention.
+
+157
+00:10:29.000 --> 00:10:31.000
+Review the finding
+Mark reviewed updates this visit’s review state. Remediation still requires a validated fix and reassessment.
+
+158
+00:10:31.000 --> 00:10:37.000
+Assistant follows an instruction embedded in retrieved text
+Separate document data from instructions, limit tool privileges and retest a held-out evaluation set.
+
+159
+00:10:37.000 --> 00:10:41.000
+Read the responsible-change answers
+The finding records why, how, introduction, first observation, actor, commit, deployment, root cause, blast radius and prevention.
+
+160
+00:10:41.000 --> 00:10:43.000
+Review the finding
+Mark reviewed updates this visit’s review state. Remediation still requires a validated fix and reassessment.
+
+161
+00:10:43.000 --> 00:10:49.000
+Assistant proposes a privileged tool action without approval
+Enforce authorization in the tool service, require approval and validate arguments independently of model text.
+
+162
+00:10:49.000 --> 00:10:53.000
+Read the responsible-change answers
+The finding records why, how, introduction, first observation, actor, commit, deployment, root cause, blast radius and prevention.
+
+163
+00:10:53.000 --> 00:10:55.000
+Review the finding
+Mark reviewed updates this visit’s review state. Remediation still requires a validated fix and reassessment.
+
+164
+00:10:55.000 --> 00:11:00.000
+Open the complete product report
+This is one combined report for AI security. It uses the same investigation schema as the other three products.
+
+165
+00:11:00.000 --> 00:11:04.000
+AI security report · executive summary
+The executive summary leads with the responsible change, combined finding counts and all five incident questions.
+
+166
+00:11:04.000 --> 00:11:13.000
+AI security report · time machine
+Time Machine links the root cause, actor, commit and deployment to snapshots, timeline, comparison, path and investigator explanation.
+
+167
+00:11:13.000 --> 00:11:17.000
+AI security report · sast
+The shared SAST section retains source evidence when relevant to this report. Other product assessments have their own dedicated report.
+
+168
+00:11:17.000 --> 00:11:21.000
+AI security report · dast
+The shared DAST section retains observed application behavior and route scope when relevant.
+
+169
+00:11:21.000 --> 00:11:25.000
+AI security report · cloud
+The shared Cloud section retains resource, identity and change evidence when relevant.
+
+170
+00:11:25.000 --> 00:11:29.000
+AI security report · ai
+The shared AI Security section retains configuration and evaluation evidence when relevant.
+
+171
+00:11:29.000 --> 00:11:33.000
+AI security report · framework mapping
+Framework coverage is presented separately from evidence and remediation. A report is not a compliance certification.
+
+172
+00:11:33.000 --> 00:11:37.000
+AI security report · remediation plan
+The remediation plan specifies the finding, scoped action, responsible team and same-scope validation.
+
+173
+00:11:37.000 --> 00:11:41.000
+AI security report · appendix
+The appendix retains combined engine coverage, evidence sources and the demo dataset methodology.
+
+174
+00:11:41.000 --> 00:11:43.000
+Close the report preview
+The full report is also available as a standalone printable page.
+
+175
+00:11:43.000 --> 00:11:50.000
+Attack Path Time Machine
+Find how a change created the recorded path. The five questions are answered from explicit change, observation and deployment references.
+
+176
+00:11:50.000 --> 00:11:55.000
+30 days before detection
+Compare the recorded configuration before and after the security-relevant change. The displayed state comes from the selected example snapshot.
+
+177
+00:11:55.000 --> 00:12:00.000
+15 days before detection
+Compare the recorded configuration before and after the security-relevant change. The displayed state comes from the selected example snapshot.
+
+178
+00:12:00.000 --> 00:12:05.000
+Last pre-change baseline
+Compare the recorded configuration before and after the security-relevant change. The displayed state comes from the selected example snapshot.
+
+179
+00:12:05.000 --> 00:12:10.000
+After the responsible deployment
+Compare the recorded configuration before and after the security-relevant change. The displayed state comes from the selected example snapshot.
+
+180
+00:12:10.000 --> 00:12:15.000
+Historical Cloud security investigation
+PR #214 replaced scoped S3 permissions with a wildcard. Terraform run-881 applied the policy; the workload-to-customer-data edge appeared two minutes later.
+
+181
+00:12:15.000 --> 00:12:20.000
+How did this happen?
+The investigator returns a grounded answer using the supplied change and assessment records for this product.
+
+182
+00:12:20.000 --> 00:12:25.000
+When did this happen?
+The investigator returns a grounded answer using the supplied change and assessment records for this product.
+
+183
+00:12:25.000 --> 00:12:30.000
+Who changed it?
+The investigator returns a grounded answer using the supplied change and assessment records for this product.
+
+184
+00:12:30.000 --> 00:12:35.000
+What is the blast radius?
+The investigator returns a grounded answer using the supplied change and assessment records for this product.
+
+185
+00:12:35.000 --> 00:12:40.000
+How do I prevent it again?
+The investigator returns a grounded answer using the supplied change and assessment records for this product.
+
+186
+00:12:40.000 --> 00:12:45.000
+Historical Code security investigation
+PR #228 replaced parameter binding with an interpolated query at orders/api.py:42. Release 284 deployed that revision; the source diff links the finding to the change.
+
+187
+00:12:45.000 --> 00:12:50.000
+How did this happen?
+The investigator returns a grounded answer using the supplied change and assessment records for this product.
+
+188
+00:12:50.000 --> 00:12:55.000
+When did this happen?
+The investigator returns a grounded answer using the supplied change and assessment records for this product.
+
+189
+00:12:55.000 --> 00:13:00.000
+Who changed it?
+The investigator returns a grounded answer using the supplied change and assessment records for this product.
+
+190
+00:13:00.000 --> 00:13:05.000
+What is the blast radius?
+The investigator returns a grounded answer using the supplied change and assessment records for this product.
+
+191
+00:13:05.000 --> 00:13:10.000
+How do I prevent it again?
+The investigator returns a grounded answer using the supplied change and assessment records for this product.
+
+192
+00:13:10.000 --> 00:13:15.000
+Historical Application security investigation
+PR #231 removed the response-hardening middleware from the gateway configuration. Release 412 changed the observed headers and cookie attributes on the same scoped routes.
+
+193
+00:13:15.000 --> 00:13:20.000
+How did this happen?
+The investigator returns a grounded answer using the supplied change and assessment records for this product.
+
+194
+00:13:20.000 --> 00:13:25.000
+When did this happen?
+The investigator returns a grounded answer using the supplied change and assessment records for this product.
+
+195
+00:13:25.000 --> 00:13:30.000
+Who changed it?
+The investigator returns a grounded answer using the supplied change and assessment records for this product.
+
+196
+00:13:30.000 --> 00:13:35.000
+What is the blast radius?
+The investigator returns a grounded answer using the supplied change and assessment records for this product.
+
+197
+00:13:35.000 --> 00:13:40.000
+How do I prevent it again?
+The investigator returns a grounded answer using the supplied change and assessment records for this product.
+
+198
+00:13:40.000 --> 00:13:45.000
+Historical AI security investigation
+PR #239 changed the retrieval prompt and tool policy. Release 19 allowed the example canary instruction and proposed an export action without the expected approval step.
+
+199
+00:13:45.000 --> 00:13:50.000
+How did this happen?
+The investigator returns a grounded answer using the supplied change and assessment records for this product.
+
+200
+00:13:50.000 --> 00:13:55.000
+When did this happen?
+The investigator returns a grounded answer using the supplied change and assessment records for this product.
+
+201
+00:13:55.000 --> 00:14:00.000
+Who changed it?
+The investigator returns a grounded answer using the supplied change and assessment records for this product.
+
+202
+00:14:00.000 --> 00:14:05.000
+What is the blast radius?
+The investigator returns a grounded answer using the supplied change and assessment records for this product.
+
+203
+00:14:05.000 --> 00:14:10.000
+How do I prevent it again?
+The investigator returns a grounded answer using the supplied change and assessment records for this product.
+
+204
+00:14:10.000 --> 00:14:17.000
+Shadow Permission Detector
+Cloud compares explicit grants with observed actions. Review unobserved permissions with the workload owner; missing observations do not prove disuse.
+
+205
+00:14:17.000 --> 00:14:25.000
+Four reports using one schema
+The library contains exactly four reports: Cloud, SAST, DAST and AI Security. Each combines its engine sources. File formats are export choices within the report.
+
+206
+00:14:25.000 --> 00:14:29.000
+CLOUD report exports
+Choose a file format for this same investigation. Changing the format does not create another report or alter its conclusions.
+
+207
+00:14:29.000 --> 00:14:31.000
+CLOUD · HTML
+Export the same CLOUD investigation as HTML. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+208
+00:14:31.000 --> 00:14:33.000
+CLOUD · PDF
+Export the same CLOUD investigation as PDF. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+209
+00:14:33.000 --> 00:14:35.000
+CLOUD · JSON
+Export the same CLOUD investigation as JSON. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+210
+00:14:35.000 --> 00:14:37.000
+CLOUD · CSV
+Export the same CLOUD investigation as CSV. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+211
+00:14:37.000 --> 00:14:39.000
+CLOUD · XML
+Export the same CLOUD investigation as XML. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+212
+00:14:39.000 --> 00:14:41.000
+CLOUD · SARIF
+Export the same CLOUD investigation as SARIF. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+213
+00:14:41.000 --> 00:14:43.000
+CLOUD · MD
+Export the same CLOUD investigation as MD. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+214
+00:14:43.000 --> 00:14:45.000
+CLOUD · TXT
+Export the same CLOUD investigation as TXT. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+215
+00:14:45.000 --> 00:14:47.000
+CLOUD · PATCH
+Export the same CLOUD investigation as PATCH. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+216
+00:14:47.000 --> 00:14:49.000
+CLOUD · DOCX
+Export the same CLOUD investigation as DOCX. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+217
+00:14:49.000 --> 00:14:51.000
+CLOUD · XLSX
+Export the same CLOUD investigation as XLSX. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+218
+00:14:51.000 --> 00:14:55.000
+SAST report exports
+Choose a file format for this same investigation. Changing the format does not create another report or alter its conclusions.
+
+219
+00:14:55.000 --> 00:14:57.000
+SAST · HTML
+Export the same SAST investigation as HTML. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+220
+00:14:57.000 --> 00:14:59.000
+SAST · PDF
+Export the same SAST investigation as PDF. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+221
+00:14:59.000 --> 00:15:01.000
+SAST · JSON
+Export the same SAST investigation as JSON. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+222
+00:15:01.000 --> 00:15:03.000
+SAST · CSV
+Export the same SAST investigation as CSV. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+223
+00:15:03.000 --> 00:15:05.000
+SAST · XML
+Export the same SAST investigation as XML. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+224
+00:15:05.000 --> 00:15:07.000
+SAST · SARIF
+Export the same SAST investigation as SARIF. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+225
+00:15:07.000 --> 00:15:09.000
+SAST · MD
+Export the same SAST investigation as MD. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+226
+00:15:09.000 --> 00:15:11.000
+SAST · TXT
+Export the same SAST investigation as TXT. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+227
+00:15:11.000 --> 00:15:13.000
+SAST · PATCH
+Export the same SAST investigation as PATCH. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+228
+00:15:13.000 --> 00:15:15.000
+SAST · DOCX
+Export the same SAST investigation as DOCX. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+229
+00:15:15.000 --> 00:15:17.000
+SAST · XLSX
+Export the same SAST investigation as XLSX. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+230
+00:15:17.000 --> 00:15:21.000
+DAST report exports
+Choose a file format for this same investigation. Changing the format does not create another report or alter its conclusions.
+
+231
+00:15:21.000 --> 00:15:23.000
+DAST · HTML
+Export the same DAST investigation as HTML. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+232
+00:15:23.000 --> 00:15:25.000
+DAST · PDF
+Export the same DAST investigation as PDF. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+233
+00:15:25.000 --> 00:15:27.000
+DAST · JSON
+Export the same DAST investigation as JSON. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+234
+00:15:27.000 --> 00:15:29.000
+DAST · CSV
+Export the same DAST investigation as CSV. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+235
+00:15:29.000 --> 00:15:31.000
+DAST · XML
+Export the same DAST investigation as XML. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+236
+00:15:31.000 --> 00:15:33.000
+DAST · SARIF
+Export the same DAST investigation as SARIF. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+237
+00:15:33.000 --> 00:15:35.000
+DAST · MD
+Export the same DAST investigation as MD. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+238
+00:15:35.000 --> 00:15:37.000
+DAST · TXT
+Export the same DAST investigation as TXT. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+239
+00:15:37.000 --> 00:15:39.000
+DAST · PATCH
+Export the same DAST investigation as PATCH. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+240
+00:15:39.000 --> 00:15:41.000
+DAST · DOCX
+Export the same DAST investigation as DOCX. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+241
+00:15:41.000 --> 00:15:43.000
+DAST · XLSX
+Export the same DAST investigation as XLSX. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+242
+00:15:43.000 --> 00:15:47.000
+AI report exports
+Choose a file format for this same investigation. Changing the format does not create another report or alter its conclusions.
+
+243
+00:15:47.000 --> 00:15:49.000
+AI · HTML
+Export the same AI investigation as HTML. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+244
+00:15:49.000 --> 00:15:51.000
+AI · PDF
+Export the same AI investigation as PDF. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+245
+00:15:51.000 --> 00:15:53.000
+AI · JSON
+Export the same AI investigation as JSON. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+246
+00:15:53.000 --> 00:15:55.000
+AI · CSV
+Export the same AI investigation as CSV. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+247
+00:15:55.000 --> 00:15:57.000
+AI · XML
+Export the same AI investigation as XML. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+248
+00:15:57.000 --> 00:15:59.000
+AI · SARIF
+Export the same AI investigation as SARIF. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+249
+00:15:59.000 --> 00:16:01.000
+AI · MD
+Export the same AI investigation as MD. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+250
+00:16:01.000 --> 00:16:03.000
+AI · TXT
+Export the same AI investigation as TXT. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+251
+00:16:03.000 --> 00:16:05.000
+AI · PATCH
+Export the same AI investigation as PATCH. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+252
+00:16:05.000 --> 00:16:07.000
+AI · DOCX
+Export the same AI investigation as DOCX. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+253
+00:16:07.000 --> 00:16:09.000
+AI · XLSX
+Export the same AI investigation as XLSX. The responsible-change answers, engine evidence, timeline and remediation are retained.
+
+254
+00:16:09.000 --> 00:16:17.000
+What makes the workflow useful
+Move from what is wrong to the change that introduced it, historical state, the recorded actor, affected scope and a prevention plan. The evidence remains together across all four products.
+
+255
+00:16:17.000 --> 00:16:24.000
+Explore CodeSentinelX
+Choose a product, open its completed scan, inspect the change history and read its report. This is the complete illustrative product workflow, without engine setup or credentials.

@@ -1,0 +1,1703 @@
+{
+  "schema_version": "captm.report/1",
+  "report_id": "CAPTM-2026-CLOUD-001",
+  "title": "An infrastructure change opened access to customer exports",
+  "classification": "DEMO SCENARIO · Aster Commerce",
+  "generated_at": "2026-10-14T10:10:00Z",
+  "workspace": "aster-commerce",
+  "window": {
+    "from": "2026-09-14T00:00:00Z",
+    "to": "2026-10-14T10:10:00Z"
+  },
+  "products": [
+    "cloud"
+  ],
+  "sections": [
+    {
+      "id": "executive_summary",
+      "title": "1. Executive summary",
+      "content": {
+        "incident": {
+          "title": "An infrastructure change opened access to customer exports",
+          "target": "AWS 111122223333 · production",
+          "actor": "Maya Chen (dev.a)",
+          "serviceActor": "ci-terraform",
+          "commit": "abc1234",
+          "deployment": "run-881",
+          "introduced": "2026-10-13T14:02:00Z",
+          "merged": "2026-10-12T09:00:00Z",
+          "path": [
+            "Internet-exposed EC2 i-0abc",
+            "app-role",
+            "customer-data S3 bucket"
+          ],
+          "before": "s3:GetObject on app-assets/*",
+          "after": "s3:* on *",
+          "how": "PR #214 replaced scoped S3 permissions with a wildcard. Terraform run-881 applied the policy; the workload-to-customer-data edge appeared two minutes later.",
+          "blast": "14 reachable assets in the example inventory, including customer-data, export-history and orders backup objects.",
+          "prevention": "Revert to scoped GetObject permissions, block wildcard IAM actions in CI and compare the resulting access graph before deployment.",
+          "source": "Terraform plan + CloudTrail PutRolePolicy + graph snapshots",
+          "baseline": "snap-cloud-1010",
+          "changed": "snap-cloud-1013",
+          "lead": "DEMO-CLOUD-02"
+        },
+        "summary": "PR #214 replaced scoped S3 permissions with a wildcard. Terraform run-881 applied the policy; the workload-to-customer-data edge appeared two minutes later.",
+        "severity_counts": {
+          "critical": 1,
+          "high": 3,
+          "medium": 1,
+          "low": 0,
+          "info": 0
+        },
+        "unique_findings": 5,
+        "raw_observations": 11,
+        "duplicate_observations_combined": 6,
+        "scan_pipeline_coverage": [
+          {
+            "engine_id": "aws-connector",
+            "name": "AWS role connector",
+            "category": "STS identity and permission preflight",
+            "homepage": "https://docs.aws.amazon.com/cli/latest/reference/sts/assume-role.html",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [],
+            "summary": "Account inventory: IAM role, EC2 instance, S3 bucket, EKS cluster."
+          },
+          {
+            "engine_id": "prowler",
+            "name": "Prowler",
+            "category": "Cloud posture / CSPM",
+            "homepage": "https://github.com/prowler-cloud/prowler",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-CLOUD-01",
+              "DEMO-CLOUD-02"
+            ],
+            "summary": "2 observations linked to combined findings"
+          },
+          {
+            "engine_id": "cloud-custodian",
+            "name": "Cloud Custodian",
+            "category": "Cloud policy and posture",
+            "homepage": "https://github.com/cloud-custodian/cloud-custodian",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-CLOUD-01",
+              "DEMO-CLOUD-02"
+            ],
+            "summary": "2 observations linked to combined findings"
+          },
+          {
+            "engine_id": "scoutsuite",
+            "name": "ScoutSuite",
+            "category": "Cloud posture / CSPM",
+            "homepage": "https://github.com/nccgroup/ScoutSuite",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-CLOUD-01"
+            ],
+            "summary": "1 observations linked to combined findings"
+          },
+          {
+            "engine_id": "trivy",
+            "name": "Trivy",
+            "category": "Dependency / Misconfiguration",
+            "homepage": "https://aquasecurity.github.io/trivy/",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-EXTRA-02"
+            ],
+            "summary": "1 observations linked to combined findings"
+          },
+          {
+            "engine_id": "syft",
+            "name": "Syft",
+            "category": "SBOM inventory",
+            "homepage": "https://github.com/anchore/syft",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [],
+            "summary": "SBOM inventory: orders-api, application image and three example packages."
+          },
+          {
+            "engine_id": "grype",
+            "name": "Grype",
+            "category": "Dependency / SCA",
+            "homepage": "https://github.com/anchore/grype",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [],
+            "summary": "Assessment context retained; no additional findings in this scenario."
+          },
+          {
+            "engine_id": "checkov",
+            "name": "Checkov",
+            "category": "IaC Security",
+            "homepage": "https://www.checkov.io/",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-EXTRA-02"
+            ],
+            "summary": "1 observations linked to combined findings"
+          },
+          {
+            "engine_id": "kubescape",
+            "name": "Kubescape",
+            "category": "Kubernetes posture",
+            "homepage": "https://github.com/kubescape/kubescape",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-EXTRA-01",
+              "DEMO-EXTRA-02"
+            ],
+            "summary": "2 observations linked to combined findings"
+          },
+          {
+            "engine_id": "kube-bench",
+            "name": "kube-bench",
+            "category": "Kubernetes Security",
+            "homepage": "https://github.com/aquasecurity/kube-bench",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-EXTRA-01"
+            ],
+            "summary": "1 observations linked to combined findings"
+          },
+          {
+            "engine_id": "cartography",
+            "name": "Cartography",
+            "category": "Asset graph / attack paths",
+            "homepage": "https://github.com/cartography-cncf/cartography",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [],
+            "summary": "Asset graph: EC2 workload, IAM role, S3 bucket and related resources."
+          },
+          {
+            "engine_id": "falco",
+            "name": "Falco",
+            "category": "Runtime detection",
+            "homepage": "https://github.com/falcosecurity/falco",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-EXTRA-03"
+            ],
+            "summary": "1 observations linked to combined findings"
+          },
+          {
+            "engine_id": "opa",
+            "name": "Open Policy Agent",
+            "category": "Policy as code",
+            "homepage": "https://github.com/open-policy-agent/opa",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [],
+            "summary": "Assessment context retained; no additional findings in this scenario."
+          },
+          {
+            "engine_id": "clamav",
+            "name": "ClamAV",
+            "category": "Malware detection",
+            "homepage": "https://github.com/Cisco-Talos/clamav",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [],
+            "summary": "Three example training files reviewed; no example signature matches."
+          }
+        ],
+        "top_actions": [
+          "Revert to scoped GetObject permissions, block wildcard IAM actions in CI and compare the resulting access graph before deployment."
+        ],
+        "data_gaps": [],
+        "deduplication_basis": "Matching resource and exact fixture evidence share an identity; every contributing engine is retained."
+      }
+    },
+    {
+      "id": "time_machine",
+      "title": "2. Attack Path Time Machine",
+      "content": {
+        "root_cause": [
+          {
+            "finding_id": "DEMO-CLOUD-01",
+            "why_vulnerable": "The imported source reports a public-access configuration.",
+            "how_became_possible": "The linked source/configuration revision introduced the recorded change: Public access configuration on customer exports. Terraform plan + CloudTrail PutRolePolicy + graph snapshots connect this evidence to run-881.",
+            "when_introduced": "2026-10-13T14:02:00Z",
+            "when_first_observed": "2026-10-13T14:02:00Z",
+            "who_introduced": "Maya Chen (dev.a); applied by ci-terraform",
+            "responsible_commit": "abc1234",
+            "responsible_deployment": "run-881",
+            "root_cause": "The linked source/configuration revision introduced the recorded change: Public access configuration on customer exports. Terraform plan + CloudTrail PutRolePolicy + graph snapshots connect this evidence to run-881.",
+            "blast_radius": "14 reachable assets in the example inventory, including customer-data, export-history and orders backup objects.",
+            "prevention": "Review the bucket policy and access-point configuration, block unnecessary public access, then verify the effective access from an authorized test context.",
+            "evidence_basis": "Aster Commerce demo dataset: linked evidence and provenance supplied for this example."
+          },
+          {
+            "finding_id": "DEMO-CLOUD-02",
+            "why_vulnerable": "The source policy contains wildcard action and resource patterns.",
+            "how_became_possible": "PR #214 replaced scoped S3 permissions with a wildcard. Terraform run-881 applied the policy; the workload-to-customer-data edge appeared two minutes later.",
+            "when_introduced": "2026-10-13T14:02:00Z",
+            "when_first_observed": "2026-10-13T14:02:00Z",
+            "who_introduced": "Maya Chen (dev.a); applied by ci-terraform",
+            "responsible_commit": "abc1234",
+            "responsible_deployment": "run-881",
+            "root_cause": "PR #214 replaced scoped S3 permissions with a wildcard. Terraform run-881 applied the policy; the workload-to-customer-data edge appeared two minutes later.",
+            "blast_radius": "14 reachable assets in the example inventory, including customer-data, export-history and orders backup objects.",
+            "prevention": "Replace wildcard actions and resources with reviewed application requirements. Test seasonal tasks and effective authorization before rollout.",
+            "evidence_basis": "Aster Commerce demo dataset: linked evidence and provenance supplied for this example."
+          },
+          {
+            "finding_id": "DEMO-EXTRA-01",
+            "why_vulnerable": "RoleBinding: payments-reader -> secrets/get,list",
+            "how_became_possible": "The linked source/configuration revision introduced the recorded change: Kubernetes workload can read namespace secrets. Terraform plan + CloudTrail PutRolePolicy + graph snapshots connect this evidence to run-881.",
+            "when_introduced": "2026-10-13T14:02:00Z",
+            "when_first_observed": "2026-10-13T14:02:00Z",
+            "who_introduced": "Maya Chen (dev.a); applied by ci-terraform",
+            "responsible_commit": "abc1234",
+            "responsible_deployment": "run-881",
+            "root_cause": "The linked source/configuration revision introduced the recorded change: Kubernetes workload can read namespace secrets. Terraform plan + CloudTrail PutRolePolicy + graph snapshots connect this evidence to run-881.",
+            "blast_radius": "14 reachable assets in the example inventory, including customer-data, export-history and orders backup objects.",
+            "prevention": "Reduce the service account role to named secrets and validate the workload.",
+            "evidence_basis": "Aster Commerce demo dataset: linked evidence and provenance supplied for this example."
+          },
+          {
+            "finding_id": "DEMO-EXTRA-02",
+            "why_vulnerable": "securityContext:\n  privileged: true",
+            "how_became_possible": "The linked source/configuration revision introduced the recorded change: Container runs with privileged security context. Terraform plan + CloudTrail PutRolePolicy + graph snapshots connect this evidence to run-881.",
+            "when_introduced": "2026-10-13T14:02:00Z",
+            "when_first_observed": "2026-10-13T14:02:00Z",
+            "who_introduced": "Maya Chen (dev.a); applied by ci-terraform",
+            "responsible_commit": "abc1234",
+            "responsible_deployment": "run-881",
+            "root_cause": "The linked source/configuration revision introduced the recorded change: Container runs with privileged security context. Terraform plan + CloudTrail PutRolePolicy + graph snapshots connect this evidence to run-881.",
+            "blast_radius": "14 reachable assets in the example inventory, including customer-data, export-history and orders backup objects.",
+            "prevention": "Drop privileged mode, require non-root and enforce admission policies.",
+            "evidence_basis": "Aster Commerce demo dataset: linked evidence and provenance supplied for this example."
+          },
+          {
+            "finding_id": "DEMO-EXTRA-03",
+            "why_vulnerable": "Illustrative event: /bin/sh spawned beneath application process",
+            "how_became_possible": "The linked source/configuration revision introduced the recorded change: Unexpected shell process in application container. Terraform plan + CloudTrail PutRolePolicy + graph snapshots connect this evidence to run-881.",
+            "when_introduced": "2026-10-13T14:02:00Z",
+            "when_first_observed": "2026-10-13T14:02:00Z",
+            "who_introduced": "Maya Chen (dev.a); applied by ci-terraform",
+            "responsible_commit": "abc1234",
+            "responsible_deployment": "run-881",
+            "root_cause": "The linked source/configuration revision introduced the recorded change: Unexpected shell process in application container. Terraform plan + CloudTrail PutRolePolicy + graph snapshots connect this evidence to run-881.",
+            "blast_radius": "14 reachable assets in the example inventory, including customer-data, export-history and orders backup objects.",
+            "prevention": "Review the recorded process and deployment; a shell alone does not prove compromise.",
+            "evidence_basis": "Aster Commerce demo dataset: linked evidence and provenance supplied for this example."
+          }
+        ],
+        "investigation_answers": {
+          "why_is_it_vulnerable": [
+            {
+              "finding_id": "DEMO-CLOUD-01",
+              "answer": "The imported source reports a public-access configuration."
+            },
+            {
+              "finding_id": "DEMO-CLOUD-02",
+              "answer": "The source policy contains wildcard action and resource patterns."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-01",
+              "answer": "RoleBinding: payments-reader -> secrets/get,list"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-02",
+              "answer": "securityContext:\n  privileged: true"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-03",
+              "answer": "Illustrative event: /bin/sh spawned beneath application process"
+            }
+          ],
+          "how_did_this_happen": [
+            {
+              "finding_id": "DEMO-CLOUD-01",
+              "answer": "The linked source/configuration revision introduced the recorded change: Public access configuration on customer exports. Terraform plan + CloudTrail PutRolePolicy + graph snapshots connect this evidence to run-881."
+            },
+            {
+              "finding_id": "DEMO-CLOUD-02",
+              "answer": "PR #214 replaced scoped S3 permissions with a wildcard. Terraform run-881 applied the policy; the workload-to-customer-data edge appeared two minutes later."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-01",
+              "answer": "The linked source/configuration revision introduced the recorded change: Kubernetes workload can read namespace secrets. Terraform plan + CloudTrail PutRolePolicy + graph snapshots connect this evidence to run-881."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-02",
+              "answer": "The linked source/configuration revision introduced the recorded change: Container runs with privileged security context. Terraform plan + CloudTrail PutRolePolicy + graph snapshots connect this evidence to run-881."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-03",
+              "answer": "The linked source/configuration revision introduced the recorded change: Unexpected shell process in application container. Terraform plan + CloudTrail PutRolePolicy + graph snapshots connect this evidence to run-881."
+            }
+          ],
+          "when_did_it_become_vulnerable": [
+            {
+              "finding_id": "DEMO-CLOUD-01",
+              "answer": "2026-10-13T14:02:00Z"
+            },
+            {
+              "finding_id": "DEMO-CLOUD-02",
+              "answer": "2026-10-13T14:02:00Z"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-01",
+              "answer": "2026-10-13T14:02:00Z"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-02",
+              "answer": "2026-10-13T14:02:00Z"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-03",
+              "answer": "2026-10-13T14:02:00Z"
+            }
+          ],
+          "when_was_it_first_observed": [
+            {
+              "finding_id": "DEMO-CLOUD-01",
+              "answer": "2026-10-13T14:02:00Z"
+            },
+            {
+              "finding_id": "DEMO-CLOUD-02",
+              "answer": "2026-10-13T14:02:00Z"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-01",
+              "answer": "2026-10-13T14:02:00Z"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-02",
+              "answer": "2026-10-13T14:02:00Z"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-03",
+              "answer": "2026-10-13T14:02:00Z"
+            }
+          ],
+          "who_changed_it": [
+            {
+              "finding_id": "DEMO-CLOUD-01",
+              "answer": "Maya Chen (dev.a); applied by ci-terraform"
+            },
+            {
+              "finding_id": "DEMO-CLOUD-02",
+              "answer": "Maya Chen (dev.a); applied by ci-terraform"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-01",
+              "answer": "Maya Chen (dev.a); applied by ci-terraform"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-02",
+              "answer": "Maya Chen (dev.a); applied by ci-terraform"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-03",
+              "answer": "Maya Chen (dev.a); applied by ci-terraform"
+            }
+          ],
+          "which_deployment_created_it": [
+            {
+              "finding_id": "DEMO-CLOUD-01",
+              "answer": "run-881"
+            },
+            {
+              "finding_id": "DEMO-CLOUD-02",
+              "answer": "run-881"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-01",
+              "answer": "run-881"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-02",
+              "answer": "run-881"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-03",
+              "answer": "run-881"
+            }
+          ],
+          "which_commit_introduced_it": [
+            {
+              "finding_id": "DEMO-CLOUD-01",
+              "answer": "abc1234"
+            },
+            {
+              "finding_id": "DEMO-CLOUD-02",
+              "answer": "abc1234"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-01",
+              "answer": "abc1234"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-02",
+              "answer": "abc1234"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-03",
+              "answer": "abc1234"
+            }
+          ],
+          "what_is_the_root_cause": [
+            {
+              "finding_id": "DEMO-CLOUD-01",
+              "answer": "The linked source/configuration revision introduced the recorded change: Public access configuration on customer exports. Terraform plan + CloudTrail PutRolePolicy + graph snapshots connect this evidence to run-881."
+            },
+            {
+              "finding_id": "DEMO-CLOUD-02",
+              "answer": "PR #214 replaced scoped S3 permissions with a wildcard. Terraform run-881 applied the policy; the workload-to-customer-data edge appeared two minutes later."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-01",
+              "answer": "The linked source/configuration revision introduced the recorded change: Kubernetes workload can read namespace secrets. Terraform plan + CloudTrail PutRolePolicy + graph snapshots connect this evidence to run-881."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-02",
+              "answer": "The linked source/configuration revision introduced the recorded change: Container runs with privileged security context. Terraform plan + CloudTrail PutRolePolicy + graph snapshots connect this evidence to run-881."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-03",
+              "answer": "The linked source/configuration revision introduced the recorded change: Unexpected shell process in application container. Terraform plan + CloudTrail PutRolePolicy + graph snapshots connect this evidence to run-881."
+            }
+          ],
+          "what_is_the_blast_radius": [
+            {
+              "finding_id": "DEMO-CLOUD-01",
+              "answer": "14 reachable assets in the example inventory, including customer-data, export-history and orders backup objects."
+            },
+            {
+              "finding_id": "DEMO-CLOUD-02",
+              "answer": "14 reachable assets in the example inventory, including customer-data, export-history and orders backup objects."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-01",
+              "answer": "14 reachable assets in the example inventory, including customer-data, export-history and orders backup objects."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-02",
+              "answer": "14 reachable assets in the example inventory, including customer-data, export-history and orders backup objects."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-03",
+              "answer": "14 reachable assets in the example inventory, including customer-data, export-history and orders backup objects."
+            }
+          ],
+          "how_do_we_prevent_it_again": [
+            {
+              "finding_id": "DEMO-CLOUD-01",
+              "answer": "Review the bucket policy and access-point configuration, block unnecessary public access, then verify the effective access from an authorized test context."
+            },
+            {
+              "finding_id": "DEMO-CLOUD-02",
+              "answer": "Replace wildcard actions and resources with reviewed application requirements. Test seasonal tasks and effective authorization before rollout."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-01",
+              "answer": "Reduce the service account role to named secrets and validate the workload."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-02",
+              "answer": "Drop privileged mode, require non-root and enforce admission policies."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-03",
+              "answer": "Review the recorded process and deployment; a shell alone does not prove compromise."
+            }
+          ]
+        },
+        "timeline": [
+          {
+            "when": "2026-09-14T00:00:00Z",
+            "event": "30-day historical baseline recorded",
+            "reference": "snap-cloud-0914"
+          },
+          {
+            "when": "2026-09-29T00:00:00Z",
+            "event": "15-day historical snapshot recorded",
+            "reference": "snap-cloud-0929"
+          },
+          {
+            "when": "2026-10-10T00:00:00Z",
+            "event": "Last pre-change baseline: s3:GetObject on app-assets/*",
+            "reference": "snap-cloud-1010"
+          },
+          {
+            "when": "2026-10-12T09:00:00Z",
+            "event": "Change merged by Maya Chen (dev.a)",
+            "reference": "abc1234"
+          },
+          {
+            "when": "2026-10-13T14:02:00Z",
+            "event": "Deployment changed the recorded environment",
+            "reference": "run-881"
+          },
+          {
+            "when": "2026-10-14T08:00:00Z",
+            "event": "Cross-engine investigation assembled",
+            "reference": "CAPTM-2026-CLOUD-001"
+          }
+        ],
+        "attack_paths": [
+          {
+            "path_id": "ap-cloud-1",
+            "labels": [
+              "Internet-exposed EC2 i-0abc",
+              "app-role",
+              "customer-data S3 bucket"
+            ],
+            "first_observed": "2026-10-13T14:02:00Z",
+            "status": "New in the recorded scenario",
+            "commit": [
+              "abc1234"
+            ],
+            "deployment": [
+              "run-881"
+            ],
+            "limits": "Recorded relationship or data flow; does not by itself establish exploitation or effective authorization outside the supplied scenario."
+          }
+        ],
+        "point_in_time_views": [
+          {
+            "label": "30 days before detection",
+            "snapshot_id": "snap-cloud-0914",
+            "observed_at": "2026-09-14T00:00:00Z",
+            "state": "Before change",
+            "environment": "s3:GetObject on app-assets/*"
+          },
+          {
+            "label": "15 days before detection",
+            "snapshot_id": "snap-cloud-0929",
+            "observed_at": "2026-09-29T00:00:00Z",
+            "state": "Before change",
+            "environment": "s3:GetObject on app-assets/*"
+          },
+          {
+            "label": "Last pre-change snapshot",
+            "snapshot_id": "snap-cloud-1010",
+            "observed_at": "2026-10-10T00:00:00Z",
+            "state": "Before change",
+            "environment": "s3:GetObject on app-assets/*"
+          },
+          {
+            "label": "Detection snapshot",
+            "snapshot_id": "snap-cloud-1014",
+            "observed_at": "2026-10-14T08:00:00Z",
+            "state": "After change",
+            "environment": "s3:* on *"
+          }
+        ],
+        "snapshot_comparisons": [
+          {
+            "from": "snap-cloud-1010",
+            "to": "snap-cloud-1013",
+            "before": "s3:GetObject on app-assets/*",
+            "after": "s3:* on *",
+            "paths_created": [
+              "ap-cloud-1"
+            ],
+            "paths_closed": [],
+            "explanation": "PR #214 replaced scoped S3 permissions with a wildcard. Terraform run-881 applied the policy; the workload-to-customer-data edge appeared two minutes later."
+          }
+        ],
+        "change_events": [
+          {
+            "occurred_at": "2026-10-12T09:00:00Z",
+            "source": "Git review",
+            "actor": "Maya Chen (dev.a)",
+            "action": "Merged security-relevant change",
+            "commit": "abc1234",
+            "deployment": "run-881",
+            "attribution": "Explicit references in the demo dataset"
+          },
+          {
+            "occurred_at": "2026-10-13T14:02:00Z",
+            "source": "Terraform plan + CloudTrail PutRolePolicy + graph snapshots",
+            "actor": "ci-terraform",
+            "action": "s3:* on *",
+            "commit": "abc1234",
+            "deployment": "run-881",
+            "attribution": "Explicit references in the demo dataset"
+          }
+        ],
+        "shadow_permissions": {
+          "applicable": true,
+          "explicit_grants": 12,
+          "observed_actions": 3,
+          "not_observed": 9,
+          "window": "2026-10-01 to 2026-10-14",
+          "recommendation": "Review nine unobserved explicit actions with the workload owner before removing them.",
+          "limits": "Not observed does not mean unused. Count reduction is not a risk-reduction percentage."
+        },
+        "investigator": {
+          "question": "How did this happen, when, who changed it, what is the blast radius and how do we prevent it?",
+          "answer": "PR #214 replaced scoped S3 permissions with a wildcard. Terraform run-881 applied the policy; the workload-to-customer-data edge appeared two minutes later.",
+          "actor": "Maya Chen (dev.a)",
+          "introduced": "2026-10-13T14:02:00Z",
+          "commit": "abc1234",
+          "deployment": "run-881",
+          "blast_radius": "14 reachable assets in the example inventory, including customer-data, export-history and orders backup objects.",
+          "prevention": "Revert to scoped GetObject permissions, block wildcard IAM actions in CI and compare the resulting access graph before deployment.",
+          "grounding": [
+            "Terraform plan + CloudTrail PutRolePolicy + graph snapshots",
+            "snap-cloud-1010",
+            "snap-cloud-1013"
+          ]
+        }
+      }
+    },
+    {
+      "id": "sast",
+      "title": "3. SAST",
+      "content": {
+        "assessment_status": "See the dedicated SAST product report",
+        "findings": [],
+        "investigations": [],
+        "investigation_answers": {},
+        "runs": []
+      }
+    },
+    {
+      "id": "dast",
+      "title": "4. DAST",
+      "content": {
+        "assessment_status": "See the dedicated DAST product report",
+        "findings": [],
+        "investigations": [],
+        "investigation_answers": {},
+        "runs": []
+      }
+    },
+    {
+      "id": "cloud",
+      "title": "5. CLOUD",
+      "content": {
+        "assessment_status": "Completed demo scenario",
+        "findings": [
+          {
+            "finding_id": "DEMO-CLOUD-01",
+            "module": "cloud",
+            "severity": "critical",
+            "title": "Public access configuration on customer exports",
+            "resource": "s3://customer-data",
+            "target": "AWS 111122223333 · production",
+            "rule_id": "DEMO-S3-PUBLIC",
+            "description": "Public access configuration on customer exports. Linked source, observation and deployment records are retained in this investigation.",
+            "remediation": "Review the bucket policy and access-point configuration, block unnecessary public access, then verify the effective access from an authorized test context.",
+            "engines": [
+              "prowler",
+              "scoutsuite",
+              "cloud-custodian"
+            ],
+            "engine_versions": {
+              "prowler": "example dataset",
+              "scoutsuite": "example dataset",
+              "cloud-custodian": "example dataset"
+            },
+            "evidence": [
+              {
+                "kind": "engine_report",
+                "source": "prowler",
+                "classification": "demo example",
+                "detail": "Resource: arn:aws:s3:::aster-commerce-exports\nSource: illustrative ASFF fixture\nPublic access: reported by source\nIndependent replay: not performed"
+              },
+              {
+                "kind": "engine_report",
+                "source": "scoutsuite",
+                "classification": "demo example",
+                "detail": "Resource: arn:aws:s3:::aster-commerce-exports\nSource: illustrative ASFF fixture\nPublic access: reported by source\nIndependent replay: not performed"
+              },
+              {
+                "kind": "engine_report",
+                "source": "cloud-custodian",
+                "classification": "demo example",
+                "detail": "Resource: arn:aws:s3:::aster-commerce-exports\nSource: illustrative ASFF fixture\nPublic access: reported by source\nIndependent replay: not performed"
+              }
+            ],
+            "state": "open",
+            "verification": {
+              "state": "unverified",
+              "basis": "Illustrative scenario with supplied change and observation records"
+            },
+            "framework_mappings": [],
+            "cwe": []
+          },
+          {
+            "finding_id": "DEMO-CLOUD-02",
+            "module": "cloud",
+            "severity": "high",
+            "title": "Application role grants wildcard S3 actions",
+            "resource": "arn:aws:iam::111122223333:role/app-role",
+            "target": "AWS 111122223333 · production",
+            "rule_id": "DEMO-IAM-WILDCARD",
+            "description": "Application role grants wildcard S3 actions. Linked source, observation and deployment records are retained in this investigation.",
+            "remediation": "Replace wildcard actions and resources with reviewed application requirements. Test seasonal tasks and effective authorization before rollout.",
+            "engines": [
+              "prowler",
+              "cloud-custodian"
+            ],
+            "engine_versions": {
+              "prowler": "example dataset",
+              "cloud-custodian": "example dataset"
+            },
+            "evidence": [
+              {
+                "kind": "engine_report",
+                "source": "prowler",
+                "classification": "demo example",
+                "detail": "{\n  \"Effect\": \"Allow\",\n  \"Action\": \"s3:*\",\n  \"Resource\": \"*\"\n}"
+              },
+              {
+                "kind": "engine_report",
+                "source": "cloud-custodian",
+                "classification": "demo example",
+                "detail": "{\n  \"Effect\": \"Allow\",\n  \"Action\": \"s3:*\",\n  \"Resource\": \"*\"\n}"
+              }
+            ],
+            "state": "open",
+            "verification": {
+              "state": "unverified",
+              "basis": "Illustrative scenario with supplied change and observation records"
+            },
+            "framework_mappings": [
+              {
+                "framework": "CWE",
+                "control": "CWE-732: Incorrect Permission Assignment for Critical Resource",
+                "source": "https://cwe.mitre.org/data/definitions/732.html",
+                "needs_review": true
+              }
+            ],
+            "cwe": []
+          },
+          {
+            "finding_id": "DEMO-EXTRA-01",
+            "module": "cloud",
+            "severity": "high",
+            "title": "Kubernetes workload can read namespace secrets",
+            "resource": "eks/aster-prod/payments",
+            "target": "AWS 111122223333 · production",
+            "rule_id": "K8S-SECRET-READ",
+            "description": "Kubernetes workload can read namespace secrets. Linked source, observation and deployment records are retained in this investigation.",
+            "remediation": "Reduce the service account role to named secrets and validate the workload.",
+            "engines": [
+              "kubescape",
+              "kube-bench"
+            ],
+            "engine_versions": {
+              "kubescape": "example dataset",
+              "kube-bench": "example dataset"
+            },
+            "evidence": [
+              {
+                "kind": "engine_report",
+                "source": "kubescape",
+                "classification": "demo example",
+                "detail": "RoleBinding: payments-reader -> secrets/get,list"
+              },
+              {
+                "kind": "engine_report",
+                "source": "kube-bench",
+                "classification": "demo example",
+                "detail": "RoleBinding: payments-reader -> secrets/get,list"
+              }
+            ],
+            "state": "open",
+            "verification": {
+              "state": "unverified",
+              "basis": "Illustrative scenario with supplied change and observation records"
+            },
+            "framework_mappings": [],
+            "cwe": []
+          },
+          {
+            "finding_id": "DEMO-EXTRA-02",
+            "module": "cloud",
+            "severity": "high",
+            "title": "Container runs with privileged security context",
+            "resource": "eks/aster-prod/worker",
+            "target": "AWS 111122223333 · production",
+            "rule_id": "K8S-PRIVILEGED",
+            "description": "Container runs with privileged security context. Linked source, observation and deployment records are retained in this investigation.",
+            "remediation": "Drop privileged mode, require non-root and enforce admission policies.",
+            "engines": [
+              "kubescape",
+              "checkov",
+              "trivy"
+            ],
+            "engine_versions": {
+              "kubescape": "example dataset",
+              "checkov": "example dataset",
+              "trivy": "example dataset"
+            },
+            "evidence": [
+              {
+                "kind": "engine_report",
+                "source": "kubescape",
+                "classification": "demo example",
+                "detail": "securityContext:\n  privileged: true"
+              },
+              {
+                "kind": "engine_report",
+                "source": "checkov",
+                "classification": "demo example",
+                "detail": "securityContext:\n  privileged: true"
+              },
+              {
+                "kind": "engine_report",
+                "source": "trivy",
+                "classification": "demo example",
+                "detail": "securityContext:\n  privileged: true"
+              }
+            ],
+            "state": "open",
+            "verification": {
+              "state": "unverified",
+              "basis": "Illustrative scenario with supplied change and observation records"
+            },
+            "framework_mappings": [],
+            "cwe": []
+          },
+          {
+            "finding_id": "DEMO-EXTRA-03",
+            "module": "cloud",
+            "severity": "medium",
+            "title": "Unexpected shell process in application container",
+            "resource": "pod/aster-worker",
+            "target": "AWS 111122223333 · production",
+            "rule_id": "RUNTIME-SHELL",
+            "description": "Unexpected shell process in application container. Linked source, observation and deployment records are retained in this investigation.",
+            "remediation": "Review the recorded process and deployment; a shell alone does not prove compromise.",
+            "engines": [
+              "falco"
+            ],
+            "engine_versions": {
+              "falco": "example dataset"
+            },
+            "evidence": [
+              {
+                "kind": "engine_report",
+                "source": "falco",
+                "classification": "demo example",
+                "detail": "Illustrative event: /bin/sh spawned beneath application process"
+              }
+            ],
+            "state": "open",
+            "verification": {
+              "state": "unverified",
+              "basis": "Illustrative scenario with supplied change and observation records"
+            },
+            "framework_mappings": [],
+            "cwe": []
+          }
+        ],
+        "investigations": [
+          {
+            "finding_id": "DEMO-CLOUD-01",
+            "why_vulnerable": "The imported source reports a public-access configuration.",
+            "how_became_possible": "The linked source/configuration revision introduced the recorded change: Public access configuration on customer exports. Terraform plan + CloudTrail PutRolePolicy + graph snapshots connect this evidence to run-881.",
+            "when_introduced": "2026-10-13T14:02:00Z",
+            "when_first_observed": "2026-10-13T14:02:00Z",
+            "who_introduced": "Maya Chen (dev.a); applied by ci-terraform",
+            "responsible_commit": "abc1234",
+            "responsible_deployment": "run-881",
+            "root_cause": "The linked source/configuration revision introduced the recorded change: Public access configuration on customer exports. Terraform plan + CloudTrail PutRolePolicy + graph snapshots connect this evidence to run-881.",
+            "blast_radius": "14 reachable assets in the example inventory, including customer-data, export-history and orders backup objects.",
+            "prevention": "Review the bucket policy and access-point configuration, block unnecessary public access, then verify the effective access from an authorized test context.",
+            "evidence_basis": "Aster Commerce demo dataset: linked evidence and provenance supplied for this example."
+          },
+          {
+            "finding_id": "DEMO-CLOUD-02",
+            "why_vulnerable": "The source policy contains wildcard action and resource patterns.",
+            "how_became_possible": "PR #214 replaced scoped S3 permissions with a wildcard. Terraform run-881 applied the policy; the workload-to-customer-data edge appeared two minutes later.",
+            "when_introduced": "2026-10-13T14:02:00Z",
+            "when_first_observed": "2026-10-13T14:02:00Z",
+            "who_introduced": "Maya Chen (dev.a); applied by ci-terraform",
+            "responsible_commit": "abc1234",
+            "responsible_deployment": "run-881",
+            "root_cause": "PR #214 replaced scoped S3 permissions with a wildcard. Terraform run-881 applied the policy; the workload-to-customer-data edge appeared two minutes later.",
+            "blast_radius": "14 reachable assets in the example inventory, including customer-data, export-history and orders backup objects.",
+            "prevention": "Replace wildcard actions and resources with reviewed application requirements. Test seasonal tasks and effective authorization before rollout.",
+            "evidence_basis": "Aster Commerce demo dataset: linked evidence and provenance supplied for this example."
+          },
+          {
+            "finding_id": "DEMO-EXTRA-01",
+            "why_vulnerable": "RoleBinding: payments-reader -> secrets/get,list",
+            "how_became_possible": "The linked source/configuration revision introduced the recorded change: Kubernetes workload can read namespace secrets. Terraform plan + CloudTrail PutRolePolicy + graph snapshots connect this evidence to run-881.",
+            "when_introduced": "2026-10-13T14:02:00Z",
+            "when_first_observed": "2026-10-13T14:02:00Z",
+            "who_introduced": "Maya Chen (dev.a); applied by ci-terraform",
+            "responsible_commit": "abc1234",
+            "responsible_deployment": "run-881",
+            "root_cause": "The linked source/configuration revision introduced the recorded change: Kubernetes workload can read namespace secrets. Terraform plan + CloudTrail PutRolePolicy + graph snapshots connect this evidence to run-881.",
+            "blast_radius": "14 reachable assets in the example inventory, including customer-data, export-history and orders backup objects.",
+            "prevention": "Reduce the service account role to named secrets and validate the workload.",
+            "evidence_basis": "Aster Commerce demo dataset: linked evidence and provenance supplied for this example."
+          },
+          {
+            "finding_id": "DEMO-EXTRA-02",
+            "why_vulnerable": "securityContext:\n  privileged: true",
+            "how_became_possible": "The linked source/configuration revision introduced the recorded change: Container runs with privileged security context. Terraform plan + CloudTrail PutRolePolicy + graph snapshots connect this evidence to run-881.",
+            "when_introduced": "2026-10-13T14:02:00Z",
+            "when_first_observed": "2026-10-13T14:02:00Z",
+            "who_introduced": "Maya Chen (dev.a); applied by ci-terraform",
+            "responsible_commit": "abc1234",
+            "responsible_deployment": "run-881",
+            "root_cause": "The linked source/configuration revision introduced the recorded change: Container runs with privileged security context. Terraform plan + CloudTrail PutRolePolicy + graph snapshots connect this evidence to run-881.",
+            "blast_radius": "14 reachable assets in the example inventory, including customer-data, export-history and orders backup objects.",
+            "prevention": "Drop privileged mode, require non-root and enforce admission policies.",
+            "evidence_basis": "Aster Commerce demo dataset: linked evidence and provenance supplied for this example."
+          },
+          {
+            "finding_id": "DEMO-EXTRA-03",
+            "why_vulnerable": "Illustrative event: /bin/sh spawned beneath application process",
+            "how_became_possible": "The linked source/configuration revision introduced the recorded change: Unexpected shell process in application container. Terraform plan + CloudTrail PutRolePolicy + graph snapshots connect this evidence to run-881.",
+            "when_introduced": "2026-10-13T14:02:00Z",
+            "when_first_observed": "2026-10-13T14:02:00Z",
+            "who_introduced": "Maya Chen (dev.a); applied by ci-terraform",
+            "responsible_commit": "abc1234",
+            "responsible_deployment": "run-881",
+            "root_cause": "The linked source/configuration revision introduced the recorded change: Unexpected shell process in application container. Terraform plan + CloudTrail PutRolePolicy + graph snapshots connect this evidence to run-881.",
+            "blast_radius": "14 reachable assets in the example inventory, including customer-data, export-history and orders backup objects.",
+            "prevention": "Review the recorded process and deployment; a shell alone does not prove compromise.",
+            "evidence_basis": "Aster Commerce demo dataset: linked evidence and provenance supplied for this example."
+          }
+        ],
+        "investigation_answers": {
+          "why_is_it_vulnerable": [
+            {
+              "finding_id": "DEMO-CLOUD-01",
+              "answer": "The imported source reports a public-access configuration."
+            },
+            {
+              "finding_id": "DEMO-CLOUD-02",
+              "answer": "The source policy contains wildcard action and resource patterns."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-01",
+              "answer": "RoleBinding: payments-reader -> secrets/get,list"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-02",
+              "answer": "securityContext:\n  privileged: true"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-03",
+              "answer": "Illustrative event: /bin/sh spawned beneath application process"
+            }
+          ],
+          "how_did_this_happen": [
+            {
+              "finding_id": "DEMO-CLOUD-01",
+              "answer": "The linked source/configuration revision introduced the recorded change: Public access configuration on customer exports. Terraform plan + CloudTrail PutRolePolicy + graph snapshots connect this evidence to run-881."
+            },
+            {
+              "finding_id": "DEMO-CLOUD-02",
+              "answer": "PR #214 replaced scoped S3 permissions with a wildcard. Terraform run-881 applied the policy; the workload-to-customer-data edge appeared two minutes later."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-01",
+              "answer": "The linked source/configuration revision introduced the recorded change: Kubernetes workload can read namespace secrets. Terraform plan + CloudTrail PutRolePolicy + graph snapshots connect this evidence to run-881."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-02",
+              "answer": "The linked source/configuration revision introduced the recorded change: Container runs with privileged security context. Terraform plan + CloudTrail PutRolePolicy + graph snapshots connect this evidence to run-881."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-03",
+              "answer": "The linked source/configuration revision introduced the recorded change: Unexpected shell process in application container. Terraform plan + CloudTrail PutRolePolicy + graph snapshots connect this evidence to run-881."
+            }
+          ],
+          "when_did_it_become_vulnerable": [
+            {
+              "finding_id": "DEMO-CLOUD-01",
+              "answer": "2026-10-13T14:02:00Z"
+            },
+            {
+              "finding_id": "DEMO-CLOUD-02",
+              "answer": "2026-10-13T14:02:00Z"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-01",
+              "answer": "2026-10-13T14:02:00Z"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-02",
+              "answer": "2026-10-13T14:02:00Z"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-03",
+              "answer": "2026-10-13T14:02:00Z"
+            }
+          ],
+          "when_was_it_first_observed": [
+            {
+              "finding_id": "DEMO-CLOUD-01",
+              "answer": "2026-10-13T14:02:00Z"
+            },
+            {
+              "finding_id": "DEMO-CLOUD-02",
+              "answer": "2026-10-13T14:02:00Z"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-01",
+              "answer": "2026-10-13T14:02:00Z"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-02",
+              "answer": "2026-10-13T14:02:00Z"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-03",
+              "answer": "2026-10-13T14:02:00Z"
+            }
+          ],
+          "who_changed_it": [
+            {
+              "finding_id": "DEMO-CLOUD-01",
+              "answer": "Maya Chen (dev.a); applied by ci-terraform"
+            },
+            {
+              "finding_id": "DEMO-CLOUD-02",
+              "answer": "Maya Chen (dev.a); applied by ci-terraform"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-01",
+              "answer": "Maya Chen (dev.a); applied by ci-terraform"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-02",
+              "answer": "Maya Chen (dev.a); applied by ci-terraform"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-03",
+              "answer": "Maya Chen (dev.a); applied by ci-terraform"
+            }
+          ],
+          "which_deployment_created_it": [
+            {
+              "finding_id": "DEMO-CLOUD-01",
+              "answer": "run-881"
+            },
+            {
+              "finding_id": "DEMO-CLOUD-02",
+              "answer": "run-881"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-01",
+              "answer": "run-881"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-02",
+              "answer": "run-881"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-03",
+              "answer": "run-881"
+            }
+          ],
+          "which_commit_introduced_it": [
+            {
+              "finding_id": "DEMO-CLOUD-01",
+              "answer": "abc1234"
+            },
+            {
+              "finding_id": "DEMO-CLOUD-02",
+              "answer": "abc1234"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-01",
+              "answer": "abc1234"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-02",
+              "answer": "abc1234"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-03",
+              "answer": "abc1234"
+            }
+          ],
+          "what_is_the_root_cause": [
+            {
+              "finding_id": "DEMO-CLOUD-01",
+              "answer": "The linked source/configuration revision introduced the recorded change: Public access configuration on customer exports. Terraform plan + CloudTrail PutRolePolicy + graph snapshots connect this evidence to run-881."
+            },
+            {
+              "finding_id": "DEMO-CLOUD-02",
+              "answer": "PR #214 replaced scoped S3 permissions with a wildcard. Terraform run-881 applied the policy; the workload-to-customer-data edge appeared two minutes later."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-01",
+              "answer": "The linked source/configuration revision introduced the recorded change: Kubernetes workload can read namespace secrets. Terraform plan + CloudTrail PutRolePolicy + graph snapshots connect this evidence to run-881."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-02",
+              "answer": "The linked source/configuration revision introduced the recorded change: Container runs with privileged security context. Terraform plan + CloudTrail PutRolePolicy + graph snapshots connect this evidence to run-881."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-03",
+              "answer": "The linked source/configuration revision introduced the recorded change: Unexpected shell process in application container. Terraform plan + CloudTrail PutRolePolicy + graph snapshots connect this evidence to run-881."
+            }
+          ],
+          "what_is_the_blast_radius": [
+            {
+              "finding_id": "DEMO-CLOUD-01",
+              "answer": "14 reachable assets in the example inventory, including customer-data, export-history and orders backup objects."
+            },
+            {
+              "finding_id": "DEMO-CLOUD-02",
+              "answer": "14 reachable assets in the example inventory, including customer-data, export-history and orders backup objects."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-01",
+              "answer": "14 reachable assets in the example inventory, including customer-data, export-history and orders backup objects."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-02",
+              "answer": "14 reachable assets in the example inventory, including customer-data, export-history and orders backup objects."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-03",
+              "answer": "14 reachable assets in the example inventory, including customer-data, export-history and orders backup objects."
+            }
+          ],
+          "how_do_we_prevent_it_again": [
+            {
+              "finding_id": "DEMO-CLOUD-01",
+              "answer": "Review the bucket policy and access-point configuration, block unnecessary public access, then verify the effective access from an authorized test context."
+            },
+            {
+              "finding_id": "DEMO-CLOUD-02",
+              "answer": "Replace wildcard actions and resources with reviewed application requirements. Test seasonal tasks and effective authorization before rollout."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-01",
+              "answer": "Reduce the service account role to named secrets and validate the workload."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-02",
+              "answer": "Drop privileged mode, require non-root and enforce admission policies."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-03",
+              "answer": "Review the recorded process and deployment; a shell alone does not prove compromise."
+            }
+          ]
+        },
+        "runs": [
+          {
+            "engine_id": "aws-connector",
+            "name": "AWS role connector",
+            "category": "STS identity and permission preflight",
+            "homepage": "https://docs.aws.amazon.com/cli/latest/reference/sts/assume-role.html",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [],
+            "summary": "Account inventory: IAM role, EC2 instance, S3 bucket, EKS cluster."
+          },
+          {
+            "engine_id": "prowler",
+            "name": "Prowler",
+            "category": "Cloud posture / CSPM",
+            "homepage": "https://github.com/prowler-cloud/prowler",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-CLOUD-01",
+              "DEMO-CLOUD-02"
+            ],
+            "summary": "2 observations linked to combined findings"
+          },
+          {
+            "engine_id": "cloud-custodian",
+            "name": "Cloud Custodian",
+            "category": "Cloud policy and posture",
+            "homepage": "https://github.com/cloud-custodian/cloud-custodian",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-CLOUD-01",
+              "DEMO-CLOUD-02"
+            ],
+            "summary": "2 observations linked to combined findings"
+          },
+          {
+            "engine_id": "scoutsuite",
+            "name": "ScoutSuite",
+            "category": "Cloud posture / CSPM",
+            "homepage": "https://github.com/nccgroup/ScoutSuite",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-CLOUD-01"
+            ],
+            "summary": "1 observations linked to combined findings"
+          },
+          {
+            "engine_id": "trivy",
+            "name": "Trivy",
+            "category": "Dependency / Misconfiguration",
+            "homepage": "https://aquasecurity.github.io/trivy/",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-EXTRA-02"
+            ],
+            "summary": "1 observations linked to combined findings"
+          },
+          {
+            "engine_id": "syft",
+            "name": "Syft",
+            "category": "SBOM inventory",
+            "homepage": "https://github.com/anchore/syft",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [],
+            "summary": "SBOM inventory: orders-api, application image and three example packages."
+          },
+          {
+            "engine_id": "grype",
+            "name": "Grype",
+            "category": "Dependency / SCA",
+            "homepage": "https://github.com/anchore/grype",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [],
+            "summary": "Assessment context retained; no additional findings in this scenario."
+          },
+          {
+            "engine_id": "checkov",
+            "name": "Checkov",
+            "category": "IaC Security",
+            "homepage": "https://www.checkov.io/",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-EXTRA-02"
+            ],
+            "summary": "1 observations linked to combined findings"
+          },
+          {
+            "engine_id": "kubescape",
+            "name": "Kubescape",
+            "category": "Kubernetes posture",
+            "homepage": "https://github.com/kubescape/kubescape",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-EXTRA-01",
+              "DEMO-EXTRA-02"
+            ],
+            "summary": "2 observations linked to combined findings"
+          },
+          {
+            "engine_id": "kube-bench",
+            "name": "kube-bench",
+            "category": "Kubernetes Security",
+            "homepage": "https://github.com/aquasecurity/kube-bench",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-EXTRA-01"
+            ],
+            "summary": "1 observations linked to combined findings"
+          },
+          {
+            "engine_id": "cartography",
+            "name": "Cartography",
+            "category": "Asset graph / attack paths",
+            "homepage": "https://github.com/cartography-cncf/cartography",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [],
+            "summary": "Asset graph: EC2 workload, IAM role, S3 bucket and related resources."
+          },
+          {
+            "engine_id": "falco",
+            "name": "Falco",
+            "category": "Runtime detection",
+            "homepage": "https://github.com/falcosecurity/falco",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-EXTRA-03"
+            ],
+            "summary": "1 observations linked to combined findings"
+          },
+          {
+            "engine_id": "opa",
+            "name": "Open Policy Agent",
+            "category": "Policy as code",
+            "homepage": "https://github.com/open-policy-agent/opa",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [],
+            "summary": "Assessment context retained; no additional findings in this scenario."
+          },
+          {
+            "engine_id": "clamav",
+            "name": "ClamAV",
+            "category": "Malware detection",
+            "homepage": "https://github.com/Cisco-Talos/clamav",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [],
+            "summary": "Three example training files reviewed; no example signature matches."
+          }
+        ]
+      }
+    },
+    {
+      "id": "ai",
+      "title": "6. AI SECURITY",
+      "content": {
+        "assessment_status": "See the dedicated AI product report",
+        "findings": [],
+        "investigations": [],
+        "investigation_answers": {},
+        "runs": []
+      }
+    },
+    {
+      "id": "framework_mapping",
+      "title": "7. Framework mapping",
+      "content": {
+        "mappings": [
+          {
+            "finding_id": "DEMO-CLOUD-02",
+            "framework": "CWE",
+            "control": "CWE-732: Incorrect Permission Assignment for Critical Resource",
+            "source": "https://cwe.mitre.org/data/definitions/732.html",
+            "needs_review": true
+          }
+        ],
+        "note": "Source-supported rule mappings are retained where supplied. This scenario is not a compliance certification."
+      }
+    },
+    {
+      "id": "remediation_plan",
+      "title": "8. Remediation plan",
+      "content": {
+        "actions": [
+          {
+            "priority": 1,
+            "finding_id": "DEMO-CLOUD-01",
+            "action": "Review the bucket policy and access-point configuration, block unnecessary public access, then verify the effective access from an authorized test context.",
+            "owner": "Platform security",
+            "effort": "Review and scoped change",
+            "validation": "Reassess the same scope; verify the finding closes and compare the resulting path."
+          },
+          {
+            "priority": 2,
+            "finding_id": "DEMO-CLOUD-02",
+            "action": "Replace wildcard actions and resources with reviewed application requirements. Test seasonal tasks and effective authorization before rollout.",
+            "owner": "Platform security",
+            "effort": "Review and scoped change",
+            "validation": "Reassess the same scope; verify the finding closes and compare the resulting path."
+          },
+          {
+            "priority": 3,
+            "finding_id": "DEMO-EXTRA-01",
+            "action": "Reduce the service account role to named secrets and validate the workload.",
+            "owner": "Platform security",
+            "effort": "Review and scoped change",
+            "validation": "Reassess the same scope; verify the finding closes and compare the resulting path."
+          },
+          {
+            "priority": 4,
+            "finding_id": "DEMO-EXTRA-02",
+            "action": "Drop privileged mode, require non-root and enforce admission policies.",
+            "owner": "Platform security",
+            "effort": "Review and scoped change",
+            "validation": "Reassess the same scope; verify the finding closes and compare the resulting path."
+          },
+          {
+            "priority": 5,
+            "finding_id": "DEMO-EXTRA-03",
+            "action": "Review the recorded process and deployment; a shell alone does not prove compromise.",
+            "owner": "Platform security",
+            "effort": "Review and scoped change",
+            "validation": "Reassess the same scope; verify the finding closes and compare the resulting path."
+          }
+        ]
+      }
+    },
+    {
+      "id": "appendix",
+      "title": "Appendix",
+      "content": {
+        "methodology": "Illustrative Aster Commerce demonstration dataset. Persons, commits, deployments, snapshots and engine observations are supplied examples, not live customer or vendor-run evidence. All eleven export formats serialize this same report model.",
+        "engine_records": [
+          {
+            "engine_id": "aws-connector",
+            "name": "AWS role connector",
+            "category": "STS identity and permission preflight",
+            "homepage": "https://docs.aws.amazon.com/cli/latest/reference/sts/assume-role.html",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [],
+            "summary": "Account inventory: IAM role, EC2 instance, S3 bucket, EKS cluster."
+          },
+          {
+            "engine_id": "prowler",
+            "name": "Prowler",
+            "category": "Cloud posture / CSPM",
+            "homepage": "https://github.com/prowler-cloud/prowler",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-CLOUD-01",
+              "DEMO-CLOUD-02"
+            ],
+            "summary": "2 observations linked to combined findings"
+          },
+          {
+            "engine_id": "cloud-custodian",
+            "name": "Cloud Custodian",
+            "category": "Cloud policy and posture",
+            "homepage": "https://github.com/cloud-custodian/cloud-custodian",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-CLOUD-01",
+              "DEMO-CLOUD-02"
+            ],
+            "summary": "2 observations linked to combined findings"
+          },
+          {
+            "engine_id": "scoutsuite",
+            "name": "ScoutSuite",
+            "category": "Cloud posture / CSPM",
+            "homepage": "https://github.com/nccgroup/ScoutSuite",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-CLOUD-01"
+            ],
+            "summary": "1 observations linked to combined findings"
+          },
+          {
+            "engine_id": "trivy",
+            "name": "Trivy",
+            "category": "Dependency / Misconfiguration",
+            "homepage": "https://aquasecurity.github.io/trivy/",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-EXTRA-02"
+            ],
+            "summary": "1 observations linked to combined findings"
+          },
+          {
+            "engine_id": "syft",
+            "name": "Syft",
+            "category": "SBOM inventory",
+            "homepage": "https://github.com/anchore/syft",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [],
+            "summary": "SBOM inventory: orders-api, application image and three example packages."
+          },
+          {
+            "engine_id": "grype",
+            "name": "Grype",
+            "category": "Dependency / SCA",
+            "homepage": "https://github.com/anchore/grype",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [],
+            "summary": "Assessment context retained; no additional findings in this scenario."
+          },
+          {
+            "engine_id": "checkov",
+            "name": "Checkov",
+            "category": "IaC Security",
+            "homepage": "https://www.checkov.io/",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-EXTRA-02"
+            ],
+            "summary": "1 observations linked to combined findings"
+          },
+          {
+            "engine_id": "kubescape",
+            "name": "Kubescape",
+            "category": "Kubernetes posture",
+            "homepage": "https://github.com/kubescape/kubescape",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-EXTRA-01",
+              "DEMO-EXTRA-02"
+            ],
+            "summary": "2 observations linked to combined findings"
+          },
+          {
+            "engine_id": "kube-bench",
+            "name": "kube-bench",
+            "category": "Kubernetes Security",
+            "homepage": "https://github.com/aquasecurity/kube-bench",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-EXTRA-01"
+            ],
+            "summary": "1 observations linked to combined findings"
+          },
+          {
+            "engine_id": "cartography",
+            "name": "Cartography",
+            "category": "Asset graph / attack paths",
+            "homepage": "https://github.com/cartography-cncf/cartography",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [],
+            "summary": "Asset graph: EC2 workload, IAM role, S3 bucket and related resources."
+          },
+          {
+            "engine_id": "falco",
+            "name": "Falco",
+            "category": "Runtime detection",
+            "homepage": "https://github.com/falcosecurity/falco",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-EXTRA-03"
+            ],
+            "summary": "1 observations linked to combined findings"
+          },
+          {
+            "engine_id": "opa",
+            "name": "Open Policy Agent",
+            "category": "Policy as code",
+            "homepage": "https://github.com/open-policy-agent/opa",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [],
+            "summary": "Assessment context retained; no additional findings in this scenario."
+          },
+          {
+            "engine_id": "clamav",
+            "name": "ClamAV",
+            "category": "Malware detection",
+            "homepage": "https://github.com/Cisco-Talos/clamav",
+            "product": "cloud",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [],
+            "summary": "Three example training files reviewed; no example signature matches."
+          }
+        ],
+        "provenance_sources": [
+          "Terraform plan + CloudTrail PutRolePolicy + graph snapshots"
+        ],
+        "limitations": [
+          "Graph paths describe recorded scenario relationships; they do not establish real effective access or exploitation.",
+          "Observed HTTP hardening gaps are distinct from reproduced exploits.",
+          "Shadow-permission observations require workload-owner review."
+        ],
+        "primary_references": [
+          "https://docs.aws.amazon.com/AmazonS3/latest/userguide/access-control-block-public-access.html",
+          "https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html",
+          "https://owasp.org/www-project-top-ten/"
+        ]
+      }
+    }
+  ]
+}

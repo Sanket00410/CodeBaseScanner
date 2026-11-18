@@ -1,0 +1,691 @@
+﻿Section,Field,Value
+Report metadata,schema_version,captm.report/1
+Report metadata,report_id,CAPTM-2026-DAST-001
+Report metadata,title,A gateway release removed browser protections
+Report metadata,classification,DEMO SCENARIO · Aster Commerce
+Report metadata,generated_at,2026-10-14T10:10:00Z
+Report metadata,workspace,aster-commerce
+Report metadata,window.from,2026-09-14T00:00:00Z
+Report metadata,window.to,2026-10-14T10:10:00Z
+Report metadata,products[0],dast
+1. Executive summary,executive_summary.incident.title,A gateway release removed browser protections
+1. Executive summary,executive_summary.incident.target,https://orders.demo.invalid · staging scenario
+1. Executive summary,executive_summary.incident.actor,Jordan Patel (dev.c)
+1. Executive summary,executive_summary.incident.serviceActor,ci-edge-deploy
+1. Executive summary,executive_summary.incident.commit,c4d91fa
+1. Executive summary,executive_summary.incident.deployment,edge-release-412
+1. Executive summary,executive_summary.incident.introduced,2026-10-13T12:20:00Z
+1. Executive summary,executive_summary.incident.merged,2026-10-12T13:40:00Z
+1. Executive summary,executive_summary.incident.path[0],Browser request
+1. Executive summary,executive_summary.incident.path[1],Gateway response policy
+1. Executive summary,executive_summary.incident.path[2],Orders web application
+1. Executive summary,executive_summary.incident.before,"CSP, nosniff and SameSite applied by the gateway"
+1. Executive summary,executive_summary.incident.after,Shared response-hardening middleware omitted
+1. Executive summary,executive_summary.incident.how,PR #231 removed the response-hardening middleware from the gateway configuration. Release 412 changed the observed headers and cookie attributes on the same scoped routes.
+1. Executive summary,executive_summary.incident.blast,"Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation."
+1. Executive summary,executive_summary.incident.prevention,"Restore the gateway policy, deploy CSP in report-only mode where appropriate and retest the same routes with response-header regression checks."
+1. Executive summary,executive_summary.incident.source,Gateway configuration diff + before/after HTTP observations + release manifest
+1. Executive summary,executive_summary.incident.baseline,snap-dast-1010
+1. Executive summary,executive_summary.incident.changed,snap-dast-1013
+1. Executive summary,executive_summary.incident.lead,DEMO-DAST-01
+1. Executive summary,executive_summary.summary,PR #231 removed the response-hardening middleware from the gateway configuration. Release 412 changed the observed headers and cookie attributes on the same scoped routes.
+1. Executive summary,executive_summary.severity_counts.critical,0
+1. Executive summary,executive_summary.severity_counts.high,0
+1. Executive summary,executive_summary.severity_counts.medium,3
+1. Executive summary,executive_summary.severity_counts.low,1
+1. Executive summary,executive_summary.severity_counts.info,0
+1. Executive summary,executive_summary.unique_findings,4
+1. Executive summary,executive_summary.raw_observations,9
+1. Executive summary,executive_summary.duplicate_observations_combined,5
+1. Executive summary,executive_summary.scan_pipeline_coverage[0].engine_id,runtime_http_probe
+1. Executive summary,executive_summary.scan_pipeline_coverage[0].name,HTTP posture review
+1. Executive summary,executive_summary.scan_pipeline_coverage[0].category,Application Runtime Scanning
+1. Executive summary,executive_summary.scan_pipeline_coverage[0].homepage,https://owasp.org/www-project-top-ten/
+1. Executive summary,executive_summary.scan_pipeline_coverage[0].product,dast
+1. Executive summary,executive_summary.scan_pipeline_coverage[0].status,completed_in_demo
+1. Executive summary,executive_summary.scan_pipeline_coverage[0].execution,Illustrative normalized evidence dataset; no vendor process invoked
+1. Executive summary,executive_summary.scan_pipeline_coverage[0].version,Example dataset
+1. Executive summary,executive_summary.scan_pipeline_coverage[0].finding_ids[0],DEMO-DAST-01
+1. Executive summary,executive_summary.scan_pipeline_coverage[0].finding_ids[1],DEMO-DAST-02
+1. Executive summary,executive_summary.scan_pipeline_coverage[0].summary,2 observations linked to combined findings
+1. Executive summary,executive_summary.scan_pipeline_coverage[1].engine_id,nuclei
+1. Executive summary,executive_summary.scan_pipeline_coverage[1].name,Nuclei
+1. Executive summary,executive_summary.scan_pipeline_coverage[1].category,Application Runtime Scanning
+1. Executive summary,executive_summary.scan_pipeline_coverage[1].homepage,https://nuclei.projectdiscovery.io/
+1. Executive summary,executive_summary.scan_pipeline_coverage[1].product,dast
+1. Executive summary,executive_summary.scan_pipeline_coverage[1].status,completed_in_demo
+1. Executive summary,executive_summary.scan_pipeline_coverage[1].execution,Illustrative normalized evidence dataset; no vendor process invoked
+1. Executive summary,executive_summary.scan_pipeline_coverage[1].version,Example dataset
+1. Executive summary,executive_summary.scan_pipeline_coverage[1].finding_ids[0],DEMO-DAST-01
+1. Executive summary,executive_summary.scan_pipeline_coverage[1].finding_ids[1],DEMO-EXTRA-07
+1. Executive summary,executive_summary.scan_pipeline_coverage[1].finding_ids[2],DEMO-EXTRA-08
+1. Executive summary,executive_summary.scan_pipeline_coverage[1].summary,3 observations linked to combined findings
+1. Executive summary,executive_summary.scan_pipeline_coverage[2].engine_id,zap-baseline
+1. Executive summary,executive_summary.scan_pipeline_coverage[2].name,OWASP ZAP Baseline
+1. Executive summary,executive_summary.scan_pipeline_coverage[2].category,DAST / Web Security
+1. Executive summary,executive_summary.scan_pipeline_coverage[2].homepage,https://www.zaproxy.org/
+1. Executive summary,executive_summary.scan_pipeline_coverage[2].product,dast
+1. Executive summary,executive_summary.scan_pipeline_coverage[2].status,completed_in_demo
+1. Executive summary,executive_summary.scan_pipeline_coverage[2].execution,Illustrative normalized evidence dataset; no vendor process invoked
+1. Executive summary,executive_summary.scan_pipeline_coverage[2].version,Example dataset
+1. Executive summary,executive_summary.scan_pipeline_coverage[2].finding_ids[0],DEMO-DAST-01
+1. Executive summary,executive_summary.scan_pipeline_coverage[2].finding_ids[1],DEMO-DAST-02
+1. Executive summary,executive_summary.scan_pipeline_coverage[2].finding_ids[2],DEMO-EXTRA-07
+1. Executive summary,executive_summary.scan_pipeline_coverage[2].finding_ids[3],DEMO-EXTRA-08
+1. Executive summary,executive_summary.scan_pipeline_coverage[2].summary,4 observations linked to combined findings
+1. Executive summary,executive_summary.top_actions[0],"Restore the gateway policy, deploy CSP in report-only mode where appropriate and retest the same routes with response-header regression checks."
+1. Executive summary,executive_summary.data_gaps,[]
+1. Executive summary,executive_summary.deduplication_basis,Matching resource and exact fixture evidence share an identity; every contributing engine is retained.
+2. Attack Path Time Machine,time_machine.root_cause[0].finding_id,DEMO-DAST-01
+2. Attack Path Time Machine,time_machine.root_cause[0].why_vulnerable,The inspected example response lacks the header.
+2. Attack Path Time Machine,time_machine.root_cause[0].how_became_possible,PR #231 removed the response-hardening middleware from the gateway configuration. Release 412 changed the observed headers and cookie attributes on the same scoped routes.
+2. Attack Path Time Machine,time_machine.root_cause[0].when_introduced,2026-10-13T12:20:00Z
+2. Attack Path Time Machine,time_machine.root_cause[0].when_first_observed,2026-10-13T12:20:00Z
+2. Attack Path Time Machine,time_machine.root_cause[0].who_introduced,Jordan Patel (dev.c); applied by ci-edge-deploy
+2. Attack Path Time Machine,time_machine.root_cause[0].responsible_commit,c4d91fa
+2. Attack Path Time Machine,time_machine.root_cause[0].responsible_deployment,edge-release-412
+2. Attack Path Time Machine,time_machine.root_cause[0].root_cause,PR #231 removed the response-hardening middleware from the gateway configuration. Release 412 changed the observed headers and cookie attributes on the same scoped routes.
+2. Attack Path Time Machine,time_machine.root_cause[0].blast_radius,"Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation."
+2. Attack Path Time Machine,time_machine.root_cause[0].prevention,Design a policy for the application’s actual scripts and content sources. Test with report-only deployment where appropriate before enforcement.
+2. Attack Path Time Machine,time_machine.root_cause[0].evidence_basis,Aster Commerce demo dataset: linked evidence and provenance supplied for this example.
+2. Attack Path Time Machine,time_machine.root_cause[1].finding_id,DEMO-DAST-02
+2. Attack Path Time Machine,time_machine.root_cause[1].why_vulnerable,The required hardening header is absent from the sample response.
+2. Attack Path Time Machine,time_machine.root_cause[1].how_became_possible,The linked source/configuration revision introduced the recorded change: Content type sniffing protection is absent. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.
+2. Attack Path Time Machine,time_machine.root_cause[1].when_introduced,2026-10-13T12:20:00Z
+2. Attack Path Time Machine,time_machine.root_cause[1].when_first_observed,2026-10-13T12:20:00Z
+2. Attack Path Time Machine,time_machine.root_cause[1].who_introduced,Jordan Patel (dev.c); applied by ci-edge-deploy
+2. Attack Path Time Machine,time_machine.root_cause[1].responsible_commit,c4d91fa
+2. Attack Path Time Machine,time_machine.root_cause[1].responsible_deployment,edge-release-412
+2. Attack Path Time Machine,time_machine.root_cause[1].root_cause,The linked source/configuration revision introduced the recorded change: Content type sniffing protection is absent. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.
+2. Attack Path Time Machine,time_machine.root_cause[1].blast_radius,"Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation."
+2. Attack Path Time Machine,time_machine.root_cause[1].prevention,Serve appropriate content types and add X-Content-Type-Options: nosniff to application responses.
+2. Attack Path Time Machine,time_machine.root_cause[1].evidence_basis,Aster Commerce demo dataset: linked evidence and provenance supplied for this example.
+2. Attack Path Time Machine,time_machine.root_cause[2].finding_id,DEMO-EXTRA-07
+2. Attack Path Time Machine,time_machine.root_cause[2].why_vulnerable,"HTTP/1.1 200 OK
+Set-Cookie: demo_session=REDACTED; Secure; HttpOnly"
+2. Attack Path Time Machine,time_machine.root_cause[2].how_became_possible,The linked source/configuration revision introduced the recorded change: Session cookie lacks an explicit SameSite policy. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.
+2. Attack Path Time Machine,time_machine.root_cause[2].when_introduced,2026-10-13T12:20:00Z
+2. Attack Path Time Machine,time_machine.root_cause[2].when_first_observed,2026-10-13T12:20:00Z
+2. Attack Path Time Machine,time_machine.root_cause[2].who_introduced,Jordan Patel (dev.c); applied by ci-edge-deploy
+2. Attack Path Time Machine,time_machine.root_cause[2].responsible_commit,c4d91fa
+2. Attack Path Time Machine,time_machine.root_cause[2].responsible_deployment,edge-release-412
+2. Attack Path Time Machine,time_machine.root_cause[2].root_cause,The linked source/configuration revision introduced the recorded change: Session cookie lacks an explicit SameSite policy. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.
+2. Attack Path Time Machine,time_machine.root_cause[2].blast_radius,"Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation."
+2. Attack Path Time Machine,time_machine.root_cause[2].prevention,Choose a SameSite policy appropriate to authentication and test cross-site flows.
+2. Attack Path Time Machine,time_machine.root_cause[2].evidence_basis,Aster Commerce demo dataset: linked evidence and provenance supplied for this example.
+2. Attack Path Time Machine,time_machine.root_cause[3].finding_id,DEMO-EXTRA-08
+2. Attack Path Time Machine,time_machine.root_cause[3].why_vulnerable,"HTTP/1.1 500 Internal Server Error
+Body excerpt: Traceback ... /srv/orders/api.py"
+2. Attack Path Time Machine,time_machine.root_cause[3].how_became_possible,The linked source/configuration revision introduced the recorded change: Verbose framework error response exposes internals. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.
+2. Attack Path Time Machine,time_machine.root_cause[3].when_introduced,2026-10-13T12:20:00Z
+2. Attack Path Time Machine,time_machine.root_cause[3].when_first_observed,2026-10-13T12:20:00Z
+2. Attack Path Time Machine,time_machine.root_cause[3].who_introduced,Jordan Patel (dev.c); applied by ci-edge-deploy
+2. Attack Path Time Machine,time_machine.root_cause[3].responsible_commit,c4d91fa
+2. Attack Path Time Machine,time_machine.root_cause[3].responsible_deployment,edge-release-412
+2. Attack Path Time Machine,time_machine.root_cause[3].root_cause,The linked source/configuration revision introduced the recorded change: Verbose framework error response exposes internals. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.
+2. Attack Path Time Machine,time_machine.root_cause[3].blast_radius,"Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation."
+2. Attack Path Time Machine,time_machine.root_cause[3].prevention,Return a generic error and retain details in access-controlled server logs.
+2. Attack Path Time Machine,time_machine.root_cause[3].evidence_basis,Aster Commerce demo dataset: linked evidence and provenance supplied for this example.
+2. Attack Path Time Machine,time_machine.investigation_answers.why_is_it_vulnerable[0].finding_id,DEMO-DAST-01
+2. Attack Path Time Machine,time_machine.investigation_answers.why_is_it_vulnerable[0].answer,The inspected example response lacks the header.
+2. Attack Path Time Machine,time_machine.investigation_answers.why_is_it_vulnerable[1].finding_id,DEMO-DAST-02
+2. Attack Path Time Machine,time_machine.investigation_answers.why_is_it_vulnerable[1].answer,The required hardening header is absent from the sample response.
+2. Attack Path Time Machine,time_machine.investigation_answers.why_is_it_vulnerable[2].finding_id,DEMO-EXTRA-07
+2. Attack Path Time Machine,time_machine.investigation_answers.why_is_it_vulnerable[2].answer,"HTTP/1.1 200 OK
+Set-Cookie: demo_session=REDACTED; Secure; HttpOnly"
+2. Attack Path Time Machine,time_machine.investigation_answers.why_is_it_vulnerable[3].finding_id,DEMO-EXTRA-08
+2. Attack Path Time Machine,time_machine.investigation_answers.why_is_it_vulnerable[3].answer,"HTTP/1.1 500 Internal Server Error
+Body excerpt: Traceback ... /srv/orders/api.py"
+2. Attack Path Time Machine,time_machine.investigation_answers.how_did_this_happen[0].finding_id,DEMO-DAST-01
+2. Attack Path Time Machine,time_machine.investigation_answers.how_did_this_happen[0].answer,PR #231 removed the response-hardening middleware from the gateway configuration. Release 412 changed the observed headers and cookie attributes on the same scoped routes.
+2. Attack Path Time Machine,time_machine.investigation_answers.how_did_this_happen[1].finding_id,DEMO-DAST-02
+2. Attack Path Time Machine,time_machine.investigation_answers.how_did_this_happen[1].answer,The linked source/configuration revision introduced the recorded change: Content type sniffing protection is absent. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.
+2. Attack Path Time Machine,time_machine.investigation_answers.how_did_this_happen[2].finding_id,DEMO-EXTRA-07
+2. Attack Path Time Machine,time_machine.investigation_answers.how_did_this_happen[2].answer,The linked source/configuration revision introduced the recorded change: Session cookie lacks an explicit SameSite policy. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.
+2. Attack Path Time Machine,time_machine.investigation_answers.how_did_this_happen[3].finding_id,DEMO-EXTRA-08
+2. Attack Path Time Machine,time_machine.investigation_answers.how_did_this_happen[3].answer,The linked source/configuration revision introduced the recorded change: Verbose framework error response exposes internals. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.
+2. Attack Path Time Machine,time_machine.investigation_answers.when_did_it_become_vulnerable[0].finding_id,DEMO-DAST-01
+2. Attack Path Time Machine,time_machine.investigation_answers.when_did_it_become_vulnerable[0].answer,2026-10-13T12:20:00Z
+2. Attack Path Time Machine,time_machine.investigation_answers.when_did_it_become_vulnerable[1].finding_id,DEMO-DAST-02
+2. Attack Path Time Machine,time_machine.investigation_answers.when_did_it_become_vulnerable[1].answer,2026-10-13T12:20:00Z
+2. Attack Path Time Machine,time_machine.investigation_answers.when_did_it_become_vulnerable[2].finding_id,DEMO-EXTRA-07
+2. Attack Path Time Machine,time_machine.investigation_answers.when_did_it_become_vulnerable[2].answer,2026-10-13T12:20:00Z
+2. Attack Path Time Machine,time_machine.investigation_answers.when_did_it_become_vulnerable[3].finding_id,DEMO-EXTRA-08
+2. Attack Path Time Machine,time_machine.investigation_answers.when_did_it_become_vulnerable[3].answer,2026-10-13T12:20:00Z
+2. Attack Path Time Machine,time_machine.investigation_answers.when_was_it_first_observed[0].finding_id,DEMO-DAST-01
+2. Attack Path Time Machine,time_machine.investigation_answers.when_was_it_first_observed[0].answer,2026-10-13T12:20:00Z
+2. Attack Path Time Machine,time_machine.investigation_answers.when_was_it_first_observed[1].finding_id,DEMO-DAST-02
+2. Attack Path Time Machine,time_machine.investigation_answers.when_was_it_first_observed[1].answer,2026-10-13T12:20:00Z
+2. Attack Path Time Machine,time_machine.investigation_answers.when_was_it_first_observed[2].finding_id,DEMO-EXTRA-07
+2. Attack Path Time Machine,time_machine.investigation_answers.when_was_it_first_observed[2].answer,2026-10-13T12:20:00Z
+2. Attack Path Time Machine,time_machine.investigation_answers.when_was_it_first_observed[3].finding_id,DEMO-EXTRA-08
+2. Attack Path Time Machine,time_machine.investigation_answers.when_was_it_first_observed[3].answer,2026-10-13T12:20:00Z
+2. Attack Path Time Machine,time_machine.investigation_answers.who_changed_it[0].finding_id,DEMO-DAST-01
+2. Attack Path Time Machine,time_machine.investigation_answers.who_changed_it[0].answer,Jordan Patel (dev.c); applied by ci-edge-deploy
+2. Attack Path Time Machine,time_machine.investigation_answers.who_changed_it[1].finding_id,DEMO-DAST-02
+2. Attack Path Time Machine,time_machine.investigation_answers.who_changed_it[1].answer,Jordan Patel (dev.c); applied by ci-edge-deploy
+2. Attack Path Time Machine,time_machine.investigation_answers.who_changed_it[2].finding_id,DEMO-EXTRA-07
+2. Attack Path Time Machine,time_machine.investigation_answers.who_changed_it[2].answer,Jordan Patel (dev.c); applied by ci-edge-deploy
+2. Attack Path Time Machine,time_machine.investigation_answers.who_changed_it[3].finding_id,DEMO-EXTRA-08
+2. Attack Path Time Machine,time_machine.investigation_answers.who_changed_it[3].answer,Jordan Patel (dev.c); applied by ci-edge-deploy
+2. Attack Path Time Machine,time_machine.investigation_answers.which_deployment_created_it[0].finding_id,DEMO-DAST-01
+2. Attack Path Time Machine,time_machine.investigation_answers.which_deployment_created_it[0].answer,edge-release-412
+2. Attack Path Time Machine,time_machine.investigation_answers.which_deployment_created_it[1].finding_id,DEMO-DAST-02
+2. Attack Path Time Machine,time_machine.investigation_answers.which_deployment_created_it[1].answer,edge-release-412
+2. Attack Path Time Machine,time_machine.investigation_answers.which_deployment_created_it[2].finding_id,DEMO-EXTRA-07
+2. Attack Path Time Machine,time_machine.investigation_answers.which_deployment_created_it[2].answer,edge-release-412
+2. Attack Path Time Machine,time_machine.investigation_answers.which_deployment_created_it[3].finding_id,DEMO-EXTRA-08
+2. Attack Path Time Machine,time_machine.investigation_answers.which_deployment_created_it[3].answer,edge-release-412
+2. Attack Path Time Machine,time_machine.investigation_answers.which_commit_introduced_it[0].finding_id,DEMO-DAST-01
+2. Attack Path Time Machine,time_machine.investigation_answers.which_commit_introduced_it[0].answer,c4d91fa
+2. Attack Path Time Machine,time_machine.investigation_answers.which_commit_introduced_it[1].finding_id,DEMO-DAST-02
+2. Attack Path Time Machine,time_machine.investigation_answers.which_commit_introduced_it[1].answer,c4d91fa
+2. Attack Path Time Machine,time_machine.investigation_answers.which_commit_introduced_it[2].finding_id,DEMO-EXTRA-07
+2. Attack Path Time Machine,time_machine.investigation_answers.which_commit_introduced_it[2].answer,c4d91fa
+2. Attack Path Time Machine,time_machine.investigation_answers.which_commit_introduced_it[3].finding_id,DEMO-EXTRA-08
+2. Attack Path Time Machine,time_machine.investigation_answers.which_commit_introduced_it[3].answer,c4d91fa
+2. Attack Path Time Machine,time_machine.investigation_answers.what_is_the_root_cause[0].finding_id,DEMO-DAST-01
+2. Attack Path Time Machine,time_machine.investigation_answers.what_is_the_root_cause[0].answer,PR #231 removed the response-hardening middleware from the gateway configuration. Release 412 changed the observed headers and cookie attributes on the same scoped routes.
+2. Attack Path Time Machine,time_machine.investigation_answers.what_is_the_root_cause[1].finding_id,DEMO-DAST-02
+2. Attack Path Time Machine,time_machine.investigation_answers.what_is_the_root_cause[1].answer,The linked source/configuration revision introduced the recorded change: Content type sniffing protection is absent. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.
+2. Attack Path Time Machine,time_machine.investigation_answers.what_is_the_root_cause[2].finding_id,DEMO-EXTRA-07
+2. Attack Path Time Machine,time_machine.investigation_answers.what_is_the_root_cause[2].answer,The linked source/configuration revision introduced the recorded change: Session cookie lacks an explicit SameSite policy. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.
+2. Attack Path Time Machine,time_machine.investigation_answers.what_is_the_root_cause[3].finding_id,DEMO-EXTRA-08
+2. Attack Path Time Machine,time_machine.investigation_answers.what_is_the_root_cause[3].answer,The linked source/configuration revision introduced the recorded change: Verbose framework error response exposes internals. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.
+2. Attack Path Time Machine,time_machine.investigation_answers.what_is_the_blast_radius[0].finding_id,DEMO-DAST-01
+2. Attack Path Time Machine,time_machine.investigation_answers.what_is_the_blast_radius[0].answer,"Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation."
+2. Attack Path Time Machine,time_machine.investigation_answers.what_is_the_blast_radius[1].finding_id,DEMO-DAST-02
+2. Attack Path Time Machine,time_machine.investigation_answers.what_is_the_blast_radius[1].answer,"Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation."
+2. Attack Path Time Machine,time_machine.investigation_answers.what_is_the_blast_radius[2].finding_id,DEMO-EXTRA-07
+2. Attack Path Time Machine,time_machine.investigation_answers.what_is_the_blast_radius[2].answer,"Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation."
+2. Attack Path Time Machine,time_machine.investigation_answers.what_is_the_blast_radius[3].finding_id,DEMO-EXTRA-08
+2. Attack Path Time Machine,time_machine.investigation_answers.what_is_the_blast_radius[3].answer,"Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation."
+2. Attack Path Time Machine,time_machine.investigation_answers.how_do_we_prevent_it_again[0].finding_id,DEMO-DAST-01
+2. Attack Path Time Machine,time_machine.investigation_answers.how_do_we_prevent_it_again[0].answer,Design a policy for the application’s actual scripts and content sources. Test with report-only deployment where appropriate before enforcement.
+2. Attack Path Time Machine,time_machine.investigation_answers.how_do_we_prevent_it_again[1].finding_id,DEMO-DAST-02
+2. Attack Path Time Machine,time_machine.investigation_answers.how_do_we_prevent_it_again[1].answer,Serve appropriate content types and add X-Content-Type-Options: nosniff to application responses.
+2. Attack Path Time Machine,time_machine.investigation_answers.how_do_we_prevent_it_again[2].finding_id,DEMO-EXTRA-07
+2. Attack Path Time Machine,time_machine.investigation_answers.how_do_we_prevent_it_again[2].answer,Choose a SameSite policy appropriate to authentication and test cross-site flows.
+2. Attack Path Time Machine,time_machine.investigation_answers.how_do_we_prevent_it_again[3].finding_id,DEMO-EXTRA-08
+2. Attack Path Time Machine,time_machine.investigation_answers.how_do_we_prevent_it_again[3].answer,Return a generic error and retain details in access-controlled server logs.
+2. Attack Path Time Machine,time_machine.timeline[0].when,2026-09-14T00:00:00Z
+2. Attack Path Time Machine,time_machine.timeline[0].event,30-day historical baseline recorded
+2. Attack Path Time Machine,time_machine.timeline[0].reference,snap-dast-0914
+2. Attack Path Time Machine,time_machine.timeline[1].when,2026-09-29T00:00:00Z
+2. Attack Path Time Machine,time_machine.timeline[1].event,15-day historical snapshot recorded
+2. Attack Path Time Machine,time_machine.timeline[1].reference,snap-dast-0929
+2. Attack Path Time Machine,time_machine.timeline[2].when,2026-10-10T00:00:00Z
+2. Attack Path Time Machine,time_machine.timeline[2].event,"Last pre-change baseline: CSP, nosniff and SameSite applied by the gateway"
+2. Attack Path Time Machine,time_machine.timeline[2].reference,snap-dast-1010
+2. Attack Path Time Machine,time_machine.timeline[3].when,2026-10-12T13:40:00Z
+2. Attack Path Time Machine,time_machine.timeline[3].event,Change merged by Jordan Patel (dev.c)
+2. Attack Path Time Machine,time_machine.timeline[3].reference,c4d91fa
+2. Attack Path Time Machine,time_machine.timeline[4].when,2026-10-13T12:20:00Z
+2. Attack Path Time Machine,time_machine.timeline[4].event,Deployment changed the recorded environment
+2. Attack Path Time Machine,time_machine.timeline[4].reference,edge-release-412
+2. Attack Path Time Machine,time_machine.timeline[5].when,2026-10-14T08:00:00Z
+2. Attack Path Time Machine,time_machine.timeline[5].event,Cross-engine investigation assembled
+2. Attack Path Time Machine,time_machine.timeline[5].reference,CAPTM-2026-DAST-001
+2. Attack Path Time Machine,time_machine.attack_paths[0].path_id,ap-dast-1
+2. Attack Path Time Machine,time_machine.attack_paths[0].labels[0],Browser request
+2. Attack Path Time Machine,time_machine.attack_paths[0].labels[1],Gateway response policy
+2. Attack Path Time Machine,time_machine.attack_paths[0].labels[2],Orders web application
+2. Attack Path Time Machine,time_machine.attack_paths[0].first_observed,2026-10-13T12:20:00Z
+2. Attack Path Time Machine,time_machine.attack_paths[0].status,New in the recorded scenario
+2. Attack Path Time Machine,time_machine.attack_paths[0].commit[0],c4d91fa
+2. Attack Path Time Machine,time_machine.attack_paths[0].deployment[0],edge-release-412
+2. Attack Path Time Machine,time_machine.attack_paths[0].limits,Recorded relationship or data flow; does not by itself establish exploitation or effective authorization outside the supplied scenario.
+2. Attack Path Time Machine,time_machine.point_in_time_views[0].label,30 days before detection
+2. Attack Path Time Machine,time_machine.point_in_time_views[0].snapshot_id,snap-dast-0914
+2. Attack Path Time Machine,time_machine.point_in_time_views[0].observed_at,2026-09-14T00:00:00Z
+2. Attack Path Time Machine,time_machine.point_in_time_views[0].state,Before change
+2. Attack Path Time Machine,time_machine.point_in_time_views[0].environment,"CSP, nosniff and SameSite applied by the gateway"
+2. Attack Path Time Machine,time_machine.point_in_time_views[1].label,15 days before detection
+2. Attack Path Time Machine,time_machine.point_in_time_views[1].snapshot_id,snap-dast-0929
+2. Attack Path Time Machine,time_machine.point_in_time_views[1].observed_at,2026-09-29T00:00:00Z
+2. Attack Path Time Machine,time_machine.point_in_time_views[1].state,Before change
+2. Attack Path Time Machine,time_machine.point_in_time_views[1].environment,"CSP, nosniff and SameSite applied by the gateway"
+2. Attack Path Time Machine,time_machine.point_in_time_views[2].label,Last pre-change snapshot
+2. Attack Path Time Machine,time_machine.point_in_time_views[2].snapshot_id,snap-dast-1010
+2. Attack Path Time Machine,time_machine.point_in_time_views[2].observed_at,2026-10-10T00:00:00Z
+2. Attack Path Time Machine,time_machine.point_in_time_views[2].state,Before change
+2. Attack Path Time Machine,time_machine.point_in_time_views[2].environment,"CSP, nosniff and SameSite applied by the gateway"
+2. Attack Path Time Machine,time_machine.point_in_time_views[3].label,Detection snapshot
+2. Attack Path Time Machine,time_machine.point_in_time_views[3].snapshot_id,snap-dast-1014
+2. Attack Path Time Machine,time_machine.point_in_time_views[3].observed_at,2026-10-14T08:00:00Z
+2. Attack Path Time Machine,time_machine.point_in_time_views[3].state,After change
+2. Attack Path Time Machine,time_machine.point_in_time_views[3].environment,Shared response-hardening middleware omitted
+2. Attack Path Time Machine,time_machine.snapshot_comparisons[0].from,snap-dast-1010
+2. Attack Path Time Machine,time_machine.snapshot_comparisons[0].to,snap-dast-1013
+2. Attack Path Time Machine,time_machine.snapshot_comparisons[0].before,"CSP, nosniff and SameSite applied by the gateway"
+2. Attack Path Time Machine,time_machine.snapshot_comparisons[0].after,Shared response-hardening middleware omitted
+2. Attack Path Time Machine,time_machine.snapshot_comparisons[0].paths_created[0],ap-dast-1
+2. Attack Path Time Machine,time_machine.snapshot_comparisons[0].paths_closed,[]
+2. Attack Path Time Machine,time_machine.snapshot_comparisons[0].explanation,PR #231 removed the response-hardening middleware from the gateway configuration. Release 412 changed the observed headers and cookie attributes on the same scoped routes.
+2. Attack Path Time Machine,time_machine.change_events[0].occurred_at,2026-10-12T13:40:00Z
+2. Attack Path Time Machine,time_machine.change_events[0].source,Git review
+2. Attack Path Time Machine,time_machine.change_events[0].actor,Jordan Patel (dev.c)
+2. Attack Path Time Machine,time_machine.change_events[0].action,Merged security-relevant change
+2. Attack Path Time Machine,time_machine.change_events[0].commit,c4d91fa
+2. Attack Path Time Machine,time_machine.change_events[0].deployment,edge-release-412
+2. Attack Path Time Machine,time_machine.change_events[0].attribution,Explicit references in the demo dataset
+2. Attack Path Time Machine,time_machine.change_events[1].occurred_at,2026-10-13T12:20:00Z
+2. Attack Path Time Machine,time_machine.change_events[1].source,Gateway configuration diff + before/after HTTP observations + release manifest
+2. Attack Path Time Machine,time_machine.change_events[1].actor,ci-edge-deploy
+2. Attack Path Time Machine,time_machine.change_events[1].action,Shared response-hardening middleware omitted
+2. Attack Path Time Machine,time_machine.change_events[1].commit,c4d91fa
+2. Attack Path Time Machine,time_machine.change_events[1].deployment,edge-release-412
+2. Attack Path Time Machine,time_machine.change_events[1].attribution,Explicit references in the demo dataset
+2. Attack Path Time Machine,time_machine.shadow_permissions.applicable,false
+2. Attack Path Time Machine,time_machine.shadow_permissions.reason,IAM usage analysis belongs to the Cloud report.
+2. Attack Path Time Machine,time_machine.investigator.question,"How did this happen, when, who changed it, what is the blast radius and how do we prevent it?"
+2. Attack Path Time Machine,time_machine.investigator.answer,PR #231 removed the response-hardening middleware from the gateway configuration. Release 412 changed the observed headers and cookie attributes on the same scoped routes.
+2. Attack Path Time Machine,time_machine.investigator.actor,Jordan Patel (dev.c)
+2. Attack Path Time Machine,time_machine.investigator.introduced,2026-10-13T12:20:00Z
+2. Attack Path Time Machine,time_machine.investigator.commit,c4d91fa
+2. Attack Path Time Machine,time_machine.investigator.deployment,edge-release-412
+2. Attack Path Time Machine,time_machine.investigator.blast_radius,"Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation."
+2. Attack Path Time Machine,time_machine.investigator.prevention,"Restore the gateway policy, deploy CSP in report-only mode where appropriate and retest the same routes with response-header regression checks."
+2. Attack Path Time Machine,time_machine.investigator.grounding[0],Gateway configuration diff + before/after HTTP observations + release manifest
+2. Attack Path Time Machine,time_machine.investigator.grounding[1],snap-dast-1010
+2. Attack Path Time Machine,time_machine.investigator.grounding[2],snap-dast-1013
+3. SAST,sast.assessment_status,See the dedicated SAST product report
+3. SAST,sast.findings,[]
+3. SAST,sast.investigations,[]
+3. SAST,sast.investigation_answers,{}
+3. SAST,sast.runs,[]
+4. DAST,dast.assessment_status,Completed demo scenario
+4. DAST,dast.findings[0].finding_id,DEMO-DAST-01
+4. DAST,dast.findings[0].module,dast
+4. DAST,dast.findings[0].severity,medium
+4. DAST,dast.findings[0].title,Content Security Policy header is absent
+4. DAST,dast.findings[0].resource,https://orders.demo.invalid/
+4. DAST,dast.findings[0].target,https://orders.demo.invalid · staging scenario
+4. DAST,dast.findings[0].rule_id,CSX-DAST-CSP
+4. DAST,dast.findings[0].description,"Content Security Policy header is absent. Linked source, observation and deployment records are retained in this investigation."
+4. DAST,dast.findings[0].remediation,Design a policy for the application’s actual scripts and content sources. Test with report-only deployment where appropriate before enforcement.
+4. DAST,dast.findings[0].engines[0],runtime_http_probe
+4. DAST,dast.findings[0].engines[1],nuclei
+4. DAST,dast.findings[0].engines[2],zap-baseline
+4. DAST,dast.findings[0].engine_versions.runtime_http_probe,example dataset
+4. DAST,dast.findings[0].engine_versions.nuclei,example dataset
+4. DAST,dast.findings[0].engine_versions.zap-baseline,example dataset
+4. DAST,dast.findings[0].evidence[0].kind,engine_report
+4. DAST,dast.findings[0].evidence[0].source,runtime_http_probe
+4. DAST,dast.findings[0].evidence[0].classification,demo example
+4. DAST,dast.findings[0].evidence[0].detail,"GET / HTTP/1.1
+Host: orders.demo.invalid
+
+HTTP/1.1 200 OK
+Content-Type: text/html
+X-Content-Type-Options: nosniff
+
+Content-Security-Policy: [absent]"
+4. DAST,dast.findings[0].evidence[1].kind,engine_report
+4. DAST,dast.findings[0].evidence[1].source,nuclei
+4. DAST,dast.findings[0].evidence[1].classification,demo example
+4. DAST,dast.findings[0].evidence[1].detail,"GET / HTTP/1.1
+Host: orders.demo.invalid
+
+HTTP/1.1 200 OK
+Content-Type: text/html
+X-Content-Type-Options: nosniff
+
+Content-Security-Policy: [absent]"
+4. DAST,dast.findings[0].evidence[2].kind,engine_report
+4. DAST,dast.findings[0].evidence[2].source,zap-baseline
+4. DAST,dast.findings[0].evidence[2].classification,demo example
+4. DAST,dast.findings[0].evidence[2].detail,"GET / HTTP/1.1
+Host: orders.demo.invalid
+
+HTTP/1.1 200 OK
+Content-Type: text/html
+X-Content-Type-Options: nosniff
+
+Content-Security-Policy: [absent]"
+4. DAST,dast.findings[0].state,open
+4. DAST,dast.findings[0].verification.state,unverified
+4. DAST,dast.findings[0].verification.basis,Illustrative scenario with supplied change and observation records
+4. DAST,dast.findings[0].framework_mappings[0].framework,CWE
+4. DAST,dast.findings[0].framework_mappings[0].control,CWE-693: Protection Mechanism Failure (broad hardening reference)
+4. DAST,dast.findings[0].framework_mappings[0].source,https://cwe.mitre.org/data/definitions/693.html
+4. DAST,dast.findings[0].framework_mappings[0].needs_review,true
+4. DAST,dast.findings[0].cwe,[]
+4. DAST,dast.findings[1].finding_id,DEMO-DAST-02
+4. DAST,dast.findings[1].module,dast
+4. DAST,dast.findings[1].severity,low
+4. DAST,dast.findings[1].title,Content type sniffing protection is absent
+4. DAST,dast.findings[1].resource,https://orders.demo.invalid/assets/
+4. DAST,dast.findings[1].target,https://orders.demo.invalid · staging scenario
+4. DAST,dast.findings[1].rule_id,CSX-DAST-NOSNIFF
+4. DAST,dast.findings[1].description,"Content type sniffing protection is absent. Linked source, observation and deployment records are retained in this investigation."
+4. DAST,dast.findings[1].remediation,Serve appropriate content types and add X-Content-Type-Options: nosniff to application responses.
+4. DAST,dast.findings[1].engines[0],runtime_http_probe
+4. DAST,dast.findings[1].engines[1],zap-baseline
+4. DAST,dast.findings[1].engine_versions.runtime_http_probe,example dataset
+4. DAST,dast.findings[1].engine_versions.zap-baseline,example dataset
+4. DAST,dast.findings[1].evidence[0].kind,engine_report
+4. DAST,dast.findings[1].evidence[0].source,runtime_http_probe
+4. DAST,dast.findings[1].evidence[0].classification,demo example
+4. DAST,dast.findings[1].evidence[0].detail,"HTTP/1.1 200 OK
+Content-Type: text/plain
+X-Content-Type-Options: [absent]"
+4. DAST,dast.findings[1].evidence[1].kind,engine_report
+4. DAST,dast.findings[1].evidence[1].source,zap-baseline
+4. DAST,dast.findings[1].evidence[1].classification,demo example
+4. DAST,dast.findings[1].evidence[1].detail,"HTTP/1.1 200 OK
+Content-Type: text/plain
+X-Content-Type-Options: [absent]"
+4. DAST,dast.findings[1].state,open
+4. DAST,dast.findings[1].verification.state,unverified
+4. DAST,dast.findings[1].verification.basis,Illustrative scenario with supplied change and observation records
+4. DAST,dast.findings[1].framework_mappings,[]
+4. DAST,dast.findings[1].cwe,[]
+4. DAST,dast.findings[2].finding_id,DEMO-EXTRA-07
+4. DAST,dast.findings[2].module,dast
+4. DAST,dast.findings[2].severity,medium
+4. DAST,dast.findings[2].title,Session cookie lacks an explicit SameSite policy
+4. DAST,dast.findings[2].resource,https://orders.demo.invalid/login
+4. DAST,dast.findings[2].target,https://orders.demo.invalid · staging scenario
+4. DAST,dast.findings[2].rule_id,HTTP-COOKIE
+4. DAST,dast.findings[2].description,"Session cookie lacks an explicit SameSite policy. Linked source, observation and deployment records are retained in this investigation."
+4. DAST,dast.findings[2].remediation,Choose a SameSite policy appropriate to authentication and test cross-site flows.
+4. DAST,dast.findings[2].engines[0],nuclei
+4. DAST,dast.findings[2].engines[1],zap-baseline
+4. DAST,dast.findings[2].engine_versions.nuclei,example dataset
+4. DAST,dast.findings[2].engine_versions.zap-baseline,example dataset
+4. DAST,dast.findings[2].evidence[0].kind,engine_report
+4. DAST,dast.findings[2].evidence[0].source,nuclei
+4. DAST,dast.findings[2].evidence[0].classification,demo example
+4. DAST,dast.findings[2].evidence[0].detail,"HTTP/1.1 200 OK
+Set-Cookie: demo_session=REDACTED; Secure; HttpOnly"
+4. DAST,dast.findings[2].evidence[1].kind,engine_report
+4. DAST,dast.findings[2].evidence[1].source,zap-baseline
+4. DAST,dast.findings[2].evidence[1].classification,demo example
+4. DAST,dast.findings[2].evidence[1].detail,"HTTP/1.1 200 OK
+Set-Cookie: demo_session=REDACTED; Secure; HttpOnly"
+4. DAST,dast.findings[2].state,open
+4. DAST,dast.findings[2].verification.state,unverified
+4. DAST,dast.findings[2].verification.basis,Illustrative scenario with supplied change and observation records
+4. DAST,dast.findings[2].framework_mappings,[]
+4. DAST,dast.findings[2].cwe,[]
+4. DAST,dast.findings[3].finding_id,DEMO-EXTRA-08
+4. DAST,dast.findings[3].module,dast
+4. DAST,dast.findings[3].severity,medium
+4. DAST,dast.findings[3].title,Verbose framework error response exposes internals
+4. DAST,dast.findings[3].resource,https://orders.demo.invalid/example-error
+4. DAST,dast.findings[3].target,https://orders.demo.invalid · staging scenario
+4. DAST,dast.findings[3].rule_id,HTTP-DISCLOSURE
+4. DAST,dast.findings[3].description,"Verbose framework error response exposes internals. Linked source, observation and deployment records are retained in this investigation."
+4. DAST,dast.findings[3].remediation,Return a generic error and retain details in access-controlled server logs.
+4. DAST,dast.findings[3].engines[0],nuclei
+4. DAST,dast.findings[3].engines[1],zap-baseline
+4. DAST,dast.findings[3].engine_versions.nuclei,example dataset
+4. DAST,dast.findings[3].engine_versions.zap-baseline,example dataset
+4. DAST,dast.findings[3].evidence[0].kind,engine_report
+4. DAST,dast.findings[3].evidence[0].source,nuclei
+4. DAST,dast.findings[3].evidence[0].classification,demo example
+4. DAST,dast.findings[3].evidence[0].detail,"HTTP/1.1 500 Internal Server Error
+Body excerpt: Traceback ... /srv/orders/api.py"
+4. DAST,dast.findings[3].evidence[1].kind,engine_report
+4. DAST,dast.findings[3].evidence[1].source,zap-baseline
+4. DAST,dast.findings[3].evidence[1].classification,demo example
+4. DAST,dast.findings[3].evidence[1].detail,"HTTP/1.1 500 Internal Server Error
+Body excerpt: Traceback ... /srv/orders/api.py"
+4. DAST,dast.findings[3].state,open
+4. DAST,dast.findings[3].verification.state,unverified
+4. DAST,dast.findings[3].verification.basis,Illustrative scenario with supplied change and observation records
+4. DAST,dast.findings[3].framework_mappings,[]
+4. DAST,dast.findings[3].cwe,[]
+4. DAST,dast.investigations[0].finding_id,DEMO-DAST-01
+4. DAST,dast.investigations[0].why_vulnerable,The inspected example response lacks the header.
+4. DAST,dast.investigations[0].how_became_possible,PR #231 removed the response-hardening middleware from the gateway configuration. Release 412 changed the observed headers and cookie attributes on the same scoped routes.
+4. DAST,dast.investigations[0].when_introduced,2026-10-13T12:20:00Z
+4. DAST,dast.investigations[0].when_first_observed,2026-10-13T12:20:00Z
+4. DAST,dast.investigations[0].who_introduced,Jordan Patel (dev.c); applied by ci-edge-deploy
+4. DAST,dast.investigations[0].responsible_commit,c4d91fa
+4. DAST,dast.investigations[0].responsible_deployment,edge-release-412
+4. DAST,dast.investigations[0].root_cause,PR #231 removed the response-hardening middleware from the gateway configuration. Release 412 changed the observed headers and cookie attributes on the same scoped routes.
+4. DAST,dast.investigations[0].blast_radius,"Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation."
+4. DAST,dast.investigations[0].prevention,Design a policy for the application’s actual scripts and content sources. Test with report-only deployment where appropriate before enforcement.
+4. DAST,dast.investigations[0].evidence_basis,Aster Commerce demo dataset: linked evidence and provenance supplied for this example.
+4. DAST,dast.investigations[1].finding_id,DEMO-DAST-02
+4. DAST,dast.investigations[1].why_vulnerable,The required hardening header is absent from the sample response.
+4. DAST,dast.investigations[1].how_became_possible,The linked source/configuration revision introduced the recorded change: Content type sniffing protection is absent. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.
+4. DAST,dast.investigations[1].when_introduced,2026-10-13T12:20:00Z
+4. DAST,dast.investigations[1].when_first_observed,2026-10-13T12:20:00Z
+4. DAST,dast.investigations[1].who_introduced,Jordan Patel (dev.c); applied by ci-edge-deploy
+4. DAST,dast.investigations[1].responsible_commit,c4d91fa
+4. DAST,dast.investigations[1].responsible_deployment,edge-release-412
+4. DAST,dast.investigations[1].root_cause,The linked source/configuration revision introduced the recorded change: Content type sniffing protection is absent. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.
+4. DAST,dast.investigations[1].blast_radius,"Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation."
+4. DAST,dast.investigations[1].prevention,Serve appropriate content types and add X-Content-Type-Options: nosniff to application responses.
+4. DAST,dast.investigations[1].evidence_basis,Aster Commerce demo dataset: linked evidence and provenance supplied for this example.
+4. DAST,dast.investigations[2].finding_id,DEMO-EXTRA-07
+4. DAST,dast.investigations[2].why_vulnerable,"HTTP/1.1 200 OK
+Set-Cookie: demo_session=REDACTED; Secure; HttpOnly"
+4. DAST,dast.investigations[2].how_became_possible,The linked source/configuration revision introduced the recorded change: Session cookie lacks an explicit SameSite policy. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.
+4. DAST,dast.investigations[2].when_introduced,2026-10-13T12:20:00Z
+4. DAST,dast.investigations[2].when_first_observed,2026-10-13T12:20:00Z
+4. DAST,dast.investigations[2].who_introduced,Jordan Patel (dev.c); applied by ci-edge-deploy
+4. DAST,dast.investigations[2].responsible_commit,c4d91fa
+4. DAST,dast.investigations[2].responsible_deployment,edge-release-412
+4. DAST,dast.investigations[2].root_cause,The linked source/configuration revision introduced the recorded change: Session cookie lacks an explicit SameSite policy. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.
+4. DAST,dast.investigations[2].blast_radius,"Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation."
+4. DAST,dast.investigations[2].prevention,Choose a SameSite policy appropriate to authentication and test cross-site flows.
+4. DAST,dast.investigations[2].evidence_basis,Aster Commerce demo dataset: linked evidence and provenance supplied for this example.
+4. DAST,dast.investigations[3].finding_id,DEMO-EXTRA-08
+4. DAST,dast.investigations[3].why_vulnerable,"HTTP/1.1 500 Internal Server Error
+Body excerpt: Traceback ... /srv/orders/api.py"
+4. DAST,dast.investigations[3].how_became_possible,The linked source/configuration revision introduced the recorded change: Verbose framework error response exposes internals. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.
+4. DAST,dast.investigations[3].when_introduced,2026-10-13T12:20:00Z
+4. DAST,dast.investigations[3].when_first_observed,2026-10-13T12:20:00Z
+4. DAST,dast.investigations[3].who_introduced,Jordan Patel (dev.c); applied by ci-edge-deploy
+4. DAST,dast.investigations[3].responsible_commit,c4d91fa
+4. DAST,dast.investigations[3].responsible_deployment,edge-release-412
+4. DAST,dast.investigations[3].root_cause,The linked source/configuration revision introduced the recorded change: Verbose framework error response exposes internals. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.
+4. DAST,dast.investigations[3].blast_radius,"Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation."
+4. DAST,dast.investigations[3].prevention,Return a generic error and retain details in access-controlled server logs.
+4. DAST,dast.investigations[3].evidence_basis,Aster Commerce demo dataset: linked evidence and provenance supplied for this example.
+4. DAST,dast.investigation_answers.why_is_it_vulnerable[0].finding_id,DEMO-DAST-01
+4. DAST,dast.investigation_answers.why_is_it_vulnerable[0].answer,The inspected example response lacks the header.
+4. DAST,dast.investigation_answers.why_is_it_vulnerable[1].finding_id,DEMO-DAST-02
+4. DAST,dast.investigation_answers.why_is_it_vulnerable[1].answer,The required hardening header is absent from the sample response.
+4. DAST,dast.investigation_answers.why_is_it_vulnerable[2].finding_id,DEMO-EXTRA-07
+4. DAST,dast.investigation_answers.why_is_it_vulnerable[2].answer,"HTTP/1.1 200 OK
+Set-Cookie: demo_session=REDACTED; Secure; HttpOnly"
+4. DAST,dast.investigation_answers.why_is_it_vulnerable[3].finding_id,DEMO-EXTRA-08
+4. DAST,dast.investigation_answers.why_is_it_vulnerable[3].answer,"HTTP/1.1 500 Internal Server Error
+Body excerpt: Traceback ... /srv/orders/api.py"
+4. DAST,dast.investigation_answers.how_did_this_happen[0].finding_id,DEMO-DAST-01
+4. DAST,dast.investigation_answers.how_did_this_happen[0].answer,PR #231 removed the response-hardening middleware from the gateway configuration. Release 412 changed the observed headers and cookie attributes on the same scoped routes.
+4. DAST,dast.investigation_answers.how_did_this_happen[1].finding_id,DEMO-DAST-02
+4. DAST,dast.investigation_answers.how_did_this_happen[1].answer,The linked source/configuration revision introduced the recorded change: Content type sniffing protection is absent. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.
+4. DAST,dast.investigation_answers.how_did_this_happen[2].finding_id,DEMO-EXTRA-07
+4. DAST,dast.investigation_answers.how_did_this_happen[2].answer,The linked source/configuration revision introduced the recorded change: Session cookie lacks an explicit SameSite policy. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.
+4. DAST,dast.investigation_answers.how_did_this_happen[3].finding_id,DEMO-EXTRA-08
+4. DAST,dast.investigation_answers.how_did_this_happen[3].answer,The linked source/configuration revision introduced the recorded change: Verbose framework error response exposes internals. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.
+4. DAST,dast.investigation_answers.when_did_it_become_vulnerable[0].finding_id,DEMO-DAST-01
+4. DAST,dast.investigation_answers.when_did_it_become_vulnerable[0].answer,2026-10-13T12:20:00Z
+4. DAST,dast.investigation_answers.when_did_it_become_vulnerable[1].finding_id,DEMO-DAST-02
+4. DAST,dast.investigation_answers.when_did_it_become_vulnerable[1].answer,2026-10-13T12:20:00Z
+4. DAST,dast.investigation_answers.when_did_it_become_vulnerable[2].finding_id,DEMO-EXTRA-07
+4. DAST,dast.investigation_answers.when_did_it_become_vulnerable[2].answer,2026-10-13T12:20:00Z
+4. DAST,dast.investigation_answers.when_did_it_become_vulnerable[3].finding_id,DEMO-EXTRA-08
+4. DAST,dast.investigation_answers.when_did_it_become_vulnerable[3].answer,2026-10-13T12:20:00Z
+4. DAST,dast.investigation_answers.when_was_it_first_observed[0].finding_id,DEMO-DAST-01
+4. DAST,dast.investigation_answers.when_was_it_first_observed[0].answer,2026-10-13T12:20:00Z
+4. DAST,dast.investigation_answers.when_was_it_first_observed[1].finding_id,DEMO-DAST-02
+4. DAST,dast.investigation_answers.when_was_it_first_observed[1].answer,2026-10-13T12:20:00Z
+4. DAST,dast.investigation_answers.when_was_it_first_observed[2].finding_id,DEMO-EXTRA-07
+4. DAST,dast.investigation_answers.when_was_it_first_observed[2].answer,2026-10-13T12:20:00Z
+4. DAST,dast.investigation_answers.when_was_it_first_observed[3].finding_id,DEMO-EXTRA-08
+4. DAST,dast.investigation_answers.when_was_it_first_observed[3].answer,2026-10-13T12:20:00Z
+4. DAST,dast.investigation_answers.who_changed_it[0].finding_id,DEMO-DAST-01
+4. DAST,dast.investigation_answers.who_changed_it[0].answer,Jordan Patel (dev.c); applied by ci-edge-deploy
+4. DAST,dast.investigation_answers.who_changed_it[1].finding_id,DEMO-DAST-02
+4. DAST,dast.investigation_answers.who_changed_it[1].answer,Jordan Patel (dev.c); applied by ci-edge-deploy
+4. DAST,dast.investigation_answers.who_changed_it[2].finding_id,DEMO-EXTRA-07
+4. DAST,dast.investigation_answers.who_changed_it[2].answer,Jordan Patel (dev.c); applied by ci-edge-deploy
+4. DAST,dast.investigation_answers.who_changed_it[3].finding_id,DEMO-EXTRA-08
+4. DAST,dast.investigation_answers.who_changed_it[3].answer,Jordan Patel (dev.c); applied by ci-edge-deploy
+4. DAST,dast.investigation_answers.which_deployment_created_it[0].finding_id,DEMO-DAST-01
+4. DAST,dast.investigation_answers.which_deployment_created_it[0].answer,edge-release-412
+4. DAST,dast.investigation_answers.which_deployment_created_it[1].finding_id,DEMO-DAST-02
+4. DAST,dast.investigation_answers.which_deployment_created_it[1].answer,edge-release-412
+4. DAST,dast.investigation_answers.which_deployment_created_it[2].finding_id,DEMO-EXTRA-07
+4. DAST,dast.investigation_answers.which_deployment_created_it[2].answer,edge-release-412
+4. DAST,dast.investigation_answers.which_deployment_created_it[3].finding_id,DEMO-EXTRA-08
+4. DAST,dast.investigation_answers.which_deployment_created_it[3].answer,edge-release-412
+4. DAST,dast.investigation_answers.which_commit_introduced_it[0].finding_id,DEMO-DAST-01
+4. DAST,dast.investigation_answers.which_commit_introduced_it[0].answer,c4d91fa
+4. DAST,dast.investigation_answers.which_commit_introduced_it[1].finding_id,DEMO-DAST-02
+4. DAST,dast.investigation_answers.which_commit_introduced_it[1].answer,c4d91fa
+4. DAST,dast.investigation_answers.which_commit_introduced_it[2].finding_id,DEMO-EXTRA-07
+4. DAST,dast.investigation_answers.which_commit_introduced_it[2].answer,c4d91fa
+4. DAST,dast.investigation_answers.which_commit_introduced_it[3].finding_id,DEMO-EXTRA-08
+4. DAST,dast.investigation_answers.which_commit_introduced_it[3].answer,c4d91fa
+4. DAST,dast.investigation_answers.what_is_the_root_cause[0].finding_id,DEMO-DAST-01
+4. DAST,dast.investigation_answers.what_is_the_root_cause[0].answer,PR #231 removed the response-hardening middleware from the gateway configuration. Release 412 changed the observed headers and cookie attributes on the same scoped routes.
+4. DAST,dast.investigation_answers.what_is_the_root_cause[1].finding_id,DEMO-DAST-02
+4. DAST,dast.investigation_answers.what_is_the_root_cause[1].answer,The linked source/configuration revision introduced the recorded change: Content type sniffing protection is absent. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.
+4. DAST,dast.investigation_answers.what_is_the_root_cause[2].finding_id,DEMO-EXTRA-07
+4. DAST,dast.investigation_answers.what_is_the_root_cause[2].answer,The linked source/configuration revision introduced the recorded change: Session cookie lacks an explicit SameSite policy. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.
+4. DAST,dast.investigation_answers.what_is_the_root_cause[3].finding_id,DEMO-EXTRA-08
+4. DAST,dast.investigation_answers.what_is_the_root_cause[3].answer,The linked source/configuration revision introduced the recorded change: Verbose framework error response exposes internals. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.
+4. DAST,dast.investigation_answers.what_is_the_blast_radius[0].finding_id,DEMO-DAST-01
+4. DAST,dast.investigation_answers.what_is_the_blast_radius[0].answer,"Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation."
+4. DAST,dast.investigation_answers.what_is_the_blast_radius[1].finding_id,DEMO-DAST-02
+4. DAST,dast.investigation_answers.what_is_the_blast_radius[1].answer,"Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation."
+4. DAST,dast.investigation_answers.what_is_the_blast_radius[2].finding_id,DEMO-EXTRA-07
+4. DAST,dast.investigation_answers.what_is_the_blast_radius[2].answer,"Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation."
+4. DAST,dast.investigation_answers.what_is_the_blast_radius[3].finding_id,DEMO-EXTRA-08
+4. DAST,dast.investigation_answers.what_is_the_blast_radius[3].answer,"Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation."
+4. DAST,dast.investigation_answers.how_do_we_prevent_it_again[0].finding_id,DEMO-DAST-01
+4. DAST,dast.investigation_answers.how_do_we_prevent_it_again[0].answer,Design a policy for the application’s actual scripts and content sources. Test with report-only deployment where appropriate before enforcement.
+4. DAST,dast.investigation_answers.how_do_we_prevent_it_again[1].finding_id,DEMO-DAST-02
+4. DAST,dast.investigation_answers.how_do_we_prevent_it_again[1].answer,Serve appropriate content types and add X-Content-Type-Options: nosniff to application responses.
+4. DAST,dast.investigation_answers.how_do_we_prevent_it_again[2].finding_id,DEMO-EXTRA-07
+4. DAST,dast.investigation_answers.how_do_we_prevent_it_again[2].answer,Choose a SameSite policy appropriate to authentication and test cross-site flows.
+4. DAST,dast.investigation_answers.how_do_we_prevent_it_again[3].finding_id,DEMO-EXTRA-08
+4. DAST,dast.investigation_answers.how_do_we_prevent_it_again[3].answer,Return a generic error and retain details in access-controlled server logs.
+4. DAST,dast.runs[0].engine_id,runtime_http_probe
+4. DAST,dast.runs[0].name,HTTP posture review
+4. DAST,dast.runs[0].category,Application Runtime Scanning
+4. DAST,dast.runs[0].homepage,https://owasp.org/www-project-top-ten/
+4. DAST,dast.runs[0].product,dast
+4. DAST,dast.runs[0].status,completed_in_demo
+4. DAST,dast.runs[0].execution,Illustrative normalized evidence dataset; no vendor process invoked
+4. DAST,dast.runs[0].version,Example dataset
+4. DAST,dast.runs[0].finding_ids[0],DEMO-DAST-01
+4. DAST,dast.runs[0].finding_ids[1],DEMO-DAST-02
+4. DAST,dast.runs[0].summary,2 observations linked to combined findings
+4. DAST,dast.runs[1].engine_id,nuclei
+4. DAST,dast.runs[1].name,Nuclei
+4. DAST,dast.runs[1].category,Application Runtime Scanning
+4. DAST,dast.runs[1].homepage,https://nuclei.projectdiscovery.io/
+4. DAST,dast.runs[1].product,dast
+4. DAST,dast.runs[1].status,completed_in_demo
+4. DAST,dast.runs[1].execution,Illustrative normalized evidence dataset; no vendor process invoked
+4. DAST,dast.runs[1].version,Example dataset
+4. DAST,dast.runs[1].finding_ids[0],DEMO-DAST-01
+4. DAST,dast.runs[1].finding_ids[1],DEMO-EXTRA-07
+4. DAST,dast.runs[1].finding_ids[2],DEMO-EXTRA-08
+4. DAST,dast.runs[1].summary,3 observations linked to combined findings
+4. DAST,dast.runs[2].engine_id,zap-baseline
+4. DAST,dast.runs[2].name,OWASP ZAP Baseline
+4. DAST,dast.runs[2].category,DAST / Web Security
+4. DAST,dast.runs[2].homepage,https://www.zaproxy.org/
+4. DAST,dast.runs[2].product,dast
+4. DAST,dast.runs[2].status,completed_in_demo
+4. DAST,dast.runs[2].execution,Illustrative normalized evidence dataset; no vendor process invoked
+4. DAST,dast.runs[2].version,Example dataset
+4. DAST,dast.runs[2].finding_ids[0],DEMO-DAST-01
+4. DAST,dast.runs[2].finding_ids[1],DEMO-DAST-02
+4. DAST,dast.runs[2].finding_ids[2],DEMO-EXTRA-07
+4. DAST,dast.runs[2].finding_ids[3],DEMO-EXTRA-08
+4. DAST,dast.runs[2].summary,4 observations linked to combined findings
+5. CLOUD,cloud.assessment_status,See the dedicated CLOUD product report
+5. CLOUD,cloud.findings,[]
+5. CLOUD,cloud.investigations,[]
+5. CLOUD,cloud.investigation_answers,{}
+5. CLOUD,cloud.runs,[]
+6. AI SECURITY,ai.assessment_status,See the dedicated AI product report
+6. AI SECURITY,ai.findings,[]
+6. AI SECURITY,ai.investigations,[]
+6. AI SECURITY,ai.investigation_answers,{}
+6. AI SECURITY,ai.runs,[]
+7. Framework mapping,framework_mapping.mappings[0].finding_id,DEMO-DAST-01
+7. Framework mapping,framework_mapping.mappings[0].framework,CWE
+7. Framework mapping,framework_mapping.mappings[0].control,CWE-693: Protection Mechanism Failure (broad hardening reference)
+7. Framework mapping,framework_mapping.mappings[0].source,https://cwe.mitre.org/data/definitions/693.html
+7. Framework mapping,framework_mapping.mappings[0].needs_review,true
+7. Framework mapping,framework_mapping.note,Source-supported rule mappings are retained where supplied. This scenario is not a compliance certification.
+8. Remediation plan,remediation_plan.actions[0].priority,1
+8. Remediation plan,remediation_plan.actions[0].finding_id,DEMO-DAST-01
+8. Remediation plan,remediation_plan.actions[0].action,Design a policy for the application’s actual scripts and content sources. Test with report-only deployment where appropriate before enforcement.
+8. Remediation plan,remediation_plan.actions[0].owner,Application security
+8. Remediation plan,remediation_plan.actions[0].effort,Review and scoped change
+8. Remediation plan,remediation_plan.actions[0].validation,Reassess the same scope; verify the finding closes and compare the resulting path.
+8. Remediation plan,remediation_plan.actions[1].priority,2
+8. Remediation plan,remediation_plan.actions[1].finding_id,DEMO-DAST-02
+8. Remediation plan,remediation_plan.actions[1].action,Serve appropriate content types and add X-Content-Type-Options: nosniff to application responses.
+8. Remediation plan,remediation_plan.actions[1].owner,Application security
+8. Remediation plan,remediation_plan.actions[1].effort,Review and scoped change
+8. Remediation plan,remediation_plan.actions[1].validation,Reassess the same scope; verify the finding closes and compare the resulting path.
+8. Remediation plan,remediation_plan.actions[2].priority,3
+8. Remediation plan,remediation_plan.actions[2].finding_id,DEMO-EXTRA-07
+8. Remediation plan,remediation_plan.actions[2].action,Choose a SameSite policy appropriate to authentication and test cross-site flows.
+8. Remediation plan,remediation_plan.actions[2].owner,Application security
+8. Remediation plan,remediation_plan.actions[2].effort,Review and scoped change
+8. Remediation plan,remediation_plan.actions[2].validation,Reassess the same scope; verify the finding closes and compare the resulting path.
+8. Remediation plan,remediation_plan.actions[3].priority,4
+8. Remediation plan,remediation_plan.actions[3].finding_id,DEMO-EXTRA-08
+8. Remediation plan,remediation_plan.actions[3].action,Return a generic error and retain details in access-controlled server logs.
+8. Remediation plan,remediation_plan.actions[3].owner,Application security
+8. Remediation plan,remediation_plan.actions[3].effort,Review and scoped change
+8. Remediation plan,remediation_plan.actions[3].validation,Reassess the same scope; verify the finding closes and compare the resulting path.
+Appendix,appendix.methodology,"Illustrative Aster Commerce demonstration dataset. Persons, commits, deployments, snapshots and engine observations are supplied examples, not live customer or vendor-run evidence. All eleven export formats serialize this same report model."
+Appendix,appendix.engine_records[0].engine_id,runtime_http_probe
+Appendix,appendix.engine_records[0].name,HTTP posture review
+Appendix,appendix.engine_records[0].category,Application Runtime Scanning
+Appendix,appendix.engine_records[0].homepage,https://owasp.org/www-project-top-ten/
+Appendix,appendix.engine_records[0].product,dast
+Appendix,appendix.engine_records[0].status,completed_in_demo
+Appendix,appendix.engine_records[0].execution,Illustrative normalized evidence dataset; no vendor process invoked
+Appendix,appendix.engine_records[0].version,Example dataset
+Appendix,appendix.engine_records[0].finding_ids[0],DEMO-DAST-01
+Appendix,appendix.engine_records[0].finding_ids[1],DEMO-DAST-02
+Appendix,appendix.engine_records[0].summary,2 observations linked to combined findings
+Appendix,appendix.engine_records[1].engine_id,nuclei
+Appendix,appendix.engine_records[1].name,Nuclei
+Appendix,appendix.engine_records[1].category,Application Runtime Scanning
+Appendix,appendix.engine_records[1].homepage,https://nuclei.projectdiscovery.io/
+Appendix,appendix.engine_records[1].product,dast
+Appendix,appendix.engine_records[1].status,completed_in_demo
+Appendix,appendix.engine_records[1].execution,Illustrative normalized evidence dataset; no vendor process invoked
+Appendix,appendix.engine_records[1].version,Example dataset
+Appendix,appendix.engine_records[1].finding_ids[0],DEMO-DAST-01
+Appendix,appendix.engine_records[1].finding_ids[1],DEMO-EXTRA-07
+Appendix,appendix.engine_records[1].finding_ids[2],DEMO-EXTRA-08
+Appendix,appendix.engine_records[1].summary,3 observations linked to combined findings
+Appendix,appendix.engine_records[2].engine_id,zap-baseline
+Appendix,appendix.engine_records[2].name,OWASP ZAP Baseline
+Appendix,appendix.engine_records[2].category,DAST / Web Security
+Appendix,appendix.engine_records[2].homepage,https://www.zaproxy.org/
+Appendix,appendix.engine_records[2].product,dast
+Appendix,appendix.engine_records[2].status,completed_in_demo
+Appendix,appendix.engine_records[2].execution,Illustrative normalized evidence dataset; no vendor process invoked
+Appendix,appendix.engine_records[2].version,Example dataset
+Appendix,appendix.engine_records[2].finding_ids[0],DEMO-DAST-01
+Appendix,appendix.engine_records[2].finding_ids[1],DEMO-DAST-02
+Appendix,appendix.engine_records[2].finding_ids[2],DEMO-EXTRA-07
+Appendix,appendix.engine_records[2].finding_ids[3],DEMO-EXTRA-08
+Appendix,appendix.engine_records[2].summary,4 observations linked to combined findings
+Appendix,appendix.provenance_sources[0],Gateway configuration diff + before/after HTTP observations + release manifest
+Appendix,appendix.limitations[0],Graph paths describe recorded scenario relationships; they do not establish real effective access or exploitation.
+Appendix,appendix.limitations[1],Observed HTTP hardening gaps are distinct from reproduced exploits.
+Appendix,appendix.limitations[2],Shadow-permission observations require workload-owner review.
+Appendix,appendix.primary_references[0],https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy
+Appendix,appendix.primary_references[1],https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Content-Type-Options
+Appendix,appendix.primary_references[2],https://owasp.org/www-project-top-ten/

@@ -1,0 +1,885 @@
+﻿Section,Field,Value
+Report metadata,schema_version,captm.report/1
+Report metadata,report_id,CAPTM-2026-SAST-001
+Report metadata,title,A source change introduced SQL injection in the orders API
+Report metadata,classification,DEMO SCENARIO · Aster Commerce
+Report metadata,generated_at,2026-10-14T10:10:00Z
+Report metadata,workspace,aster-commerce
+Report metadata,window.from,2026-09-14T00:00:00Z
+Report metadata,window.to,2026-10-14T10:10:00Z
+Report metadata,products[0],sast
+1. Executive summary,executive_summary.incident.title,A source change introduced SQL injection in the orders API
+1. Executive summary,executive_summary.incident.target,aster/orders-api · release 2.8
+1. Executive summary,executive_summary.incident.actor,Alex Rivera (dev.b)
+1. Executive summary,executive_summary.incident.serviceActor,ci-orders-release
+1. Executive summary,executive_summary.incident.commit,b7c82de
+1. Executive summary,executive_summary.incident.deployment,orders-release-284
+1. Executive summary,executive_summary.incident.introduced,2026-10-13T10:06:00Z
+1. Executive summary,executive_summary.incident.merged,2026-10-12T11:15:00Z
+1. Executive summary,executive_summary.incident.path[0],GET /users?id=
+1. Executive summary,executive_summary.incident.path[1],SQL string interpolation
+1. Executive summary,executive_summary.incident.path[2],orders database
+1. Executive summary,executive_summary.incident.before,Bound SQL parameters; scoped infrastructure rules
+1. Executive summary,executive_summary.incident.after,Request input interpolated into SQL; insecure configuration added in the release
+1. Executive summary,executive_summary.incident.how,PR #228 replaced parameter binding with an interpolated query at orders/api.py:42. Release 284 deployed that revision; the source diff links the finding to the change.
+1. Executive summary,executive_summary.incident.blast,Three API routes share this query helper; the application database role can read the example users and orders tables.
+1. Executive summary,executive_summary.incident.prevention,"Restore driver-specific parameter binding, add an injection regression test and enforce source, secret and IaC checks before merge."
+1. Executive summary,executive_summary.incident.source,Git diff + build manifest + code evidence
+1. Executive summary,executive_summary.incident.baseline,snap-sast-1010
+1. Executive summary,executive_summary.incident.changed,snap-sast-1013
+1. Executive summary,executive_summary.incident.lead,DEMO-SAST-01
+1. Executive summary,executive_summary.summary,PR #228 replaced parameter binding with an interpolated query at orders/api.py:42. Release 284 deployed that revision; the source diff links the finding to the change.
+1. Executive summary,executive_summary.severity_counts.critical,1
+1. Executive summary,executive_summary.severity_counts.high,3
+1. Executive summary,executive_summary.severity_counts.medium,0
+1. Executive summary,executive_summary.severity_counts.low,0
+1. Executive summary,executive_summary.severity_counts.info,0
+1. Executive summary,executive_summary.unique_findings,4
+1. Executive summary,executive_summary.raw_observations,9
+1. Executive summary,executive_summary.duplicate_observations_combined,5
+1. Executive summary,executive_summary.scan_pipeline_coverage[0].engine_id,codesentinelx
+1. Executive summary,executive_summary.scan_pipeline_coverage[0].name,CodeSentinelX
+1. Executive summary,executive_summary.scan_pipeline_coverage[0].category,"SAST, SCA, secrets and IaC"
+1. Executive summary,executive_summary.scan_pipeline_coverage[0].homepage,https://github.com/Sanket00410/CodeBaseScanner
+1. Executive summary,executive_summary.scan_pipeline_coverage[0].product,sast
+1. Executive summary,executive_summary.scan_pipeline_coverage[0].status,completed_in_demo
+1. Executive summary,executive_summary.scan_pipeline_coverage[0].execution,Illustrative normalized evidence dataset; no vendor process invoked
+1. Executive summary,executive_summary.scan_pipeline_coverage[0].version,Example dataset
+1. Executive summary,executive_summary.scan_pipeline_coverage[0].finding_ids[0],DEMO-SAST-01
+1. Executive summary,executive_summary.scan_pipeline_coverage[0].summary,1 observations linked to combined findings
+1. Executive summary,executive_summary.scan_pipeline_coverage[1].engine_id,semgrep
+1. Executive summary,executive_summary.scan_pipeline_coverage[1].name,Semgrep
+1. Executive summary,executive_summary.scan_pipeline_coverage[1].category,SAST / Semantic Analysis
+1. Executive summary,executive_summary.scan_pipeline_coverage[1].homepage,https://semgrep.dev/
+1. Executive summary,executive_summary.scan_pipeline_coverage[1].product,sast
+1. Executive summary,executive_summary.scan_pipeline_coverage[1].status,completed_in_demo
+1. Executive summary,executive_summary.scan_pipeline_coverage[1].execution,Illustrative normalized evidence dataset; no vendor process invoked
+1. Executive summary,executive_summary.scan_pipeline_coverage[1].version,Example dataset
+1. Executive summary,executive_summary.scan_pipeline_coverage[1].finding_ids[0],DEMO-SAST-01
+1. Executive summary,executive_summary.scan_pipeline_coverage[1].summary,1 observations linked to combined findings
+1. Executive summary,executive_summary.scan_pipeline_coverage[2].engine_id,gitleaks
+1. Executive summary,executive_summary.scan_pipeline_coverage[2].name,Gitleaks
+1. Executive summary,executive_summary.scan_pipeline_coverage[2].category,Secret Scanning
+1. Executive summary,executive_summary.scan_pipeline_coverage[2].homepage,https://github.com/gitleaks/gitleaks
+1. Executive summary,executive_summary.scan_pipeline_coverage[2].product,sast
+1. Executive summary,executive_summary.scan_pipeline_coverage[2].status,completed_in_demo
+1. Executive summary,executive_summary.scan_pipeline_coverage[2].execution,Illustrative normalized evidence dataset; no vendor process invoked
+1. Executive summary,executive_summary.scan_pipeline_coverage[2].version,Example dataset
+1. Executive summary,executive_summary.scan_pipeline_coverage[2].finding_ids[0],DEMO-EXTRA-04
+1. Executive summary,executive_summary.scan_pipeline_coverage[2].summary,1 observations linked to combined findings
+1. Executive summary,executive_summary.scan_pipeline_coverage[3].engine_id,trufflehog
+1. Executive summary,executive_summary.scan_pipeline_coverage[3].name,TruffleHog
+1. Executive summary,executive_summary.scan_pipeline_coverage[3].category,Secret detection
+1. Executive summary,executive_summary.scan_pipeline_coverage[3].homepage,https://github.com/trufflesecurity/trufflehog
+1. Executive summary,executive_summary.scan_pipeline_coverage[3].product,sast
+1. Executive summary,executive_summary.scan_pipeline_coverage[3].status,completed_in_demo
+1. Executive summary,executive_summary.scan_pipeline_coverage[3].execution,Illustrative normalized evidence dataset; no vendor process invoked
+1. Executive summary,executive_summary.scan_pipeline_coverage[3].version,Example dataset
+1. Executive summary,executive_summary.scan_pipeline_coverage[3].finding_ids[0],DEMO-EXTRA-04
+1. Executive summary,executive_summary.scan_pipeline_coverage[3].summary,1 observations linked to combined findings
+1. Executive summary,executive_summary.scan_pipeline_coverage[4].engine_id,checkov
+1. Executive summary,executive_summary.scan_pipeline_coverage[4].name,Checkov
+1. Executive summary,executive_summary.scan_pipeline_coverage[4].category,IaC Security
+1. Executive summary,executive_summary.scan_pipeline_coverage[4].homepage,https://www.checkov.io/
+1. Executive summary,executive_summary.scan_pipeline_coverage[4].product,sast
+1. Executive summary,executive_summary.scan_pipeline_coverage[4].status,completed_in_demo
+1. Executive summary,executive_summary.scan_pipeline_coverage[4].execution,Illustrative normalized evidence dataset; no vendor process invoked
+1. Executive summary,executive_summary.scan_pipeline_coverage[4].version,Example dataset
+1. Executive summary,executive_summary.scan_pipeline_coverage[4].finding_ids[0],DEMO-EXTRA-05
+1. Executive summary,executive_summary.scan_pipeline_coverage[4].summary,1 observations linked to combined findings
+1. Executive summary,executive_summary.scan_pipeline_coverage[5].engine_id,trivy
+1. Executive summary,executive_summary.scan_pipeline_coverage[5].name,Trivy
+1. Executive summary,executive_summary.scan_pipeline_coverage[5].category,Dependency / Misconfiguration
+1. Executive summary,executive_summary.scan_pipeline_coverage[5].homepage,https://aquasecurity.github.io/trivy/
+1. Executive summary,executive_summary.scan_pipeline_coverage[5].product,sast
+1. Executive summary,executive_summary.scan_pipeline_coverage[5].status,completed_in_demo
+1. Executive summary,executive_summary.scan_pipeline_coverage[5].execution,Illustrative normalized evidence dataset; no vendor process invoked
+1. Executive summary,executive_summary.scan_pipeline_coverage[5].version,Example dataset
+1. Executive summary,executive_summary.scan_pipeline_coverage[5].finding_ids[0],DEMO-EXTRA-05
+1. Executive summary,executive_summary.scan_pipeline_coverage[5].finding_ids[1],DEMO-EXTRA-06
+1. Executive summary,executive_summary.scan_pipeline_coverage[5].summary,2 observations linked to combined findings
+1. Executive summary,executive_summary.scan_pipeline_coverage[6].engine_id,syft
+1. Executive summary,executive_summary.scan_pipeline_coverage[6].name,Syft
+1. Executive summary,executive_summary.scan_pipeline_coverage[6].category,SBOM inventory
+1. Executive summary,executive_summary.scan_pipeline_coverage[6].homepage,https://github.com/anchore/syft
+1. Executive summary,executive_summary.scan_pipeline_coverage[6].product,sast
+1. Executive summary,executive_summary.scan_pipeline_coverage[6].status,completed_in_demo
+1. Executive summary,executive_summary.scan_pipeline_coverage[6].execution,Illustrative normalized evidence dataset; no vendor process invoked
+1. Executive summary,executive_summary.scan_pipeline_coverage[6].version,Example dataset
+1. Executive summary,executive_summary.scan_pipeline_coverage[6].finding_ids,[]
+1. Executive summary,executive_summary.scan_pipeline_coverage[6].summary,"SBOM inventory: orders-api, application image and three example packages."
+1. Executive summary,executive_summary.scan_pipeline_coverage[7].engine_id,grype
+1. Executive summary,executive_summary.scan_pipeline_coverage[7].name,Grype
+1. Executive summary,executive_summary.scan_pipeline_coverage[7].category,Dependency / SCA
+1. Executive summary,executive_summary.scan_pipeline_coverage[7].homepage,https://github.com/anchore/grype
+1. Executive summary,executive_summary.scan_pipeline_coverage[7].product,sast
+1. Executive summary,executive_summary.scan_pipeline_coverage[7].status,completed_in_demo
+1. Executive summary,executive_summary.scan_pipeline_coverage[7].execution,Illustrative normalized evidence dataset; no vendor process invoked
+1. Executive summary,executive_summary.scan_pipeline_coverage[7].version,Example dataset
+1. Executive summary,executive_summary.scan_pipeline_coverage[7].finding_ids[0],DEMO-EXTRA-06
+1. Executive summary,executive_summary.scan_pipeline_coverage[7].summary,1 observations linked to combined findings
+1. Executive summary,executive_summary.scan_pipeline_coverage[8].engine_id,opa
+1. Executive summary,executive_summary.scan_pipeline_coverage[8].name,Open Policy Agent
+1. Executive summary,executive_summary.scan_pipeline_coverage[8].category,Policy as code
+1. Executive summary,executive_summary.scan_pipeline_coverage[8].homepage,https://github.com/open-policy-agent/opa
+1. Executive summary,executive_summary.scan_pipeline_coverage[8].product,sast
+1. Executive summary,executive_summary.scan_pipeline_coverage[8].status,completed_in_demo
+1. Executive summary,executive_summary.scan_pipeline_coverage[8].execution,Illustrative normalized evidence dataset; no vendor process invoked
+1. Executive summary,executive_summary.scan_pipeline_coverage[8].version,Example dataset
+1. Executive summary,executive_summary.scan_pipeline_coverage[8].finding_ids[0],DEMO-EXTRA-05
+1. Executive summary,executive_summary.scan_pipeline_coverage[8].summary,1 observations linked to combined findings
+1. Executive summary,executive_summary.scan_pipeline_coverage[9].engine_id,clamav
+1. Executive summary,executive_summary.scan_pipeline_coverage[9].name,ClamAV
+1. Executive summary,executive_summary.scan_pipeline_coverage[9].category,Malware detection
+1. Executive summary,executive_summary.scan_pipeline_coverage[9].homepage,https://github.com/Cisco-Talos/clamav
+1. Executive summary,executive_summary.scan_pipeline_coverage[9].product,sast
+1. Executive summary,executive_summary.scan_pipeline_coverage[9].status,completed_in_demo
+1. Executive summary,executive_summary.scan_pipeline_coverage[9].execution,Illustrative normalized evidence dataset; no vendor process invoked
+1. Executive summary,executive_summary.scan_pipeline_coverage[9].version,Example dataset
+1. Executive summary,executive_summary.scan_pipeline_coverage[9].finding_ids,[]
+1. Executive summary,executive_summary.scan_pipeline_coverage[9].summary,Three example training files reviewed; no example signature matches.
+1. Executive summary,executive_summary.top_actions[0],"Restore driver-specific parameter binding, add an injection regression test and enforce source, secret and IaC checks before merge."
+1. Executive summary,executive_summary.data_gaps,[]
+1. Executive summary,executive_summary.deduplication_basis,Matching resource and exact fixture evidence share an identity; every contributing engine is retained.
+2. Attack Path Time Machine,time_machine.root_cause[0].finding_id,DEMO-SAST-01
+2. Attack Path Time Machine,time_machine.root_cause[0].why_vulnerable,Untrusted input is included in SQL structure rather than passed as a bound value.
+2. Attack Path Time Machine,time_machine.root_cause[0].how_became_possible,PR #228 replaced parameter binding with an interpolated query at orders/api.py:42. Release 284 deployed that revision; the source diff links the finding to the change.
+2. Attack Path Time Machine,time_machine.root_cause[0].when_introduced,2026-10-13T10:06:00Z
+2. Attack Path Time Machine,time_machine.root_cause[0].when_first_observed,2026-10-13T10:06:00Z
+2. Attack Path Time Machine,time_machine.root_cause[0].who_introduced,Alex Rivera (dev.b); applied by ci-orders-release
+2. Attack Path Time Machine,time_machine.root_cause[0].responsible_commit,b7c82de
+2. Attack Path Time Machine,time_machine.root_cause[0].responsible_deployment,orders-release-284
+2. Attack Path Time Machine,time_machine.root_cause[0].root_cause,PR #228 replaced parameter binding with an interpolated query at orders/api.py:42. Release 284 deployed that revision; the source diff links the finding to the change.
+2. Attack Path Time Machine,time_machine.root_cause[0].blast_radius,Three API routes share this query helper; the application database role can read the example users and orders tables.
+2. Attack Path Time Machine,time_machine.root_cause[0].prevention,Use the parameter-binding API for your actual database driver. The placeholder syntax depends on that driver. Add a regression test and reassess the same code.
+2. Attack Path Time Machine,time_machine.root_cause[0].evidence_basis,Aster Commerce demo dataset: linked evidence and provenance supplied for this example.
+2. Attack Path Time Machine,time_machine.root_cause[1].finding_id,DEMO-EXTRA-04
+2. Attack Path Time Machine,time_machine.root_cause[1].why_vulnerable,SERVICE_TOKEN=DEMO_NOT_A_REAL_CREDENTIAL
+2. Attack Path Time Machine,time_machine.root_cause[1].how_became_possible,The linked source/configuration revision introduced the recorded change: Credential-shaped value committed to test configuration. Git diff + build manifest + code evidence connect this evidence to orders-release-284.
+2. Attack Path Time Machine,time_machine.root_cause[1].when_introduced,2026-10-13T10:06:00Z
+2. Attack Path Time Machine,time_machine.root_cause[1].when_first_observed,2026-10-13T10:06:00Z
+2. Attack Path Time Machine,time_machine.root_cause[1].who_introduced,Alex Rivera (dev.b); applied by ci-orders-release
+2. Attack Path Time Machine,time_machine.root_cause[1].responsible_commit,b7c82de
+2. Attack Path Time Machine,time_machine.root_cause[1].responsible_deployment,orders-release-284
+2. Attack Path Time Machine,time_machine.root_cause[1].root_cause,The linked source/configuration revision introduced the recorded change: Credential-shaped value committed to test configuration. Git diff + build manifest + code evidence connect this evidence to orders-release-284.
+2. Attack Path Time Machine,time_machine.root_cause[1].blast_radius,Three API routes share this query helper; the application database role can read the example users and orders tables.
+2. Attack Path Time Machine,time_machine.root_cause[1].prevention,"Use secret storage. For a real credential revoke it, rotate dependent systems and inspect use."
+2. Attack Path Time Machine,time_machine.root_cause[1].evidence_basis,Aster Commerce demo dataset: linked evidence and provenance supplied for this example.
+2. Attack Path Time Machine,time_machine.root_cause[2].finding_id,DEMO-EXTRA-05
+2. Attack Path Time Machine,time_machine.root_cause[2].why_vulnerable,"from_port = 5432
+cidr_blocks = [""0.0.0.0/0""]"
+2. Attack Path Time Machine,time_machine.root_cause[2].how_became_possible,The linked source/configuration revision introduced the recorded change: Terraform permits unrestricted database ingress. Git diff + build manifest + code evidence connect this evidence to orders-release-284.
+2. Attack Path Time Machine,time_machine.root_cause[2].when_introduced,2026-10-13T10:06:00Z
+2. Attack Path Time Machine,time_machine.root_cause[2].when_first_observed,2026-10-13T10:06:00Z
+2. Attack Path Time Machine,time_machine.root_cause[2].who_introduced,Alex Rivera (dev.b); applied by ci-orders-release
+2. Attack Path Time Machine,time_machine.root_cause[2].responsible_commit,b7c82de
+2. Attack Path Time Machine,time_machine.root_cause[2].responsible_deployment,orders-release-284
+2. Attack Path Time Machine,time_machine.root_cause[2].root_cause,The linked source/configuration revision introduced the recorded change: Terraform permits unrestricted database ingress. Git diff + build manifest + code evidence connect this evidence to orders-release-284.
+2. Attack Path Time Machine,time_machine.root_cause[2].blast_radius,Three API routes share this query helper; the application database role can read the example users and orders tables.
+2. Attack Path Time Machine,time_machine.root_cause[2].prevention,Restrict ingress to application security groups and test connectivity.
+2. Attack Path Time Machine,time_machine.root_cause[2].evidence_basis,Aster Commerce demo dataset: linked evidence and provenance supplied for this example.
+2. Attack Path Time Machine,time_machine.root_cause[3].finding_id,DEMO-EXTRA-06
+2. Attack Path Time Machine,time_machine.root_cause[3].why_vulnerable,"example-legacy-package==0.1.0
+Advisory: DEMO-ADVISORY-001 (fictional, not a CVE)"
+2. Attack Path Time Machine,time_machine.root_cause[3].how_became_possible,The linked source/configuration revision introduced the recorded change: Legacy dependency requires a security review. Git diff + build manifest + code evidence connect this evidence to orders-release-284.
+2. Attack Path Time Machine,time_machine.root_cause[3].when_introduced,2026-10-13T10:06:00Z
+2. Attack Path Time Machine,time_machine.root_cause[3].when_first_observed,2026-10-13T10:06:00Z
+2. Attack Path Time Machine,time_machine.root_cause[3].who_introduced,Alex Rivera (dev.b); applied by ci-orders-release
+2. Attack Path Time Machine,time_machine.root_cause[3].responsible_commit,b7c82de
+2. Attack Path Time Machine,time_machine.root_cause[3].responsible_deployment,orders-release-284
+2. Attack Path Time Machine,time_machine.root_cause[3].root_cause,The linked source/configuration revision introduced the recorded change: Legacy dependency requires a security review. Git diff + build manifest + code evidence connect this evidence to orders-release-284.
+2. Attack Path Time Machine,time_machine.root_cause[3].blast_radius,Three API routes share this query helper; the application database role can read the example users and orders tables.
+2. Attack Path Time Machine,time_machine.root_cause[3].prevention,Upgrade to a reviewed supported release and verify advisory applicability; this fictional package has no real advisory.
+2. Attack Path Time Machine,time_machine.root_cause[3].evidence_basis,Aster Commerce demo dataset: linked evidence and provenance supplied for this example.
+2. Attack Path Time Machine,time_machine.investigation_answers.why_is_it_vulnerable[0].finding_id,DEMO-SAST-01
+2. Attack Path Time Machine,time_machine.investigation_answers.why_is_it_vulnerable[0].answer,Untrusted input is included in SQL structure rather than passed as a bound value.
+2. Attack Path Time Machine,time_machine.investigation_answers.why_is_it_vulnerable[1].finding_id,DEMO-EXTRA-04
+2. Attack Path Time Machine,time_machine.investigation_answers.why_is_it_vulnerable[1].answer,SERVICE_TOKEN=DEMO_NOT_A_REAL_CREDENTIAL
+2. Attack Path Time Machine,time_machine.investigation_answers.why_is_it_vulnerable[2].finding_id,DEMO-EXTRA-05
+2. Attack Path Time Machine,time_machine.investigation_answers.why_is_it_vulnerable[2].answer,"from_port = 5432
+cidr_blocks = [""0.0.0.0/0""]"
+2. Attack Path Time Machine,time_machine.investigation_answers.why_is_it_vulnerable[3].finding_id,DEMO-EXTRA-06
+2. Attack Path Time Machine,time_machine.investigation_answers.why_is_it_vulnerable[3].answer,"example-legacy-package==0.1.0
+Advisory: DEMO-ADVISORY-001 (fictional, not a CVE)"
+2. Attack Path Time Machine,time_machine.investigation_answers.how_did_this_happen[0].finding_id,DEMO-SAST-01
+2. Attack Path Time Machine,time_machine.investigation_answers.how_did_this_happen[0].answer,PR #228 replaced parameter binding with an interpolated query at orders/api.py:42. Release 284 deployed that revision; the source diff links the finding to the change.
+2. Attack Path Time Machine,time_machine.investigation_answers.how_did_this_happen[1].finding_id,DEMO-EXTRA-04
+2. Attack Path Time Machine,time_machine.investigation_answers.how_did_this_happen[1].answer,The linked source/configuration revision introduced the recorded change: Credential-shaped value committed to test configuration. Git diff + build manifest + code evidence connect this evidence to orders-release-284.
+2. Attack Path Time Machine,time_machine.investigation_answers.how_did_this_happen[2].finding_id,DEMO-EXTRA-05
+2. Attack Path Time Machine,time_machine.investigation_answers.how_did_this_happen[2].answer,The linked source/configuration revision introduced the recorded change: Terraform permits unrestricted database ingress. Git diff + build manifest + code evidence connect this evidence to orders-release-284.
+2. Attack Path Time Machine,time_machine.investigation_answers.how_did_this_happen[3].finding_id,DEMO-EXTRA-06
+2. Attack Path Time Machine,time_machine.investigation_answers.how_did_this_happen[3].answer,The linked source/configuration revision introduced the recorded change: Legacy dependency requires a security review. Git diff + build manifest + code evidence connect this evidence to orders-release-284.
+2. Attack Path Time Machine,time_machine.investigation_answers.when_did_it_become_vulnerable[0].finding_id,DEMO-SAST-01
+2. Attack Path Time Machine,time_machine.investigation_answers.when_did_it_become_vulnerable[0].answer,2026-10-13T10:06:00Z
+2. Attack Path Time Machine,time_machine.investigation_answers.when_did_it_become_vulnerable[1].finding_id,DEMO-EXTRA-04
+2. Attack Path Time Machine,time_machine.investigation_answers.when_did_it_become_vulnerable[1].answer,2026-10-13T10:06:00Z
+2. Attack Path Time Machine,time_machine.investigation_answers.when_did_it_become_vulnerable[2].finding_id,DEMO-EXTRA-05
+2. Attack Path Time Machine,time_machine.investigation_answers.when_did_it_become_vulnerable[2].answer,2026-10-13T10:06:00Z
+2. Attack Path Time Machine,time_machine.investigation_answers.when_did_it_become_vulnerable[3].finding_id,DEMO-EXTRA-06
+2. Attack Path Time Machine,time_machine.investigation_answers.when_did_it_become_vulnerable[3].answer,2026-10-13T10:06:00Z
+2. Attack Path Time Machine,time_machine.investigation_answers.when_was_it_first_observed[0].finding_id,DEMO-SAST-01
+2. Attack Path Time Machine,time_machine.investigation_answers.when_was_it_first_observed[0].answer,2026-10-13T10:06:00Z
+2. Attack Path Time Machine,time_machine.investigation_answers.when_was_it_first_observed[1].finding_id,DEMO-EXTRA-04
+2. Attack Path Time Machine,time_machine.investigation_answers.when_was_it_first_observed[1].answer,2026-10-13T10:06:00Z
+2. Attack Path Time Machine,time_machine.investigation_answers.when_was_it_first_observed[2].finding_id,DEMO-EXTRA-05
+2. Attack Path Time Machine,time_machine.investigation_answers.when_was_it_first_observed[2].answer,2026-10-13T10:06:00Z
+2. Attack Path Time Machine,time_machine.investigation_answers.when_was_it_first_observed[3].finding_id,DEMO-EXTRA-06
+2. Attack Path Time Machine,time_machine.investigation_answers.when_was_it_first_observed[3].answer,2026-10-13T10:06:00Z
+2. Attack Path Time Machine,time_machine.investigation_answers.who_changed_it[0].finding_id,DEMO-SAST-01
+2. Attack Path Time Machine,time_machine.investigation_answers.who_changed_it[0].answer,Alex Rivera (dev.b); applied by ci-orders-release
+2. Attack Path Time Machine,time_machine.investigation_answers.who_changed_it[1].finding_id,DEMO-EXTRA-04
+2. Attack Path Time Machine,time_machine.investigation_answers.who_changed_it[1].answer,Alex Rivera (dev.b); applied by ci-orders-release
+2. Attack Path Time Machine,time_machine.investigation_answers.who_changed_it[2].finding_id,DEMO-EXTRA-05
+2. Attack Path Time Machine,time_machine.investigation_answers.who_changed_it[2].answer,Alex Rivera (dev.b); applied by ci-orders-release
+2. Attack Path Time Machine,time_machine.investigation_answers.who_changed_it[3].finding_id,DEMO-EXTRA-06
+2. Attack Path Time Machine,time_machine.investigation_answers.who_changed_it[3].answer,Alex Rivera (dev.b); applied by ci-orders-release
+2. Attack Path Time Machine,time_machine.investigation_answers.which_deployment_created_it[0].finding_id,DEMO-SAST-01
+2. Attack Path Time Machine,time_machine.investigation_answers.which_deployment_created_it[0].answer,orders-release-284
+2. Attack Path Time Machine,time_machine.investigation_answers.which_deployment_created_it[1].finding_id,DEMO-EXTRA-04
+2. Attack Path Time Machine,time_machine.investigation_answers.which_deployment_created_it[1].answer,orders-release-284
+2. Attack Path Time Machine,time_machine.investigation_answers.which_deployment_created_it[2].finding_id,DEMO-EXTRA-05
+2. Attack Path Time Machine,time_machine.investigation_answers.which_deployment_created_it[2].answer,orders-release-284
+2. Attack Path Time Machine,time_machine.investigation_answers.which_deployment_created_it[3].finding_id,DEMO-EXTRA-06
+2. Attack Path Time Machine,time_machine.investigation_answers.which_deployment_created_it[3].answer,orders-release-284
+2. Attack Path Time Machine,time_machine.investigation_answers.which_commit_introduced_it[0].finding_id,DEMO-SAST-01
+2. Attack Path Time Machine,time_machine.investigation_answers.which_commit_introduced_it[0].answer,b7c82de
+2. Attack Path Time Machine,time_machine.investigation_answers.which_commit_introduced_it[1].finding_id,DEMO-EXTRA-04
+2. Attack Path Time Machine,time_machine.investigation_answers.which_commit_introduced_it[1].answer,b7c82de
+2. Attack Path Time Machine,time_machine.investigation_answers.which_commit_introduced_it[2].finding_id,DEMO-EXTRA-05
+2. Attack Path Time Machine,time_machine.investigation_answers.which_commit_introduced_it[2].answer,b7c82de
+2. Attack Path Time Machine,time_machine.investigation_answers.which_commit_introduced_it[3].finding_id,DEMO-EXTRA-06
+2. Attack Path Time Machine,time_machine.investigation_answers.which_commit_introduced_it[3].answer,b7c82de
+2. Attack Path Time Machine,time_machine.investigation_answers.what_is_the_root_cause[0].finding_id,DEMO-SAST-01
+2. Attack Path Time Machine,time_machine.investigation_answers.what_is_the_root_cause[0].answer,PR #228 replaced parameter binding with an interpolated query at orders/api.py:42. Release 284 deployed that revision; the source diff links the finding to the change.
+2. Attack Path Time Machine,time_machine.investigation_answers.what_is_the_root_cause[1].finding_id,DEMO-EXTRA-04
+2. Attack Path Time Machine,time_machine.investigation_answers.what_is_the_root_cause[1].answer,The linked source/configuration revision introduced the recorded change: Credential-shaped value committed to test configuration. Git diff + build manifest + code evidence connect this evidence to orders-release-284.
+2. Attack Path Time Machine,time_machine.investigation_answers.what_is_the_root_cause[2].finding_id,DEMO-EXTRA-05
+2. Attack Path Time Machine,time_machine.investigation_answers.what_is_the_root_cause[2].answer,The linked source/configuration revision introduced the recorded change: Terraform permits unrestricted database ingress. Git diff + build manifest + code evidence connect this evidence to orders-release-284.
+2. Attack Path Time Machine,time_machine.investigation_answers.what_is_the_root_cause[3].finding_id,DEMO-EXTRA-06
+2. Attack Path Time Machine,time_machine.investigation_answers.what_is_the_root_cause[3].answer,The linked source/configuration revision introduced the recorded change: Legacy dependency requires a security review. Git diff + build manifest + code evidence connect this evidence to orders-release-284.
+2. Attack Path Time Machine,time_machine.investigation_answers.what_is_the_blast_radius[0].finding_id,DEMO-SAST-01
+2. Attack Path Time Machine,time_machine.investigation_answers.what_is_the_blast_radius[0].answer,Three API routes share this query helper; the application database role can read the example users and orders tables.
+2. Attack Path Time Machine,time_machine.investigation_answers.what_is_the_blast_radius[1].finding_id,DEMO-EXTRA-04
+2. Attack Path Time Machine,time_machine.investigation_answers.what_is_the_blast_radius[1].answer,Three API routes share this query helper; the application database role can read the example users and orders tables.
+2. Attack Path Time Machine,time_machine.investigation_answers.what_is_the_blast_radius[2].finding_id,DEMO-EXTRA-05
+2. Attack Path Time Machine,time_machine.investigation_answers.what_is_the_blast_radius[2].answer,Three API routes share this query helper; the application database role can read the example users and orders tables.
+2. Attack Path Time Machine,time_machine.investigation_answers.what_is_the_blast_radius[3].finding_id,DEMO-EXTRA-06
+2. Attack Path Time Machine,time_machine.investigation_answers.what_is_the_blast_radius[3].answer,Three API routes share this query helper; the application database role can read the example users and orders tables.
+2. Attack Path Time Machine,time_machine.investigation_answers.how_do_we_prevent_it_again[0].finding_id,DEMO-SAST-01
+2. Attack Path Time Machine,time_machine.investigation_answers.how_do_we_prevent_it_again[0].answer,Use the parameter-binding API for your actual database driver. The placeholder syntax depends on that driver. Add a regression test and reassess the same code.
+2. Attack Path Time Machine,time_machine.investigation_answers.how_do_we_prevent_it_again[1].finding_id,DEMO-EXTRA-04
+2. Attack Path Time Machine,time_machine.investigation_answers.how_do_we_prevent_it_again[1].answer,"Use secret storage. For a real credential revoke it, rotate dependent systems and inspect use."
+2. Attack Path Time Machine,time_machine.investigation_answers.how_do_we_prevent_it_again[2].finding_id,DEMO-EXTRA-05
+2. Attack Path Time Machine,time_machine.investigation_answers.how_do_we_prevent_it_again[2].answer,Restrict ingress to application security groups and test connectivity.
+2. Attack Path Time Machine,time_machine.investigation_answers.how_do_we_prevent_it_again[3].finding_id,DEMO-EXTRA-06
+2. Attack Path Time Machine,time_machine.investigation_answers.how_do_we_prevent_it_again[3].answer,Upgrade to a reviewed supported release and verify advisory applicability; this fictional package has no real advisory.
+2. Attack Path Time Machine,time_machine.timeline[0].when,2026-09-14T00:00:00Z
+2. Attack Path Time Machine,time_machine.timeline[0].event,30-day historical baseline recorded
+2. Attack Path Time Machine,time_machine.timeline[0].reference,snap-sast-0914
+2. Attack Path Time Machine,time_machine.timeline[1].when,2026-09-29T00:00:00Z
+2. Attack Path Time Machine,time_machine.timeline[1].event,15-day historical snapshot recorded
+2. Attack Path Time Machine,time_machine.timeline[1].reference,snap-sast-0929
+2. Attack Path Time Machine,time_machine.timeline[2].when,2026-10-10T00:00:00Z
+2. Attack Path Time Machine,time_machine.timeline[2].event,Last pre-change baseline: Bound SQL parameters; scoped infrastructure rules
+2. Attack Path Time Machine,time_machine.timeline[2].reference,snap-sast-1010
+2. Attack Path Time Machine,time_machine.timeline[3].when,2026-10-12T11:15:00Z
+2. Attack Path Time Machine,time_machine.timeline[3].event,Change merged by Alex Rivera (dev.b)
+2. Attack Path Time Machine,time_machine.timeline[3].reference,b7c82de
+2. Attack Path Time Machine,time_machine.timeline[4].when,2026-10-13T10:06:00Z
+2. Attack Path Time Machine,time_machine.timeline[4].event,Deployment changed the recorded environment
+2. Attack Path Time Machine,time_machine.timeline[4].reference,orders-release-284
+2. Attack Path Time Machine,time_machine.timeline[5].when,2026-10-14T08:00:00Z
+2. Attack Path Time Machine,time_machine.timeline[5].event,Cross-engine investigation assembled
+2. Attack Path Time Machine,time_machine.timeline[5].reference,CAPTM-2026-SAST-001
+2. Attack Path Time Machine,time_machine.attack_paths[0].path_id,ap-sast-1
+2. Attack Path Time Machine,time_machine.attack_paths[0].labels[0],GET /users?id=
+2. Attack Path Time Machine,time_machine.attack_paths[0].labels[1],SQL string interpolation
+2. Attack Path Time Machine,time_machine.attack_paths[0].labels[2],orders database
+2. Attack Path Time Machine,time_machine.attack_paths[0].first_observed,2026-10-13T10:06:00Z
+2. Attack Path Time Machine,time_machine.attack_paths[0].status,New in the recorded scenario
+2. Attack Path Time Machine,time_machine.attack_paths[0].commit[0],b7c82de
+2. Attack Path Time Machine,time_machine.attack_paths[0].deployment[0],orders-release-284
+2. Attack Path Time Machine,time_machine.attack_paths[0].limits,Recorded relationship or data flow; does not by itself establish exploitation or effective authorization outside the supplied scenario.
+2. Attack Path Time Machine,time_machine.point_in_time_views[0].label,30 days before detection
+2. Attack Path Time Machine,time_machine.point_in_time_views[0].snapshot_id,snap-sast-0914
+2. Attack Path Time Machine,time_machine.point_in_time_views[0].observed_at,2026-09-14T00:00:00Z
+2. Attack Path Time Machine,time_machine.point_in_time_views[0].state,Before change
+2. Attack Path Time Machine,time_machine.point_in_time_views[0].environment,Bound SQL parameters; scoped infrastructure rules
+2. Attack Path Time Machine,time_machine.point_in_time_views[1].label,15 days before detection
+2. Attack Path Time Machine,time_machine.point_in_time_views[1].snapshot_id,snap-sast-0929
+2. Attack Path Time Machine,time_machine.point_in_time_views[1].observed_at,2026-09-29T00:00:00Z
+2. Attack Path Time Machine,time_machine.point_in_time_views[1].state,Before change
+2. Attack Path Time Machine,time_machine.point_in_time_views[1].environment,Bound SQL parameters; scoped infrastructure rules
+2. Attack Path Time Machine,time_machine.point_in_time_views[2].label,Last pre-change snapshot
+2. Attack Path Time Machine,time_machine.point_in_time_views[2].snapshot_id,snap-sast-1010
+2. Attack Path Time Machine,time_machine.point_in_time_views[2].observed_at,2026-10-10T00:00:00Z
+2. Attack Path Time Machine,time_machine.point_in_time_views[2].state,Before change
+2. Attack Path Time Machine,time_machine.point_in_time_views[2].environment,Bound SQL parameters; scoped infrastructure rules
+2. Attack Path Time Machine,time_machine.point_in_time_views[3].label,Detection snapshot
+2. Attack Path Time Machine,time_machine.point_in_time_views[3].snapshot_id,snap-sast-1014
+2. Attack Path Time Machine,time_machine.point_in_time_views[3].observed_at,2026-10-14T08:00:00Z
+2. Attack Path Time Machine,time_machine.point_in_time_views[3].state,After change
+2. Attack Path Time Machine,time_machine.point_in_time_views[3].environment,Request input interpolated into SQL; insecure configuration added in the release
+2. Attack Path Time Machine,time_machine.snapshot_comparisons[0].from,snap-sast-1010
+2. Attack Path Time Machine,time_machine.snapshot_comparisons[0].to,snap-sast-1013
+2. Attack Path Time Machine,time_machine.snapshot_comparisons[0].before,Bound SQL parameters; scoped infrastructure rules
+2. Attack Path Time Machine,time_machine.snapshot_comparisons[0].after,Request input interpolated into SQL; insecure configuration added in the release
+2. Attack Path Time Machine,time_machine.snapshot_comparisons[0].paths_created[0],ap-sast-1
+2. Attack Path Time Machine,time_machine.snapshot_comparisons[0].paths_closed,[]
+2. Attack Path Time Machine,time_machine.snapshot_comparisons[0].explanation,PR #228 replaced parameter binding with an interpolated query at orders/api.py:42. Release 284 deployed that revision; the source diff links the finding to the change.
+2. Attack Path Time Machine,time_machine.change_events[0].occurred_at,2026-10-12T11:15:00Z
+2. Attack Path Time Machine,time_machine.change_events[0].source,Git review
+2. Attack Path Time Machine,time_machine.change_events[0].actor,Alex Rivera (dev.b)
+2. Attack Path Time Machine,time_machine.change_events[0].action,Merged security-relevant change
+2. Attack Path Time Machine,time_machine.change_events[0].commit,b7c82de
+2. Attack Path Time Machine,time_machine.change_events[0].deployment,orders-release-284
+2. Attack Path Time Machine,time_machine.change_events[0].attribution,Explicit references in the demo dataset
+2. Attack Path Time Machine,time_machine.change_events[1].occurred_at,2026-10-13T10:06:00Z
+2. Attack Path Time Machine,time_machine.change_events[1].source,Git diff + build manifest + code evidence
+2. Attack Path Time Machine,time_machine.change_events[1].actor,ci-orders-release
+2. Attack Path Time Machine,time_machine.change_events[1].action,Request input interpolated into SQL; insecure configuration added in the release
+2. Attack Path Time Machine,time_machine.change_events[1].commit,b7c82de
+2. Attack Path Time Machine,time_machine.change_events[1].deployment,orders-release-284
+2. Attack Path Time Machine,time_machine.change_events[1].attribution,Explicit references in the demo dataset
+2. Attack Path Time Machine,time_machine.shadow_permissions.applicable,false
+2. Attack Path Time Machine,time_machine.shadow_permissions.reason,IAM usage analysis belongs to the Cloud report.
+2. Attack Path Time Machine,time_machine.investigator.question,"How did this happen, when, who changed it, what is the blast radius and how do we prevent it?"
+2. Attack Path Time Machine,time_machine.investigator.answer,PR #228 replaced parameter binding with an interpolated query at orders/api.py:42. Release 284 deployed that revision; the source diff links the finding to the change.
+2. Attack Path Time Machine,time_machine.investigator.actor,Alex Rivera (dev.b)
+2. Attack Path Time Machine,time_machine.investigator.introduced,2026-10-13T10:06:00Z
+2. Attack Path Time Machine,time_machine.investigator.commit,b7c82de
+2. Attack Path Time Machine,time_machine.investigator.deployment,orders-release-284
+2. Attack Path Time Machine,time_machine.investigator.blast_radius,Three API routes share this query helper; the application database role can read the example users and orders tables.
+2. Attack Path Time Machine,time_machine.investigator.prevention,"Restore driver-specific parameter binding, add an injection regression test and enforce source, secret and IaC checks before merge."
+2. Attack Path Time Machine,time_machine.investigator.grounding[0],Git diff + build manifest + code evidence
+2. Attack Path Time Machine,time_machine.investigator.grounding[1],snap-sast-1010
+2. Attack Path Time Machine,time_machine.investigator.grounding[2],snap-sast-1013
+3. SAST,sast.assessment_status,Completed demo scenario
+3. SAST,sast.findings[0].finding_id,DEMO-SAST-01
+3. SAST,sast.findings[0].module,sast
+3. SAST,sast.findings[0].severity,critical
+3. SAST,sast.findings[0].title,User input reaches a dynamically built SQL query
+3. SAST,sast.findings[0].resource,orders/api.py:42
+3. SAST,sast.findings[0].target,aster/orders-api · release 2.8
+3. SAST,sast.findings[0].rule_id,SQL-INJECTION-EXAMPLE
+3. SAST,sast.findings[0].description,"User input reaches a dynamically built SQL query. Linked source, observation and deployment records are retained in this investigation."
+3. SAST,sast.findings[0].remediation,Use the parameter-binding API for your actual database driver. The placeholder syntax depends on that driver. Add a regression test and reassess the same code.
+3. SAST,sast.findings[0].engines[0],codesentinelx
+3. SAST,sast.findings[0].engines[1],semgrep
+3. SAST,sast.findings[0].engine_versions.codesentinelx,example dataset
+3. SAST,sast.findings[0].engine_versions.semgrep,example dataset
+3. SAST,sast.findings[0].evidence[0].kind,engine_report
+3. SAST,sast.findings[0].evidence[0].source,codesentinelx
+3. SAST,sast.findings[0].evidence[0].classification,demo example
+3. SAST,sast.findings[0].evidence[0].detail,"user_id = request.args.get(""id"")
+query = f""SELECT * FROM users WHERE id = {user_id}""
+cursor.execute(query)"
+3. SAST,sast.findings[0].evidence[1].kind,engine_report
+3. SAST,sast.findings[0].evidence[1].source,semgrep
+3. SAST,sast.findings[0].evidence[1].classification,demo example
+3. SAST,sast.findings[0].evidence[1].detail,"user_id = request.args.get(""id"")
+query = f""SELECT * FROM users WHERE id = {user_id}""
+cursor.execute(query)"
+3. SAST,sast.findings[0].state,open
+3. SAST,sast.findings[0].verification.state,unverified
+3. SAST,sast.findings[0].verification.basis,Illustrative scenario with supplied change and observation records
+3. SAST,sast.findings[0].framework_mappings[0].framework,CWE
+3. SAST,sast.findings[0].framework_mappings[0].control,CWE-89: SQL Injection
+3. SAST,sast.findings[0].framework_mappings[0].source,https://cwe.mitre.org/data/definitions/89.html
+3. SAST,sast.findings[0].framework_mappings[0].needs_review,true
+3. SAST,sast.findings[0].cwe,[]
+3. SAST,sast.findings[0].location.file,orders/api.py
+3. SAST,sast.findings[0].location.start_line,42
+3. SAST,sast.findings[0].location.end_line,44
+3. SAST,sast.findings[0].location.snippet,"user_id = request.args.get(""id"")
+query = f""SELECT * FROM users WHERE id = {user_id}""
+cursor.execute(query)"
+3. SAST,sast.findings[1].finding_id,DEMO-EXTRA-04
+3. SAST,sast.findings[1].module,sast
+3. SAST,sast.findings[1].severity,high
+3. SAST,sast.findings[1].title,Credential-shaped value committed to test configuration
+3. SAST,sast.findings[1].resource,config/example.env:8
+3. SAST,sast.findings[1].target,aster/orders-api · release 2.8
+3. SAST,sast.findings[1].rule_id,DEMO-SECRET
+3. SAST,sast.findings[1].description,"Credential-shaped value committed to test configuration. Linked source, observation and deployment records are retained in this investigation."
+3. SAST,sast.findings[1].remediation,"Use secret storage. For a real credential revoke it, rotate dependent systems and inspect use."
+3. SAST,sast.findings[1].engines[0],gitleaks
+3. SAST,sast.findings[1].engines[1],trufflehog
+3. SAST,sast.findings[1].engine_versions.gitleaks,example dataset
+3. SAST,sast.findings[1].engine_versions.trufflehog,example dataset
+3. SAST,sast.findings[1].evidence[0].kind,engine_report
+3. SAST,sast.findings[1].evidence[0].source,gitleaks
+3. SAST,sast.findings[1].evidence[0].classification,demo example
+3. SAST,sast.findings[1].evidence[0].detail,SERVICE_TOKEN=DEMO_NOT_A_REAL_CREDENTIAL
+3. SAST,sast.findings[1].evidence[1].kind,engine_report
+3. SAST,sast.findings[1].evidence[1].source,trufflehog
+3. SAST,sast.findings[1].evidence[1].classification,demo example
+3. SAST,sast.findings[1].evidence[1].detail,SERVICE_TOKEN=DEMO_NOT_A_REAL_CREDENTIAL
+3. SAST,sast.findings[1].state,open
+3. SAST,sast.findings[1].verification.state,unverified
+3. SAST,sast.findings[1].verification.basis,Illustrative scenario with supplied change and observation records
+3. SAST,sast.findings[1].framework_mappings,[]
+3. SAST,sast.findings[1].cwe,[]
+3. SAST,sast.findings[1].location.file,config/example.env
+3. SAST,sast.findings[1].location.start_line,8
+3. SAST,sast.findings[1].location.end_line,8
+3. SAST,sast.findings[1].location.snippet,SERVICE_TOKEN=DEMO_NOT_A_REAL_CREDENTIAL
+3. SAST,sast.findings[2].finding_id,DEMO-EXTRA-05
+3. SAST,sast.findings[2].module,sast
+3. SAST,sast.findings[2].severity,high
+3. SAST,sast.findings[2].title,Terraform permits unrestricted database ingress
+3. SAST,sast.findings[2].resource,infra/database.tf:24
+3. SAST,sast.findings[2].target,aster/orders-api · release 2.8
+3. SAST,sast.findings[2].rule_id,IAC-DB-INGRESS
+3. SAST,sast.findings[2].description,"Terraform permits unrestricted database ingress. Linked source, observation and deployment records are retained in this investigation."
+3. SAST,sast.findings[2].remediation,Restrict ingress to application security groups and test connectivity.
+3. SAST,sast.findings[2].engines[0],checkov
+3. SAST,sast.findings[2].engines[1],trivy
+3. SAST,sast.findings[2].engines[2],opa
+3. SAST,sast.findings[2].engine_versions.checkov,example dataset
+3. SAST,sast.findings[2].engine_versions.trivy,example dataset
+3. SAST,sast.findings[2].engine_versions.opa,example dataset
+3. SAST,sast.findings[2].evidence[0].kind,engine_report
+3. SAST,sast.findings[2].evidence[0].source,checkov
+3. SAST,sast.findings[2].evidence[0].classification,demo example
+3. SAST,sast.findings[2].evidence[0].detail,"from_port = 5432
+cidr_blocks = [""0.0.0.0/0""]"
+3. SAST,sast.findings[2].evidence[1].kind,engine_report
+3. SAST,sast.findings[2].evidence[1].source,trivy
+3. SAST,sast.findings[2].evidence[1].classification,demo example
+3. SAST,sast.findings[2].evidence[1].detail,"from_port = 5432
+cidr_blocks = [""0.0.0.0/0""]"
+3. SAST,sast.findings[2].evidence[2].kind,engine_report
+3. SAST,sast.findings[2].evidence[2].source,opa
+3. SAST,sast.findings[2].evidence[2].classification,demo example
+3. SAST,sast.findings[2].evidence[2].detail,"from_port = 5432
+cidr_blocks = [""0.0.0.0/0""]"
+3. SAST,sast.findings[2].state,open
+3. SAST,sast.findings[2].verification.state,unverified
+3. SAST,sast.findings[2].verification.basis,Illustrative scenario with supplied change and observation records
+3. SAST,sast.findings[2].framework_mappings,[]
+3. SAST,sast.findings[2].cwe,[]
+3. SAST,sast.findings[2].location.file,infra/database.tf
+3. SAST,sast.findings[2].location.start_line,24
+3. SAST,sast.findings[2].location.end_line,25
+3. SAST,sast.findings[2].location.snippet,"from_port = 5432
+cidr_blocks = [""0.0.0.0/0""]"
+3. SAST,sast.findings[3].finding_id,DEMO-EXTRA-06
+3. SAST,sast.findings[3].module,sast
+3. SAST,sast.findings[3].severity,high
+3. SAST,sast.findings[3].title,Legacy dependency requires a security review
+3. SAST,sast.findings[3].resource,requirements.txt:6
+3. SAST,sast.findings[3].target,aster/orders-api · release 2.8
+3. SAST,sast.findings[3].rule_id,DEPENDENCY-REVIEW
+3. SAST,sast.findings[3].description,"Legacy dependency requires a security review. Linked source, observation and deployment records are retained in this investigation."
+3. SAST,sast.findings[3].remediation,Upgrade to a reviewed supported release and verify advisory applicability; this fictional package has no real advisory.
+3. SAST,sast.findings[3].engines[0],trivy
+3. SAST,sast.findings[3].engines[1],grype
+3. SAST,sast.findings[3].engine_versions.trivy,example dataset
+3. SAST,sast.findings[3].engine_versions.grype,example dataset
+3. SAST,sast.findings[3].evidence[0].kind,engine_report
+3. SAST,sast.findings[3].evidence[0].source,trivy
+3. SAST,sast.findings[3].evidence[0].classification,demo example
+3. SAST,sast.findings[3].evidence[0].detail,"example-legacy-package==0.1.0
+Advisory: DEMO-ADVISORY-001 (fictional, not a CVE)"
+3. SAST,sast.findings[3].evidence[1].kind,engine_report
+3. SAST,sast.findings[3].evidence[1].source,grype
+3. SAST,sast.findings[3].evidence[1].classification,demo example
+3. SAST,sast.findings[3].evidence[1].detail,"example-legacy-package==0.1.0
+Advisory: DEMO-ADVISORY-001 (fictional, not a CVE)"
+3. SAST,sast.findings[3].state,open
+3. SAST,sast.findings[3].verification.state,unverified
+3. SAST,sast.findings[3].verification.basis,Illustrative scenario with supplied change and observation records
+3. SAST,sast.findings[3].framework_mappings,[]
+3. SAST,sast.findings[3].cwe,[]
+3. SAST,sast.findings[3].location.file,requirements.txt
+3. SAST,sast.findings[3].location.start_line,6
+3. SAST,sast.findings[3].location.end_line,7
+3. SAST,sast.findings[3].location.snippet,"example-legacy-package==0.1.0
+Advisory: DEMO-ADVISORY-001 (fictional, not a CVE)"
+3. SAST,sast.investigations[0].finding_id,DEMO-SAST-01
+3. SAST,sast.investigations[0].why_vulnerable,Untrusted input is included in SQL structure rather than passed as a bound value.
+3. SAST,sast.investigations[0].how_became_possible,PR #228 replaced parameter binding with an interpolated query at orders/api.py:42. Release 284 deployed that revision; the source diff links the finding to the change.
+3. SAST,sast.investigations[0].when_introduced,2026-10-13T10:06:00Z
+3. SAST,sast.investigations[0].when_first_observed,2026-10-13T10:06:00Z
+3. SAST,sast.investigations[0].who_introduced,Alex Rivera (dev.b); applied by ci-orders-release
+3. SAST,sast.investigations[0].responsible_commit,b7c82de
+3. SAST,sast.investigations[0].responsible_deployment,orders-release-284
+3. SAST,sast.investigations[0].root_cause,PR #228 replaced parameter binding with an interpolated query at orders/api.py:42. Release 284 deployed that revision; the source diff links the finding to the change.
+3. SAST,sast.investigations[0].blast_radius,Three API routes share this query helper; the application database role can read the example users and orders tables.
+3. SAST,sast.investigations[0].prevention,Use the parameter-binding API for your actual database driver. The placeholder syntax depends on that driver. Add a regression test and reassess the same code.
+3. SAST,sast.investigations[0].evidence_basis,Aster Commerce demo dataset: linked evidence and provenance supplied for this example.
+3. SAST,sast.investigations[1].finding_id,DEMO-EXTRA-04
+3. SAST,sast.investigations[1].why_vulnerable,SERVICE_TOKEN=DEMO_NOT_A_REAL_CREDENTIAL
+3. SAST,sast.investigations[1].how_became_possible,The linked source/configuration revision introduced the recorded change: Credential-shaped value committed to test configuration. Git diff + build manifest + code evidence connect this evidence to orders-release-284.
+3. SAST,sast.investigations[1].when_introduced,2026-10-13T10:06:00Z
+3. SAST,sast.investigations[1].when_first_observed,2026-10-13T10:06:00Z
+3. SAST,sast.investigations[1].who_introduced,Alex Rivera (dev.b); applied by ci-orders-release
+3. SAST,sast.investigations[1].responsible_commit,b7c82de
+3. SAST,sast.investigations[1].responsible_deployment,orders-release-284
+3. SAST,sast.investigations[1].root_cause,The linked source/configuration revision introduced the recorded change: Credential-shaped value committed to test configuration. Git diff + build manifest + code evidence connect this evidence to orders-release-284.
+3. SAST,sast.investigations[1].blast_radius,Three API routes share this query helper; the application database role can read the example users and orders tables.
+3. SAST,sast.investigations[1].prevention,"Use secret storage. For a real credential revoke it, rotate dependent systems and inspect use."
+3. SAST,sast.investigations[1].evidence_basis,Aster Commerce demo dataset: linked evidence and provenance supplied for this example.
+3. SAST,sast.investigations[2].finding_id,DEMO-EXTRA-05
+3. SAST,sast.investigations[2].why_vulnerable,"from_port = 5432
+cidr_blocks = [""0.0.0.0/0""]"
+3. SAST,sast.investigations[2].how_became_possible,The linked source/configuration revision introduced the recorded change: Terraform permits unrestricted database ingress. Git diff + build manifest + code evidence connect this evidence to orders-release-284.
+3. SAST,sast.investigations[2].when_introduced,2026-10-13T10:06:00Z
+3. SAST,sast.investigations[2].when_first_observed,2026-10-13T10:06:00Z
+3. SAST,sast.investigations[2].who_introduced,Alex Rivera (dev.b); applied by ci-orders-release
+3. SAST,sast.investigations[2].responsible_commit,b7c82de
+3. SAST,sast.investigations[2].responsible_deployment,orders-release-284
+3. SAST,sast.investigations[2].root_cause,The linked source/configuration revision introduced the recorded change: Terraform permits unrestricted database ingress. Git diff + build manifest + code evidence connect this evidence to orders-release-284.
+3. SAST,sast.investigations[2].blast_radius,Three API routes share this query helper; the application database role can read the example users and orders tables.
+3. SAST,sast.investigations[2].prevention,Restrict ingress to application security groups and test connectivity.
+3. SAST,sast.investigations[2].evidence_basis,Aster Commerce demo dataset: linked evidence and provenance supplied for this example.
+3. SAST,sast.investigations[3].finding_id,DEMO-EXTRA-06
+3. SAST,sast.investigations[3].why_vulnerable,"example-legacy-package==0.1.0
+Advisory: DEMO-ADVISORY-001 (fictional, not a CVE)"
+3. SAST,sast.investigations[3].how_became_possible,The linked source/configuration revision introduced the recorded change: Legacy dependency requires a security review. Git diff + build manifest + code evidence connect this evidence to orders-release-284.
+3. SAST,sast.investigations[3].when_introduced,2026-10-13T10:06:00Z
+3. SAST,sast.investigations[3].when_first_observed,2026-10-13T10:06:00Z
+3. SAST,sast.investigations[3].who_introduced,Alex Rivera (dev.b); applied by ci-orders-release
+3. SAST,sast.investigations[3].responsible_commit,b7c82de
+3. SAST,sast.investigations[3].responsible_deployment,orders-release-284
+3. SAST,sast.investigations[3].root_cause,The linked source/configuration revision introduced the recorded change: Legacy dependency requires a security review. Git diff + build manifest + code evidence connect this evidence to orders-release-284.
+3. SAST,sast.investigations[3].blast_radius,Three API routes share this query helper; the application database role can read the example users and orders tables.
+3. SAST,sast.investigations[3].prevention,Upgrade to a reviewed supported release and verify advisory applicability; this fictional package has no real advisory.
+3. SAST,sast.investigations[3].evidence_basis,Aster Commerce demo dataset: linked evidence and provenance supplied for this example.
+3. SAST,sast.investigation_answers.why_is_it_vulnerable[0].finding_id,DEMO-SAST-01
+3. SAST,sast.investigation_answers.why_is_it_vulnerable[0].answer,Untrusted input is included in SQL structure rather than passed as a bound value.
+3. SAST,sast.investigation_answers.why_is_it_vulnerable[1].finding_id,DEMO-EXTRA-04
+3. SAST,sast.investigation_answers.why_is_it_vulnerable[1].answer,SERVICE_TOKEN=DEMO_NOT_A_REAL_CREDENTIAL
+3. SAST,sast.investigation_answers.why_is_it_vulnerable[2].finding_id,DEMO-EXTRA-05
+3. SAST,sast.investigation_answers.why_is_it_vulnerable[2].answer,"from_port = 5432
+cidr_blocks = [""0.0.0.0/0""]"
+3. SAST,sast.investigation_answers.why_is_it_vulnerable[3].finding_id,DEMO-EXTRA-06
+3. SAST,sast.investigation_answers.why_is_it_vulnerable[3].answer,"example-legacy-package==0.1.0
+Advisory: DEMO-ADVISORY-001 (fictional, not a CVE)"
+3. SAST,sast.investigation_answers.how_did_this_happen[0].finding_id,DEMO-SAST-01
+3. SAST,sast.investigation_answers.how_did_this_happen[0].answer,PR #228 replaced parameter binding with an interpolated query at orders/api.py:42. Release 284 deployed that revision; the source diff links the finding to the change.
+3. SAST,sast.investigation_answers.how_did_this_happen[1].finding_id,DEMO-EXTRA-04
+3. SAST,sast.investigation_answers.how_did_this_happen[1].answer,The linked source/configuration revision introduced the recorded change: Credential-shaped value committed to test configuration. Git diff + build manifest + code evidence connect this evidence to orders-release-284.
+3. SAST,sast.investigation_answers.how_did_this_happen[2].finding_id,DEMO-EXTRA-05
+3. SAST,sast.investigation_answers.how_did_this_happen[2].answer,The linked source/configuration revision introduced the recorded change: Terraform permits unrestricted database ingress. Git diff + build manifest + code evidence connect this evidence to orders-release-284.
+3. SAST,sast.investigation_answers.how_did_this_happen[3].finding_id,DEMO-EXTRA-06
+3. SAST,sast.investigation_answers.how_did_this_happen[3].answer,The linked source/configuration revision introduced the recorded change: Legacy dependency requires a security review. Git diff + build manifest + code evidence connect this evidence to orders-release-284.
+3. SAST,sast.investigation_answers.when_did_it_become_vulnerable[0].finding_id,DEMO-SAST-01
+3. SAST,sast.investigation_answers.when_did_it_become_vulnerable[0].answer,2026-10-13T10:06:00Z
+3. SAST,sast.investigation_answers.when_did_it_become_vulnerable[1].finding_id,DEMO-EXTRA-04
+3. SAST,sast.investigation_answers.when_did_it_become_vulnerable[1].answer,2026-10-13T10:06:00Z
+3. SAST,sast.investigation_answers.when_did_it_become_vulnerable[2].finding_id,DEMO-EXTRA-05
+3. SAST,sast.investigation_answers.when_did_it_become_vulnerable[2].answer,2026-10-13T10:06:00Z
+3. SAST,sast.investigation_answers.when_did_it_become_vulnerable[3].finding_id,DEMO-EXTRA-06
+3. SAST,sast.investigation_answers.when_did_it_become_vulnerable[3].answer,2026-10-13T10:06:00Z
+3. SAST,sast.investigation_answers.when_was_it_first_observed[0].finding_id,DEMO-SAST-01
+3. SAST,sast.investigation_answers.when_was_it_first_observed[0].answer,2026-10-13T10:06:00Z
+3. SAST,sast.investigation_answers.when_was_it_first_observed[1].finding_id,DEMO-EXTRA-04
+3. SAST,sast.investigation_answers.when_was_it_first_observed[1].answer,2026-10-13T10:06:00Z
+3. SAST,sast.investigation_answers.when_was_it_first_observed[2].finding_id,DEMO-EXTRA-05
+3. SAST,sast.investigation_answers.when_was_it_first_observed[2].answer,2026-10-13T10:06:00Z
+3. SAST,sast.investigation_answers.when_was_it_first_observed[3].finding_id,DEMO-EXTRA-06
+3. SAST,sast.investigation_answers.when_was_it_first_observed[3].answer,2026-10-13T10:06:00Z
+3. SAST,sast.investigation_answers.who_changed_it[0].finding_id,DEMO-SAST-01
+3. SAST,sast.investigation_answers.who_changed_it[0].answer,Alex Rivera (dev.b); applied by ci-orders-release
+3. SAST,sast.investigation_answers.who_changed_it[1].finding_id,DEMO-EXTRA-04
+3. SAST,sast.investigation_answers.who_changed_it[1].answer,Alex Rivera (dev.b); applied by ci-orders-release
+3. SAST,sast.investigation_answers.who_changed_it[2].finding_id,DEMO-EXTRA-05
+3. SAST,sast.investigation_answers.who_changed_it[2].answer,Alex Rivera (dev.b); applied by ci-orders-release
+3. SAST,sast.investigation_answers.who_changed_it[3].finding_id,DEMO-EXTRA-06
+3. SAST,sast.investigation_answers.who_changed_it[3].answer,Alex Rivera (dev.b); applied by ci-orders-release
+3. SAST,sast.investigation_answers.which_deployment_created_it[0].finding_id,DEMO-SAST-01
+3. SAST,sast.investigation_answers.which_deployment_created_it[0].answer,orders-release-284
+3. SAST,sast.investigation_answers.which_deployment_created_it[1].finding_id,DEMO-EXTRA-04
+3. SAST,sast.investigation_answers.which_deployment_created_it[1].answer,orders-release-284
+3. SAST,sast.investigation_answers.which_deployment_created_it[2].finding_id,DEMO-EXTRA-05
+3. SAST,sast.investigation_answers.which_deployment_created_it[2].answer,orders-release-284
+3. SAST,sast.investigation_answers.which_deployment_created_it[3].finding_id,DEMO-EXTRA-06
+3. SAST,sast.investigation_answers.which_deployment_created_it[3].answer,orders-release-284
+3. SAST,sast.investigation_answers.which_commit_introduced_it[0].finding_id,DEMO-SAST-01
+3. SAST,sast.investigation_answers.which_commit_introduced_it[0].answer,b7c82de
+3. SAST,sast.investigation_answers.which_commit_introduced_it[1].finding_id,DEMO-EXTRA-04
+3. SAST,sast.investigation_answers.which_commit_introduced_it[1].answer,b7c82de
+3. SAST,sast.investigation_answers.which_commit_introduced_it[2].finding_id,DEMO-EXTRA-05
+3. SAST,sast.investigation_answers.which_commit_introduced_it[2].answer,b7c82de
+3. SAST,sast.investigation_answers.which_commit_introduced_it[3].finding_id,DEMO-EXTRA-06
+3. SAST,sast.investigation_answers.which_commit_introduced_it[3].answer,b7c82de
+3. SAST,sast.investigation_answers.what_is_the_root_cause[0].finding_id,DEMO-SAST-01
+3. SAST,sast.investigation_answers.what_is_the_root_cause[0].answer,PR #228 replaced parameter binding with an interpolated query at orders/api.py:42. Release 284 deployed that revision; the source diff links the finding to the change.
+3. SAST,sast.investigation_answers.what_is_the_root_cause[1].finding_id,DEMO-EXTRA-04
+3. SAST,sast.investigation_answers.what_is_the_root_cause[1].answer,The linked source/configuration revision introduced the recorded change: Credential-shaped value committed to test configuration. Git diff + build manifest + code evidence connect this evidence to orders-release-284.
+3. SAST,sast.investigation_answers.what_is_the_root_cause[2].finding_id,DEMO-EXTRA-05
+3. SAST,sast.investigation_answers.what_is_the_root_cause[2].answer,The linked source/configuration revision introduced the recorded change: Terraform permits unrestricted database ingress. Git diff + build manifest + code evidence connect this evidence to orders-release-284.
+3. SAST,sast.investigation_answers.what_is_the_root_cause[3].finding_id,DEMO-EXTRA-06
+3. SAST,sast.investigation_answers.what_is_the_root_cause[3].answer,The linked source/configuration revision introduced the recorded change: Legacy dependency requires a security review. Git diff + build manifest + code evidence connect this evidence to orders-release-284.
+3. SAST,sast.investigation_answers.what_is_the_blast_radius[0].finding_id,DEMO-SAST-01
+3. SAST,sast.investigation_answers.what_is_the_blast_radius[0].answer,Three API routes share this query helper; the application database role can read the example users and orders tables.
+3. SAST,sast.investigation_answers.what_is_the_blast_radius[1].finding_id,DEMO-EXTRA-04
+3. SAST,sast.investigation_answers.what_is_the_blast_radius[1].answer,Three API routes share this query helper; the application database role can read the example users and orders tables.
+3. SAST,sast.investigation_answers.what_is_the_blast_radius[2].finding_id,DEMO-EXTRA-05
+3. SAST,sast.investigation_answers.what_is_the_blast_radius[2].answer,Three API routes share this query helper; the application database role can read the example users and orders tables.
+3. SAST,sast.investigation_answers.what_is_the_blast_radius[3].finding_id,DEMO-EXTRA-06
+3. SAST,sast.investigation_answers.what_is_the_blast_radius[3].answer,Three API routes share this query helper; the application database role can read the example users and orders tables.
+3. SAST,sast.investigation_answers.how_do_we_prevent_it_again[0].finding_id,DEMO-SAST-01
+3. SAST,sast.investigation_answers.how_do_we_prevent_it_again[0].answer,Use the parameter-binding API for your actual database driver. The placeholder syntax depends on that driver. Add a regression test and reassess the same code.
+3. SAST,sast.investigation_answers.how_do_we_prevent_it_again[1].finding_id,DEMO-EXTRA-04
+3. SAST,sast.investigation_answers.how_do_we_prevent_it_again[1].answer,"Use secret storage. For a real credential revoke it, rotate dependent systems and inspect use."
+3. SAST,sast.investigation_answers.how_do_we_prevent_it_again[2].finding_id,DEMO-EXTRA-05
+3. SAST,sast.investigation_answers.how_do_we_prevent_it_again[2].answer,Restrict ingress to application security groups and test connectivity.
+3. SAST,sast.investigation_answers.how_do_we_prevent_it_again[3].finding_id,DEMO-EXTRA-06
+3. SAST,sast.investigation_answers.how_do_we_prevent_it_again[3].answer,Upgrade to a reviewed supported release and verify advisory applicability; this fictional package has no real advisory.
+3. SAST,sast.runs[0].engine_id,codesentinelx
+3. SAST,sast.runs[0].name,CodeSentinelX
+3. SAST,sast.runs[0].category,"SAST, SCA, secrets and IaC"
+3. SAST,sast.runs[0].homepage,https://github.com/Sanket00410/CodeBaseScanner
+3. SAST,sast.runs[0].product,sast
+3. SAST,sast.runs[0].status,completed_in_demo
+3. SAST,sast.runs[0].execution,Illustrative normalized evidence dataset; no vendor process invoked
+3. SAST,sast.runs[0].version,Example dataset
+3. SAST,sast.runs[0].finding_ids[0],DEMO-SAST-01
+3. SAST,sast.runs[0].summary,1 observations linked to combined findings
+3. SAST,sast.runs[1].engine_id,semgrep
+3. SAST,sast.runs[1].name,Semgrep
+3. SAST,sast.runs[1].category,SAST / Semantic Analysis
+3. SAST,sast.runs[1].homepage,https://semgrep.dev/
+3. SAST,sast.runs[1].product,sast
+3. SAST,sast.runs[1].status,completed_in_demo
+3. SAST,sast.runs[1].execution,Illustrative normalized evidence dataset; no vendor process invoked
+3. SAST,sast.runs[1].version,Example dataset
+3. SAST,sast.runs[1].finding_ids[0],DEMO-SAST-01
+3. SAST,sast.runs[1].summary,1 observations linked to combined findings
+3. SAST,sast.runs[2].engine_id,gitleaks
+3. SAST,sast.runs[2].name,Gitleaks
+3. SAST,sast.runs[2].category,Secret Scanning
+3. SAST,sast.runs[2].homepage,https://github.com/gitleaks/gitleaks
+3. SAST,sast.runs[2].product,sast
+3. SAST,sast.runs[2].status,completed_in_demo
+3. SAST,sast.runs[2].execution,Illustrative normalized evidence dataset; no vendor process invoked
+3. SAST,sast.runs[2].version,Example dataset
+3. SAST,sast.runs[2].finding_ids[0],DEMO-EXTRA-04
+3. SAST,sast.runs[2].summary,1 observations linked to combined findings
+3. SAST,sast.runs[3].engine_id,trufflehog
+3. SAST,sast.runs[3].name,TruffleHog
+3. SAST,sast.runs[3].category,Secret detection
+3. SAST,sast.runs[3].homepage,https://github.com/trufflesecurity/trufflehog
+3. SAST,sast.runs[3].product,sast
+3. SAST,sast.runs[3].status,completed_in_demo
+3. SAST,sast.runs[3].execution,Illustrative normalized evidence dataset; no vendor process invoked
+3. SAST,sast.runs[3].version,Example dataset
+3. SAST,sast.runs[3].finding_ids[0],DEMO-EXTRA-04
+3. SAST,sast.runs[3].summary,1 observations linked to combined findings
+3. SAST,sast.runs[4].engine_id,checkov
+3. SAST,sast.runs[4].name,Checkov
+3. SAST,sast.runs[4].category,IaC Security
+3. SAST,sast.runs[4].homepage,https://www.checkov.io/
+3. SAST,sast.runs[4].product,sast
+3. SAST,sast.runs[4].status,completed_in_demo
+3. SAST,sast.runs[4].execution,Illustrative normalized evidence dataset; no vendor process invoked
+3. SAST,sast.runs[4].version,Example dataset
+3. SAST,sast.runs[4].finding_ids[0],DEMO-EXTRA-05
+3. SAST,sast.runs[4].summary,1 observations linked to combined findings
+3. SAST,sast.runs[5].engine_id,trivy
+3. SAST,sast.runs[5].name,Trivy
+3. SAST,sast.runs[5].category,Dependency / Misconfiguration
+3. SAST,sast.runs[5].homepage,https://aquasecurity.github.io/trivy/
+3. SAST,sast.runs[5].product,sast
+3. SAST,sast.runs[5].status,completed_in_demo
+3. SAST,sast.runs[5].execution,Illustrative normalized evidence dataset; no vendor process invoked
+3. SAST,sast.runs[5].version,Example dataset
+3. SAST,sast.runs[5].finding_ids[0],DEMO-EXTRA-05
+3. SAST,sast.runs[5].finding_ids[1],DEMO-EXTRA-06
+3. SAST,sast.runs[5].summary,2 observations linked to combined findings
+3. SAST,sast.runs[6].engine_id,syft
+3. SAST,sast.runs[6].name,Syft
+3. SAST,sast.runs[6].category,SBOM inventory
+3. SAST,sast.runs[6].homepage,https://github.com/anchore/syft
+3. SAST,sast.runs[6].product,sast
+3. SAST,sast.runs[6].status,completed_in_demo
+3. SAST,sast.runs[6].execution,Illustrative normalized evidence dataset; no vendor process invoked
+3. SAST,sast.runs[6].version,Example dataset
+3. SAST,sast.runs[6].finding_ids,[]
+3. SAST,sast.runs[6].summary,"SBOM inventory: orders-api, application image and three example packages."
+3. SAST,sast.runs[7].engine_id,grype
+3. SAST,sast.runs[7].name,Grype
+3. SAST,sast.runs[7].category,Dependency / SCA
+3. SAST,sast.runs[7].homepage,https://github.com/anchore/grype
+3. SAST,sast.runs[7].product,sast
+3. SAST,sast.runs[7].status,completed_in_demo
+3. SAST,sast.runs[7].execution,Illustrative normalized evidence dataset; no vendor process invoked
+3. SAST,sast.runs[7].version,Example dataset
+3. SAST,sast.runs[7].finding_ids[0],DEMO-EXTRA-06
+3. SAST,sast.runs[7].summary,1 observations linked to combined findings
+3. SAST,sast.runs[8].engine_id,opa
+3. SAST,sast.runs[8].name,Open Policy Agent
+3. SAST,sast.runs[8].category,Policy as code
+3. SAST,sast.runs[8].homepage,https://github.com/open-policy-agent/opa
+3. SAST,sast.runs[8].product,sast
+3. SAST,sast.runs[8].status,completed_in_demo
+3. SAST,sast.runs[8].execution,Illustrative normalized evidence dataset; no vendor process invoked
+3. SAST,sast.runs[8].version,Example dataset
+3. SAST,sast.runs[8].finding_ids[0],DEMO-EXTRA-05
+3. SAST,sast.runs[8].summary,1 observations linked to combined findings
+3. SAST,sast.runs[9].engine_id,clamav
+3. SAST,sast.runs[9].name,ClamAV
+3. SAST,sast.runs[9].category,Malware detection
+3. SAST,sast.runs[9].homepage,https://github.com/Cisco-Talos/clamav
+3. SAST,sast.runs[9].product,sast
+3. SAST,sast.runs[9].status,completed_in_demo
+3. SAST,sast.runs[9].execution,Illustrative normalized evidence dataset; no vendor process invoked
+3. SAST,sast.runs[9].version,Example dataset
+3. SAST,sast.runs[9].finding_ids,[]
+3. SAST,sast.runs[9].summary,Three example training files reviewed; no example signature matches.
+4. DAST,dast.assessment_status,See the dedicated DAST product report
+4. DAST,dast.findings,[]
+4. DAST,dast.investigations,[]
+4. DAST,dast.investigation_answers,{}
+4. DAST,dast.runs,[]
+5. CLOUD,cloud.assessment_status,See the dedicated CLOUD product report
+5. CLOUD,cloud.findings,[]
+5. CLOUD,cloud.investigations,[]
+5. CLOUD,cloud.investigation_answers,{}
+5. CLOUD,cloud.runs,[]
+6. AI SECURITY,ai.assessment_status,See the dedicated AI product report
+6. AI SECURITY,ai.findings,[]
+6. AI SECURITY,ai.investigations,[]
+6. AI SECURITY,ai.investigation_answers,{}
+6. AI SECURITY,ai.runs,[]
+7. Framework mapping,framework_mapping.mappings[0].finding_id,DEMO-SAST-01
+7. Framework mapping,framework_mapping.mappings[0].framework,CWE
+7. Framework mapping,framework_mapping.mappings[0].control,CWE-89: SQL Injection
+7. Framework mapping,framework_mapping.mappings[0].source,https://cwe.mitre.org/data/definitions/89.html
+7. Framework mapping,framework_mapping.mappings[0].needs_review,true
+7. Framework mapping,framework_mapping.note,Source-supported rule mappings are retained where supplied. This scenario is not a compliance certification.
+8. Remediation plan,remediation_plan.actions[0].priority,1
+8. Remediation plan,remediation_plan.actions[0].finding_id,DEMO-SAST-01
+8. Remediation plan,remediation_plan.actions[0].action,Use the parameter-binding API for your actual database driver. The placeholder syntax depends on that driver. Add a regression test and reassess the same code.
+8. Remediation plan,remediation_plan.actions[0].owner,Orders engineering
+8. Remediation plan,remediation_plan.actions[0].effort,Review and scoped change
+8. Remediation plan,remediation_plan.actions[0].validation,Reassess the same scope; verify the finding closes and compare the resulting path.
+8. Remediation plan,remediation_plan.actions[1].priority,2
+8. Remediation plan,remediation_plan.actions[1].finding_id,DEMO-EXTRA-04
+8. Remediation plan,remediation_plan.actions[1].action,"Use secret storage. For a real credential revoke it, rotate dependent systems and inspect use."
+8. Remediation plan,remediation_plan.actions[1].owner,Orders engineering
+8. Remediation plan,remediation_plan.actions[1].effort,Review and scoped change
+8. Remediation plan,remediation_plan.actions[1].validation,Reassess the same scope; verify the finding closes and compare the resulting path.
+8. Remediation plan,remediation_plan.actions[2].priority,3
+8. Remediation plan,remediation_plan.actions[2].finding_id,DEMO-EXTRA-05
+8. Remediation plan,remediation_plan.actions[2].action,Restrict ingress to application security groups and test connectivity.
+8. Remediation plan,remediation_plan.actions[2].owner,Orders engineering
+8. Remediation plan,remediation_plan.actions[2].effort,Review and scoped change
+8. Remediation plan,remediation_plan.actions[2].validation,Reassess the same scope; verify the finding closes and compare the resulting path.
+8. Remediation plan,remediation_plan.actions[3].priority,4
+8. Remediation plan,remediation_plan.actions[3].finding_id,DEMO-EXTRA-06
+8. Remediation plan,remediation_plan.actions[3].action,Upgrade to a reviewed supported release and verify advisory applicability; this fictional package has no real advisory.
+8. Remediation plan,remediation_plan.actions[3].owner,Orders engineering
+8. Remediation plan,remediation_plan.actions[3].effort,Review and scoped change
+8. Remediation plan,remediation_plan.actions[3].validation,Reassess the same scope; verify the finding closes and compare the resulting path.
+Appendix,appendix.methodology,"Illustrative Aster Commerce demonstration dataset. Persons, commits, deployments, snapshots and engine observations are supplied examples, not live customer or vendor-run evidence. All eleven export formats serialize this same report model."
+Appendix,appendix.engine_records[0].engine_id,codesentinelx
+Appendix,appendix.engine_records[0].name,CodeSentinelX
+Appendix,appendix.engine_records[0].category,"SAST, SCA, secrets and IaC"
+Appendix,appendix.engine_records[0].homepage,https://github.com/Sanket00410/CodeBaseScanner
+Appendix,appendix.engine_records[0].product,sast
+Appendix,appendix.engine_records[0].status,completed_in_demo
+Appendix,appendix.engine_records[0].execution,Illustrative normalized evidence dataset; no vendor process invoked
+Appendix,appendix.engine_records[0].version,Example dataset
+Appendix,appendix.engine_records[0].finding_ids[0],DEMO-SAST-01
+Appendix,appendix.engine_records[0].summary,1 observations linked to combined findings
+Appendix,appendix.engine_records[1].engine_id,semgrep
+Appendix,appendix.engine_records[1].name,Semgrep
+Appendix,appendix.engine_records[1].category,SAST / Semantic Analysis
+Appendix,appendix.engine_records[1].homepage,https://semgrep.dev/
+Appendix,appendix.engine_records[1].product,sast
+Appendix,appendix.engine_records[1].status,completed_in_demo
+Appendix,appendix.engine_records[1].execution,Illustrative normalized evidence dataset; no vendor process invoked
+Appendix,appendix.engine_records[1].version,Example dataset
+Appendix,appendix.engine_records[1].finding_ids[0],DEMO-SAST-01
+Appendix,appendix.engine_records[1].summary,1 observations linked to combined findings
+Appendix,appendix.engine_records[2].engine_id,gitleaks
+Appendix,appendix.engine_records[2].name,Gitleaks
+Appendix,appendix.engine_records[2].category,Secret Scanning
+Appendix,appendix.engine_records[2].homepage,https://github.com/gitleaks/gitleaks
+Appendix,appendix.engine_records[2].product,sast
+Appendix,appendix.engine_records[2].status,completed_in_demo
+Appendix,appendix.engine_records[2].execution,Illustrative normalized evidence dataset; no vendor process invoked
+Appendix,appendix.engine_records[2].version,Example dataset
+Appendix,appendix.engine_records[2].finding_ids[0],DEMO-EXTRA-04
+Appendix,appendix.engine_records[2].summary,1 observations linked to combined findings
+Appendix,appendix.engine_records[3].engine_id,trufflehog
+Appendix,appendix.engine_records[3].name,TruffleHog
+Appendix,appendix.engine_records[3].category,Secret detection
+Appendix,appendix.engine_records[3].homepage,https://github.com/trufflesecurity/trufflehog
+Appendix,appendix.engine_records[3].product,sast
+Appendix,appendix.engine_records[3].status,completed_in_demo
+Appendix,appendix.engine_records[3].execution,Illustrative normalized evidence dataset; no vendor process invoked
+Appendix,appendix.engine_records[3].version,Example dataset
+Appendix,appendix.engine_records[3].finding_ids[0],DEMO-EXTRA-04
+Appendix,appendix.engine_records[3].summary,1 observations linked to combined findings
+Appendix,appendix.engine_records[4].engine_id,checkov
+Appendix,appendix.engine_records[4].name,Checkov
+Appendix,appendix.engine_records[4].category,IaC Security
+Appendix,appendix.engine_records[4].homepage,https://www.checkov.io/
+Appendix,appendix.engine_records[4].product,sast
+Appendix,appendix.engine_records[4].status,completed_in_demo
+Appendix,appendix.engine_records[4].execution,Illustrative normalized evidence dataset; no vendor process invoked
+Appendix,appendix.engine_records[4].version,Example dataset
+Appendix,appendix.engine_records[4].finding_ids[0],DEMO-EXTRA-05
+Appendix,appendix.engine_records[4].summary,1 observations linked to combined findings
+Appendix,appendix.engine_records[5].engine_id,trivy
+Appendix,appendix.engine_records[5].name,Trivy
+Appendix,appendix.engine_records[5].category,Dependency / Misconfiguration
+Appendix,appendix.engine_records[5].homepage,https://aquasecurity.github.io/trivy/
+Appendix,appendix.engine_records[5].product,sast
+Appendix,appendix.engine_records[5].status,completed_in_demo
+Appendix,appendix.engine_records[5].execution,Illustrative normalized evidence dataset; no vendor process invoked
+Appendix,appendix.engine_records[5].version,Example dataset
+Appendix,appendix.engine_records[5].finding_ids[0],DEMO-EXTRA-05
+Appendix,appendix.engine_records[5].finding_ids[1],DEMO-EXTRA-06
+Appendix,appendix.engine_records[5].summary,2 observations linked to combined findings
+Appendix,appendix.engine_records[6].engine_id,syft
+Appendix,appendix.engine_records[6].name,Syft
+Appendix,appendix.engine_records[6].category,SBOM inventory
+Appendix,appendix.engine_records[6].homepage,https://github.com/anchore/syft
+Appendix,appendix.engine_records[6].product,sast
+Appendix,appendix.engine_records[6].status,completed_in_demo
+Appendix,appendix.engine_records[6].execution,Illustrative normalized evidence dataset; no vendor process invoked
+Appendix,appendix.engine_records[6].version,Example dataset
+Appendix,appendix.engine_records[6].finding_ids,[]
+Appendix,appendix.engine_records[6].summary,"SBOM inventory: orders-api, application image and three example packages."
+Appendix,appendix.engine_records[7].engine_id,grype
+Appendix,appendix.engine_records[7].name,Grype
+Appendix,appendix.engine_records[7].category,Dependency / SCA
+Appendix,appendix.engine_records[7].homepage,https://github.com/anchore/grype
+Appendix,appendix.engine_records[7].product,sast
+Appendix,appendix.engine_records[7].status,completed_in_demo
+Appendix,appendix.engine_records[7].execution,Illustrative normalized evidence dataset; no vendor process invoked
+Appendix,appendix.engine_records[7].version,Example dataset
+Appendix,appendix.engine_records[7].finding_ids[0],DEMO-EXTRA-06
+Appendix,appendix.engine_records[7].summary,1 observations linked to combined findings
+Appendix,appendix.engine_records[8].engine_id,opa
+Appendix,appendix.engine_records[8].name,Open Policy Agent
+Appendix,appendix.engine_records[8].category,Policy as code
+Appendix,appendix.engine_records[8].homepage,https://github.com/open-policy-agent/opa
+Appendix,appendix.engine_records[8].product,sast
+Appendix,appendix.engine_records[8].status,completed_in_demo
+Appendix,appendix.engine_records[8].execution,Illustrative normalized evidence dataset; no vendor process invoked
+Appendix,appendix.engine_records[8].version,Example dataset
+Appendix,appendix.engine_records[8].finding_ids[0],DEMO-EXTRA-05
+Appendix,appendix.engine_records[8].summary,1 observations linked to combined findings
+Appendix,appendix.engine_records[9].engine_id,clamav
+Appendix,appendix.engine_records[9].name,ClamAV
+Appendix,appendix.engine_records[9].category,Malware detection
+Appendix,appendix.engine_records[9].homepage,https://github.com/Cisco-Talos/clamav
+Appendix,appendix.engine_records[9].product,sast
+Appendix,appendix.engine_records[9].status,completed_in_demo
+Appendix,appendix.engine_records[9].execution,Illustrative normalized evidence dataset; no vendor process invoked
+Appendix,appendix.engine_records[9].version,Example dataset
+Appendix,appendix.engine_records[9].finding_ids,[]
+Appendix,appendix.engine_records[9].summary,Three example training files reviewed; no example signature matches.
+Appendix,appendix.provenance_sources[0],Git diff + build manifest + code evidence
+Appendix,appendix.limitations[0],Graph paths describe recorded scenario relationships; they do not establish real effective access or exploitation.
+Appendix,appendix.limitations[1],Observed HTTP hardening gaps are distinct from reproduced exploits.
+Appendix,appendix.limitations[2],Shadow-permission observations require workload-owner review.
+Appendix,appendix.primary_references[0],https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html
+Appendix,appendix.primary_references[1],https://owasp.org/www-project-top-ten/

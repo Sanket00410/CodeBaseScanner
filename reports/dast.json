@@ -1,0 +1,1125 @@
+{
+  "schema_version": "captm.report/1",
+  "report_id": "CAPTM-2026-DAST-001",
+  "title": "A gateway release removed browser protections",
+  "classification": "DEMO SCENARIO · Aster Commerce",
+  "generated_at": "2026-10-14T10:10:00Z",
+  "workspace": "aster-commerce",
+  "window": {
+    "from": "2026-09-14T00:00:00Z",
+    "to": "2026-10-14T10:10:00Z"
+  },
+  "products": [
+    "dast"
+  ],
+  "sections": [
+    {
+      "id": "executive_summary",
+      "title": "1. Executive summary",
+      "content": {
+        "incident": {
+          "title": "A gateway release removed browser protections",
+          "target": "https://orders.demo.invalid · staging scenario",
+          "actor": "Jordan Patel (dev.c)",
+          "serviceActor": "ci-edge-deploy",
+          "commit": "c4d91fa",
+          "deployment": "edge-release-412",
+          "introduced": "2026-10-13T12:20:00Z",
+          "merged": "2026-10-12T13:40:00Z",
+          "path": [
+            "Browser request",
+            "Gateway response policy",
+            "Orders web application"
+          ],
+          "before": "CSP, nosniff and SameSite applied by the gateway",
+          "after": "Shared response-hardening middleware omitted",
+          "how": "PR #231 removed the response-hardening middleware from the gateway configuration. Release 412 changed the observed headers and cookie attributes on the same scoped routes.",
+          "blast": "Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation.",
+          "prevention": "Restore the gateway policy, deploy CSP in report-only mode where appropriate and retest the same routes with response-header regression checks.",
+          "source": "Gateway configuration diff + before/after HTTP observations + release manifest",
+          "baseline": "snap-dast-1010",
+          "changed": "snap-dast-1013",
+          "lead": "DEMO-DAST-01"
+        },
+        "summary": "PR #231 removed the response-hardening middleware from the gateway configuration. Release 412 changed the observed headers and cookie attributes on the same scoped routes.",
+        "severity_counts": {
+          "critical": 0,
+          "high": 0,
+          "medium": 3,
+          "low": 1,
+          "info": 0
+        },
+        "unique_findings": 4,
+        "raw_observations": 9,
+        "duplicate_observations_combined": 5,
+        "scan_pipeline_coverage": [
+          {
+            "engine_id": "runtime_http_probe",
+            "name": "HTTP posture review",
+            "category": "Application Runtime Scanning",
+            "homepage": "https://owasp.org/www-project-top-ten/",
+            "product": "dast",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-DAST-01",
+              "DEMO-DAST-02"
+            ],
+            "summary": "2 observations linked to combined findings"
+          },
+          {
+            "engine_id": "nuclei",
+            "name": "Nuclei",
+            "category": "Application Runtime Scanning",
+            "homepage": "https://nuclei.projectdiscovery.io/",
+            "product": "dast",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-DAST-01",
+              "DEMO-EXTRA-07",
+              "DEMO-EXTRA-08"
+            ],
+            "summary": "3 observations linked to combined findings"
+          },
+          {
+            "engine_id": "zap-baseline",
+            "name": "OWASP ZAP Baseline",
+            "category": "DAST / Web Security",
+            "homepage": "https://www.zaproxy.org/",
+            "product": "dast",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-DAST-01",
+              "DEMO-DAST-02",
+              "DEMO-EXTRA-07",
+              "DEMO-EXTRA-08"
+            ],
+            "summary": "4 observations linked to combined findings"
+          }
+        ],
+        "top_actions": [
+          "Restore the gateway policy, deploy CSP in report-only mode where appropriate and retest the same routes with response-header regression checks."
+        ],
+        "data_gaps": [],
+        "deduplication_basis": "Matching resource and exact fixture evidence share an identity; every contributing engine is retained."
+      }
+    },
+    {
+      "id": "time_machine",
+      "title": "2. Attack Path Time Machine",
+      "content": {
+        "root_cause": [
+          {
+            "finding_id": "DEMO-DAST-01",
+            "why_vulnerable": "The inspected example response lacks the header.",
+            "how_became_possible": "PR #231 removed the response-hardening middleware from the gateway configuration. Release 412 changed the observed headers and cookie attributes on the same scoped routes.",
+            "when_introduced": "2026-10-13T12:20:00Z",
+            "when_first_observed": "2026-10-13T12:20:00Z",
+            "who_introduced": "Jordan Patel (dev.c); applied by ci-edge-deploy",
+            "responsible_commit": "c4d91fa",
+            "responsible_deployment": "edge-release-412",
+            "root_cause": "PR #231 removed the response-hardening middleware from the gateway configuration. Release 412 changed the observed headers and cookie attributes on the same scoped routes.",
+            "blast_radius": "Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation.",
+            "prevention": "Design a policy for the application’s actual scripts and content sources. Test with report-only deployment where appropriate before enforcement.",
+            "evidence_basis": "Aster Commerce demo dataset: linked evidence and provenance supplied for this example."
+          },
+          {
+            "finding_id": "DEMO-DAST-02",
+            "why_vulnerable": "The required hardening header is absent from the sample response.",
+            "how_became_possible": "The linked source/configuration revision introduced the recorded change: Content type sniffing protection is absent. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.",
+            "when_introduced": "2026-10-13T12:20:00Z",
+            "when_first_observed": "2026-10-13T12:20:00Z",
+            "who_introduced": "Jordan Patel (dev.c); applied by ci-edge-deploy",
+            "responsible_commit": "c4d91fa",
+            "responsible_deployment": "edge-release-412",
+            "root_cause": "The linked source/configuration revision introduced the recorded change: Content type sniffing protection is absent. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.",
+            "blast_radius": "Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation.",
+            "prevention": "Serve appropriate content types and add X-Content-Type-Options: nosniff to application responses.",
+            "evidence_basis": "Aster Commerce demo dataset: linked evidence and provenance supplied for this example."
+          },
+          {
+            "finding_id": "DEMO-EXTRA-07",
+            "why_vulnerable": "HTTP/1.1 200 OK\nSet-Cookie: demo_session=REDACTED; Secure; HttpOnly",
+            "how_became_possible": "The linked source/configuration revision introduced the recorded change: Session cookie lacks an explicit SameSite policy. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.",
+            "when_introduced": "2026-10-13T12:20:00Z",
+            "when_first_observed": "2026-10-13T12:20:00Z",
+            "who_introduced": "Jordan Patel (dev.c); applied by ci-edge-deploy",
+            "responsible_commit": "c4d91fa",
+            "responsible_deployment": "edge-release-412",
+            "root_cause": "The linked source/configuration revision introduced the recorded change: Session cookie lacks an explicit SameSite policy. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.",
+            "blast_radius": "Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation.",
+            "prevention": "Choose a SameSite policy appropriate to authentication and test cross-site flows.",
+            "evidence_basis": "Aster Commerce demo dataset: linked evidence and provenance supplied for this example."
+          },
+          {
+            "finding_id": "DEMO-EXTRA-08",
+            "why_vulnerable": "HTTP/1.1 500 Internal Server Error\nBody excerpt: Traceback ... /srv/orders/api.py",
+            "how_became_possible": "The linked source/configuration revision introduced the recorded change: Verbose framework error response exposes internals. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.",
+            "when_introduced": "2026-10-13T12:20:00Z",
+            "when_first_observed": "2026-10-13T12:20:00Z",
+            "who_introduced": "Jordan Patel (dev.c); applied by ci-edge-deploy",
+            "responsible_commit": "c4d91fa",
+            "responsible_deployment": "edge-release-412",
+            "root_cause": "The linked source/configuration revision introduced the recorded change: Verbose framework error response exposes internals. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.",
+            "blast_radius": "Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation.",
+            "prevention": "Return a generic error and retain details in access-controlled server logs.",
+            "evidence_basis": "Aster Commerce demo dataset: linked evidence and provenance supplied for this example."
+          }
+        ],
+        "investigation_answers": {
+          "why_is_it_vulnerable": [
+            {
+              "finding_id": "DEMO-DAST-01",
+              "answer": "The inspected example response lacks the header."
+            },
+            {
+              "finding_id": "DEMO-DAST-02",
+              "answer": "The required hardening header is absent from the sample response."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-07",
+              "answer": "HTTP/1.1 200 OK\nSet-Cookie: demo_session=REDACTED; Secure; HttpOnly"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-08",
+              "answer": "HTTP/1.1 500 Internal Server Error\nBody excerpt: Traceback ... /srv/orders/api.py"
+            }
+          ],
+          "how_did_this_happen": [
+            {
+              "finding_id": "DEMO-DAST-01",
+              "answer": "PR #231 removed the response-hardening middleware from the gateway configuration. Release 412 changed the observed headers and cookie attributes on the same scoped routes."
+            },
+            {
+              "finding_id": "DEMO-DAST-02",
+              "answer": "The linked source/configuration revision introduced the recorded change: Content type sniffing protection is absent. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-07",
+              "answer": "The linked source/configuration revision introduced the recorded change: Session cookie lacks an explicit SameSite policy. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-08",
+              "answer": "The linked source/configuration revision introduced the recorded change: Verbose framework error response exposes internals. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412."
+            }
+          ],
+          "when_did_it_become_vulnerable": [
+            {
+              "finding_id": "DEMO-DAST-01",
+              "answer": "2026-10-13T12:20:00Z"
+            },
+            {
+              "finding_id": "DEMO-DAST-02",
+              "answer": "2026-10-13T12:20:00Z"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-07",
+              "answer": "2026-10-13T12:20:00Z"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-08",
+              "answer": "2026-10-13T12:20:00Z"
+            }
+          ],
+          "when_was_it_first_observed": [
+            {
+              "finding_id": "DEMO-DAST-01",
+              "answer": "2026-10-13T12:20:00Z"
+            },
+            {
+              "finding_id": "DEMO-DAST-02",
+              "answer": "2026-10-13T12:20:00Z"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-07",
+              "answer": "2026-10-13T12:20:00Z"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-08",
+              "answer": "2026-10-13T12:20:00Z"
+            }
+          ],
+          "who_changed_it": [
+            {
+              "finding_id": "DEMO-DAST-01",
+              "answer": "Jordan Patel (dev.c); applied by ci-edge-deploy"
+            },
+            {
+              "finding_id": "DEMO-DAST-02",
+              "answer": "Jordan Patel (dev.c); applied by ci-edge-deploy"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-07",
+              "answer": "Jordan Patel (dev.c); applied by ci-edge-deploy"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-08",
+              "answer": "Jordan Patel (dev.c); applied by ci-edge-deploy"
+            }
+          ],
+          "which_deployment_created_it": [
+            {
+              "finding_id": "DEMO-DAST-01",
+              "answer": "edge-release-412"
+            },
+            {
+              "finding_id": "DEMO-DAST-02",
+              "answer": "edge-release-412"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-07",
+              "answer": "edge-release-412"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-08",
+              "answer": "edge-release-412"
+            }
+          ],
+          "which_commit_introduced_it": [
+            {
+              "finding_id": "DEMO-DAST-01",
+              "answer": "c4d91fa"
+            },
+            {
+              "finding_id": "DEMO-DAST-02",
+              "answer": "c4d91fa"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-07",
+              "answer": "c4d91fa"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-08",
+              "answer": "c4d91fa"
+            }
+          ],
+          "what_is_the_root_cause": [
+            {
+              "finding_id": "DEMO-DAST-01",
+              "answer": "PR #231 removed the response-hardening middleware from the gateway configuration. Release 412 changed the observed headers and cookie attributes on the same scoped routes."
+            },
+            {
+              "finding_id": "DEMO-DAST-02",
+              "answer": "The linked source/configuration revision introduced the recorded change: Content type sniffing protection is absent. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-07",
+              "answer": "The linked source/configuration revision introduced the recorded change: Session cookie lacks an explicit SameSite policy. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-08",
+              "answer": "The linked source/configuration revision introduced the recorded change: Verbose framework error response exposes internals. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412."
+            }
+          ],
+          "what_is_the_blast_radius": [
+            {
+              "finding_id": "DEMO-DAST-01",
+              "answer": "Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation."
+            },
+            {
+              "finding_id": "DEMO-DAST-02",
+              "answer": "Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-07",
+              "answer": "Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-08",
+              "answer": "Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation."
+            }
+          ],
+          "how_do_we_prevent_it_again": [
+            {
+              "finding_id": "DEMO-DAST-01",
+              "answer": "Design a policy for the application’s actual scripts and content sources. Test with report-only deployment where appropriate before enforcement."
+            },
+            {
+              "finding_id": "DEMO-DAST-02",
+              "answer": "Serve appropriate content types and add X-Content-Type-Options: nosniff to application responses."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-07",
+              "answer": "Choose a SameSite policy appropriate to authentication and test cross-site flows."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-08",
+              "answer": "Return a generic error and retain details in access-controlled server logs."
+            }
+          ]
+        },
+        "timeline": [
+          {
+            "when": "2026-09-14T00:00:00Z",
+            "event": "30-day historical baseline recorded",
+            "reference": "snap-dast-0914"
+          },
+          {
+            "when": "2026-09-29T00:00:00Z",
+            "event": "15-day historical snapshot recorded",
+            "reference": "snap-dast-0929"
+          },
+          {
+            "when": "2026-10-10T00:00:00Z",
+            "event": "Last pre-change baseline: CSP, nosniff and SameSite applied by the gateway",
+            "reference": "snap-dast-1010"
+          },
+          {
+            "when": "2026-10-12T13:40:00Z",
+            "event": "Change merged by Jordan Patel (dev.c)",
+            "reference": "c4d91fa"
+          },
+          {
+            "when": "2026-10-13T12:20:00Z",
+            "event": "Deployment changed the recorded environment",
+            "reference": "edge-release-412"
+          },
+          {
+            "when": "2026-10-14T08:00:00Z",
+            "event": "Cross-engine investigation assembled",
+            "reference": "CAPTM-2026-DAST-001"
+          }
+        ],
+        "attack_paths": [
+          {
+            "path_id": "ap-dast-1",
+            "labels": [
+              "Browser request",
+              "Gateway response policy",
+              "Orders web application"
+            ],
+            "first_observed": "2026-10-13T12:20:00Z",
+            "status": "New in the recorded scenario",
+            "commit": [
+              "c4d91fa"
+            ],
+            "deployment": [
+              "edge-release-412"
+            ],
+            "limits": "Recorded relationship or data flow; does not by itself establish exploitation or effective authorization outside the supplied scenario."
+          }
+        ],
+        "point_in_time_views": [
+          {
+            "label": "30 days before detection",
+            "snapshot_id": "snap-dast-0914",
+            "observed_at": "2026-09-14T00:00:00Z",
+            "state": "Before change",
+            "environment": "CSP, nosniff and SameSite applied by the gateway"
+          },
+          {
+            "label": "15 days before detection",
+            "snapshot_id": "snap-dast-0929",
+            "observed_at": "2026-09-29T00:00:00Z",
+            "state": "Before change",
+            "environment": "CSP, nosniff and SameSite applied by the gateway"
+          },
+          {
+            "label": "Last pre-change snapshot",
+            "snapshot_id": "snap-dast-1010",
+            "observed_at": "2026-10-10T00:00:00Z",
+            "state": "Before change",
+            "environment": "CSP, nosniff and SameSite applied by the gateway"
+          },
+          {
+            "label": "Detection snapshot",
+            "snapshot_id": "snap-dast-1014",
+            "observed_at": "2026-10-14T08:00:00Z",
+            "state": "After change",
+            "environment": "Shared response-hardening middleware omitted"
+          }
+        ],
+        "snapshot_comparisons": [
+          {
+            "from": "snap-dast-1010",
+            "to": "snap-dast-1013",
+            "before": "CSP, nosniff and SameSite applied by the gateway",
+            "after": "Shared response-hardening middleware omitted",
+            "paths_created": [
+              "ap-dast-1"
+            ],
+            "paths_closed": [],
+            "explanation": "PR #231 removed the response-hardening middleware from the gateway configuration. Release 412 changed the observed headers and cookie attributes on the same scoped routes."
+          }
+        ],
+        "change_events": [
+          {
+            "occurred_at": "2026-10-12T13:40:00Z",
+            "source": "Git review",
+            "actor": "Jordan Patel (dev.c)",
+            "action": "Merged security-relevant change",
+            "commit": "c4d91fa",
+            "deployment": "edge-release-412",
+            "attribution": "Explicit references in the demo dataset"
+          },
+          {
+            "occurred_at": "2026-10-13T12:20:00Z",
+            "source": "Gateway configuration diff + before/after HTTP observations + release manifest",
+            "actor": "ci-edge-deploy",
+            "action": "Shared response-hardening middleware omitted",
+            "commit": "c4d91fa",
+            "deployment": "edge-release-412",
+            "attribution": "Explicit references in the demo dataset"
+          }
+        ],
+        "shadow_permissions": {
+          "applicable": false,
+          "reason": "IAM usage analysis belongs to the Cloud report."
+        },
+        "investigator": {
+          "question": "How did this happen, when, who changed it, what is the blast radius and how do we prevent it?",
+          "answer": "PR #231 removed the response-hardening middleware from the gateway configuration. Release 412 changed the observed headers and cookie attributes on the same scoped routes.",
+          "actor": "Jordan Patel (dev.c)",
+          "introduced": "2026-10-13T12:20:00Z",
+          "commit": "c4d91fa",
+          "deployment": "edge-release-412",
+          "blast_radius": "Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation.",
+          "prevention": "Restore the gateway policy, deploy CSP in report-only mode where appropriate and retest the same routes with response-header regression checks.",
+          "grounding": [
+            "Gateway configuration diff + before/after HTTP observations + release manifest",
+            "snap-dast-1010",
+            "snap-dast-1013"
+          ]
+        }
+      }
+    },
+    {
+      "id": "sast",
+      "title": "3. SAST",
+      "content": {
+        "assessment_status": "See the dedicated SAST product report",
+        "findings": [],
+        "investigations": [],
+        "investigation_answers": {},
+        "runs": []
+      }
+    },
+    {
+      "id": "dast",
+      "title": "4. DAST",
+      "content": {
+        "assessment_status": "Completed demo scenario",
+        "findings": [
+          {
+            "finding_id": "DEMO-DAST-01",
+            "module": "dast",
+            "severity": "medium",
+            "title": "Content Security Policy header is absent",
+            "resource": "https://orders.demo.invalid/",
+            "target": "https://orders.demo.invalid · staging scenario",
+            "rule_id": "CSX-DAST-CSP",
+            "description": "Content Security Policy header is absent. Linked source, observation and deployment records are retained in this investigation.",
+            "remediation": "Design a policy for the application’s actual scripts and content sources. Test with report-only deployment where appropriate before enforcement.",
+            "engines": [
+              "runtime_http_probe",
+              "nuclei",
+              "zap-baseline"
+            ],
+            "engine_versions": {
+              "runtime_http_probe": "example dataset",
+              "nuclei": "example dataset",
+              "zap-baseline": "example dataset"
+            },
+            "evidence": [
+              {
+                "kind": "engine_report",
+                "source": "runtime_http_probe",
+                "classification": "demo example",
+                "detail": "GET / HTTP/1.1\nHost: orders.demo.invalid\n\nHTTP/1.1 200 OK\nContent-Type: text/html\nX-Content-Type-Options: nosniff\n\nContent-Security-Policy: [absent]"
+              },
+              {
+                "kind": "engine_report",
+                "source": "nuclei",
+                "classification": "demo example",
+                "detail": "GET / HTTP/1.1\nHost: orders.demo.invalid\n\nHTTP/1.1 200 OK\nContent-Type: text/html\nX-Content-Type-Options: nosniff\n\nContent-Security-Policy: [absent]"
+              },
+              {
+                "kind": "engine_report",
+                "source": "zap-baseline",
+                "classification": "demo example",
+                "detail": "GET / HTTP/1.1\nHost: orders.demo.invalid\n\nHTTP/1.1 200 OK\nContent-Type: text/html\nX-Content-Type-Options: nosniff\n\nContent-Security-Policy: [absent]"
+              }
+            ],
+            "state": "open",
+            "verification": {
+              "state": "unverified",
+              "basis": "Illustrative scenario with supplied change and observation records"
+            },
+            "framework_mappings": [
+              {
+                "framework": "CWE",
+                "control": "CWE-693: Protection Mechanism Failure (broad hardening reference)",
+                "source": "https://cwe.mitre.org/data/definitions/693.html",
+                "needs_review": true
+              }
+            ],
+            "cwe": []
+          },
+          {
+            "finding_id": "DEMO-DAST-02",
+            "module": "dast",
+            "severity": "low",
+            "title": "Content type sniffing protection is absent",
+            "resource": "https://orders.demo.invalid/assets/",
+            "target": "https://orders.demo.invalid · staging scenario",
+            "rule_id": "CSX-DAST-NOSNIFF",
+            "description": "Content type sniffing protection is absent. Linked source, observation and deployment records are retained in this investigation.",
+            "remediation": "Serve appropriate content types and add X-Content-Type-Options: nosniff to application responses.",
+            "engines": [
+              "runtime_http_probe",
+              "zap-baseline"
+            ],
+            "engine_versions": {
+              "runtime_http_probe": "example dataset",
+              "zap-baseline": "example dataset"
+            },
+            "evidence": [
+              {
+                "kind": "engine_report",
+                "source": "runtime_http_probe",
+                "classification": "demo example",
+                "detail": "HTTP/1.1 200 OK\nContent-Type: text/plain\nX-Content-Type-Options: [absent]"
+              },
+              {
+                "kind": "engine_report",
+                "source": "zap-baseline",
+                "classification": "demo example",
+                "detail": "HTTP/1.1 200 OK\nContent-Type: text/plain\nX-Content-Type-Options: [absent]"
+              }
+            ],
+            "state": "open",
+            "verification": {
+              "state": "unverified",
+              "basis": "Illustrative scenario with supplied change and observation records"
+            },
+            "framework_mappings": [],
+            "cwe": []
+          },
+          {
+            "finding_id": "DEMO-EXTRA-07",
+            "module": "dast",
+            "severity": "medium",
+            "title": "Session cookie lacks an explicit SameSite policy",
+            "resource": "https://orders.demo.invalid/login",
+            "target": "https://orders.demo.invalid · staging scenario",
+            "rule_id": "HTTP-COOKIE",
+            "description": "Session cookie lacks an explicit SameSite policy. Linked source, observation and deployment records are retained in this investigation.",
+            "remediation": "Choose a SameSite policy appropriate to authentication and test cross-site flows.",
+            "engines": [
+              "nuclei",
+              "zap-baseline"
+            ],
+            "engine_versions": {
+              "nuclei": "example dataset",
+              "zap-baseline": "example dataset"
+            },
+            "evidence": [
+              {
+                "kind": "engine_report",
+                "source": "nuclei",
+                "classification": "demo example",
+                "detail": "HTTP/1.1 200 OK\nSet-Cookie: demo_session=REDACTED; Secure; HttpOnly"
+              },
+              {
+                "kind": "engine_report",
+                "source": "zap-baseline",
+                "classification": "demo example",
+                "detail": "HTTP/1.1 200 OK\nSet-Cookie: demo_session=REDACTED; Secure; HttpOnly"
+              }
+            ],
+            "state": "open",
+            "verification": {
+              "state": "unverified",
+              "basis": "Illustrative scenario with supplied change and observation records"
+            },
+            "framework_mappings": [],
+            "cwe": []
+          },
+          {
+            "finding_id": "DEMO-EXTRA-08",
+            "module": "dast",
+            "severity": "medium",
+            "title": "Verbose framework error response exposes internals",
+            "resource": "https://orders.demo.invalid/example-error",
+            "target": "https://orders.demo.invalid · staging scenario",
+            "rule_id": "HTTP-DISCLOSURE",
+            "description": "Verbose framework error response exposes internals. Linked source, observation and deployment records are retained in this investigation.",
+            "remediation": "Return a generic error and retain details in access-controlled server logs.",
+            "engines": [
+              "nuclei",
+              "zap-baseline"
+            ],
+            "engine_versions": {
+              "nuclei": "example dataset",
+              "zap-baseline": "example dataset"
+            },
+            "evidence": [
+              {
+                "kind": "engine_report",
+                "source": "nuclei",
+                "classification": "demo example",
+                "detail": "HTTP/1.1 500 Internal Server Error\nBody excerpt: Traceback ... /srv/orders/api.py"
+              },
+              {
+                "kind": "engine_report",
+                "source": "zap-baseline",
+                "classification": "demo example",
+                "detail": "HTTP/1.1 500 Internal Server Error\nBody excerpt: Traceback ... /srv/orders/api.py"
+              }
+            ],
+            "state": "open",
+            "verification": {
+              "state": "unverified",
+              "basis": "Illustrative scenario with supplied change and observation records"
+            },
+            "framework_mappings": [],
+            "cwe": []
+          }
+        ],
+        "investigations": [
+          {
+            "finding_id": "DEMO-DAST-01",
+            "why_vulnerable": "The inspected example response lacks the header.",
+            "how_became_possible": "PR #231 removed the response-hardening middleware from the gateway configuration. Release 412 changed the observed headers and cookie attributes on the same scoped routes.",
+            "when_introduced": "2026-10-13T12:20:00Z",
+            "when_first_observed": "2026-10-13T12:20:00Z",
+            "who_introduced": "Jordan Patel (dev.c); applied by ci-edge-deploy",
+            "responsible_commit": "c4d91fa",
+            "responsible_deployment": "edge-release-412",
+            "root_cause": "PR #231 removed the response-hardening middleware from the gateway configuration. Release 412 changed the observed headers and cookie attributes on the same scoped routes.",
+            "blast_radius": "Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation.",
+            "prevention": "Design a policy for the application’s actual scripts and content sources. Test with report-only deployment where appropriate before enforcement.",
+            "evidence_basis": "Aster Commerce demo dataset: linked evidence and provenance supplied for this example."
+          },
+          {
+            "finding_id": "DEMO-DAST-02",
+            "why_vulnerable": "The required hardening header is absent from the sample response.",
+            "how_became_possible": "The linked source/configuration revision introduced the recorded change: Content type sniffing protection is absent. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.",
+            "when_introduced": "2026-10-13T12:20:00Z",
+            "when_first_observed": "2026-10-13T12:20:00Z",
+            "who_introduced": "Jordan Patel (dev.c); applied by ci-edge-deploy",
+            "responsible_commit": "c4d91fa",
+            "responsible_deployment": "edge-release-412",
+            "root_cause": "The linked source/configuration revision introduced the recorded change: Content type sniffing protection is absent. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.",
+            "blast_radius": "Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation.",
+            "prevention": "Serve appropriate content types and add X-Content-Type-Options: nosniff to application responses.",
+            "evidence_basis": "Aster Commerce demo dataset: linked evidence and provenance supplied for this example."
+          },
+          {
+            "finding_id": "DEMO-EXTRA-07",
+            "why_vulnerable": "HTTP/1.1 200 OK\nSet-Cookie: demo_session=REDACTED; Secure; HttpOnly",
+            "how_became_possible": "The linked source/configuration revision introduced the recorded change: Session cookie lacks an explicit SameSite policy. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.",
+            "when_introduced": "2026-10-13T12:20:00Z",
+            "when_first_observed": "2026-10-13T12:20:00Z",
+            "who_introduced": "Jordan Patel (dev.c); applied by ci-edge-deploy",
+            "responsible_commit": "c4d91fa",
+            "responsible_deployment": "edge-release-412",
+            "root_cause": "The linked source/configuration revision introduced the recorded change: Session cookie lacks an explicit SameSite policy. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.",
+            "blast_radius": "Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation.",
+            "prevention": "Choose a SameSite policy appropriate to authentication and test cross-site flows.",
+            "evidence_basis": "Aster Commerce demo dataset: linked evidence and provenance supplied for this example."
+          },
+          {
+            "finding_id": "DEMO-EXTRA-08",
+            "why_vulnerable": "HTTP/1.1 500 Internal Server Error\nBody excerpt: Traceback ... /srv/orders/api.py",
+            "how_became_possible": "The linked source/configuration revision introduced the recorded change: Verbose framework error response exposes internals. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.",
+            "when_introduced": "2026-10-13T12:20:00Z",
+            "when_first_observed": "2026-10-13T12:20:00Z",
+            "who_introduced": "Jordan Patel (dev.c); applied by ci-edge-deploy",
+            "responsible_commit": "c4d91fa",
+            "responsible_deployment": "edge-release-412",
+            "root_cause": "The linked source/configuration revision introduced the recorded change: Verbose framework error response exposes internals. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412.",
+            "blast_radius": "Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation.",
+            "prevention": "Return a generic error and retain details in access-controlled server logs.",
+            "evidence_basis": "Aster Commerce demo dataset: linked evidence and provenance supplied for this example."
+          }
+        ],
+        "investigation_answers": {
+          "why_is_it_vulnerable": [
+            {
+              "finding_id": "DEMO-DAST-01",
+              "answer": "The inspected example response lacks the header."
+            },
+            {
+              "finding_id": "DEMO-DAST-02",
+              "answer": "The required hardening header is absent from the sample response."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-07",
+              "answer": "HTTP/1.1 200 OK\nSet-Cookie: demo_session=REDACTED; Secure; HttpOnly"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-08",
+              "answer": "HTTP/1.1 500 Internal Server Error\nBody excerpt: Traceback ... /srv/orders/api.py"
+            }
+          ],
+          "how_did_this_happen": [
+            {
+              "finding_id": "DEMO-DAST-01",
+              "answer": "PR #231 removed the response-hardening middleware from the gateway configuration. Release 412 changed the observed headers and cookie attributes on the same scoped routes."
+            },
+            {
+              "finding_id": "DEMO-DAST-02",
+              "answer": "The linked source/configuration revision introduced the recorded change: Content type sniffing protection is absent. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-07",
+              "answer": "The linked source/configuration revision introduced the recorded change: Session cookie lacks an explicit SameSite policy. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-08",
+              "answer": "The linked source/configuration revision introduced the recorded change: Verbose framework error response exposes internals. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412."
+            }
+          ],
+          "when_did_it_become_vulnerable": [
+            {
+              "finding_id": "DEMO-DAST-01",
+              "answer": "2026-10-13T12:20:00Z"
+            },
+            {
+              "finding_id": "DEMO-DAST-02",
+              "answer": "2026-10-13T12:20:00Z"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-07",
+              "answer": "2026-10-13T12:20:00Z"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-08",
+              "answer": "2026-10-13T12:20:00Z"
+            }
+          ],
+          "when_was_it_first_observed": [
+            {
+              "finding_id": "DEMO-DAST-01",
+              "answer": "2026-10-13T12:20:00Z"
+            },
+            {
+              "finding_id": "DEMO-DAST-02",
+              "answer": "2026-10-13T12:20:00Z"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-07",
+              "answer": "2026-10-13T12:20:00Z"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-08",
+              "answer": "2026-10-13T12:20:00Z"
+            }
+          ],
+          "who_changed_it": [
+            {
+              "finding_id": "DEMO-DAST-01",
+              "answer": "Jordan Patel (dev.c); applied by ci-edge-deploy"
+            },
+            {
+              "finding_id": "DEMO-DAST-02",
+              "answer": "Jordan Patel (dev.c); applied by ci-edge-deploy"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-07",
+              "answer": "Jordan Patel (dev.c); applied by ci-edge-deploy"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-08",
+              "answer": "Jordan Patel (dev.c); applied by ci-edge-deploy"
+            }
+          ],
+          "which_deployment_created_it": [
+            {
+              "finding_id": "DEMO-DAST-01",
+              "answer": "edge-release-412"
+            },
+            {
+              "finding_id": "DEMO-DAST-02",
+              "answer": "edge-release-412"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-07",
+              "answer": "edge-release-412"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-08",
+              "answer": "edge-release-412"
+            }
+          ],
+          "which_commit_introduced_it": [
+            {
+              "finding_id": "DEMO-DAST-01",
+              "answer": "c4d91fa"
+            },
+            {
+              "finding_id": "DEMO-DAST-02",
+              "answer": "c4d91fa"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-07",
+              "answer": "c4d91fa"
+            },
+            {
+              "finding_id": "DEMO-EXTRA-08",
+              "answer": "c4d91fa"
+            }
+          ],
+          "what_is_the_root_cause": [
+            {
+              "finding_id": "DEMO-DAST-01",
+              "answer": "PR #231 removed the response-hardening middleware from the gateway configuration. Release 412 changed the observed headers and cookie attributes on the same scoped routes."
+            },
+            {
+              "finding_id": "DEMO-DAST-02",
+              "answer": "The linked source/configuration revision introduced the recorded change: Content type sniffing protection is absent. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-07",
+              "answer": "The linked source/configuration revision introduced the recorded change: Session cookie lacks an explicit SameSite policy. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-08",
+              "answer": "The linked source/configuration revision introduced the recorded change: Verbose framework error response exposes internals. Gateway configuration diff + before/after HTTP observations + release manifest connect this evidence to edge-release-412."
+            }
+          ],
+          "what_is_the_blast_radius": [
+            {
+              "finding_id": "DEMO-DAST-01",
+              "answer": "Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation."
+            },
+            {
+              "finding_id": "DEMO-DAST-02",
+              "answer": "Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-07",
+              "answer": "Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-08",
+              "answer": "Four observed response routes: /, /assets/, /login and /example-error. The header findings describe missing defenses; they do not establish XSS exploitation."
+            }
+          ],
+          "how_do_we_prevent_it_again": [
+            {
+              "finding_id": "DEMO-DAST-01",
+              "answer": "Design a policy for the application’s actual scripts and content sources. Test with report-only deployment where appropriate before enforcement."
+            },
+            {
+              "finding_id": "DEMO-DAST-02",
+              "answer": "Serve appropriate content types and add X-Content-Type-Options: nosniff to application responses."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-07",
+              "answer": "Choose a SameSite policy appropriate to authentication and test cross-site flows."
+            },
+            {
+              "finding_id": "DEMO-EXTRA-08",
+              "answer": "Return a generic error and retain details in access-controlled server logs."
+            }
+          ]
+        },
+        "runs": [
+          {
+            "engine_id": "runtime_http_probe",
+            "name": "HTTP posture review",
+            "category": "Application Runtime Scanning",
+            "homepage": "https://owasp.org/www-project-top-ten/",
+            "product": "dast",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-DAST-01",
+              "DEMO-DAST-02"
+            ],
+            "summary": "2 observations linked to combined findings"
+          },
+          {
+            "engine_id": "nuclei",
+            "name": "Nuclei",
+            "category": "Application Runtime Scanning",
+            "homepage": "https://nuclei.projectdiscovery.io/",
+            "product": "dast",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-DAST-01",
+              "DEMO-EXTRA-07",
+              "DEMO-EXTRA-08"
+            ],
+            "summary": "3 observations linked to combined findings"
+          },
+          {
+            "engine_id": "zap-baseline",
+            "name": "OWASP ZAP Baseline",
+            "category": "DAST / Web Security",
+            "homepage": "https://www.zaproxy.org/",
+            "product": "dast",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-DAST-01",
+              "DEMO-DAST-02",
+              "DEMO-EXTRA-07",
+              "DEMO-EXTRA-08"
+            ],
+            "summary": "4 observations linked to combined findings"
+          }
+        ]
+      }
+    },
+    {
+      "id": "cloud",
+      "title": "5. CLOUD",
+      "content": {
+        "assessment_status": "See the dedicated CLOUD product report",
+        "findings": [],
+        "investigations": [],
+        "investigation_answers": {},
+        "runs": []
+      }
+    },
+    {
+      "id": "ai",
+      "title": "6. AI SECURITY",
+      "content": {
+        "assessment_status": "See the dedicated AI product report",
+        "findings": [],
+        "investigations": [],
+        "investigation_answers": {},
+        "runs": []
+      }
+    },
+    {
+      "id": "framework_mapping",
+      "title": "7. Framework mapping",
+      "content": {
+        "mappings": [
+          {
+            "finding_id": "DEMO-DAST-01",
+            "framework": "CWE",
+            "control": "CWE-693: Protection Mechanism Failure (broad hardening reference)",
+            "source": "https://cwe.mitre.org/data/definitions/693.html",
+            "needs_review": true
+          }
+        ],
+        "note": "Source-supported rule mappings are retained where supplied. This scenario is not a compliance certification."
+      }
+    },
+    {
+      "id": "remediation_plan",
+      "title": "8. Remediation plan",
+      "content": {
+        "actions": [
+          {
+            "priority": 1,
+            "finding_id": "DEMO-DAST-01",
+            "action": "Design a policy for the application’s actual scripts and content sources. Test with report-only deployment where appropriate before enforcement.",
+            "owner": "Application security",
+            "effort": "Review and scoped change",
+            "validation": "Reassess the same scope; verify the finding closes and compare the resulting path."
+          },
+          {
+            "priority": 2,
+            "finding_id": "DEMO-DAST-02",
+            "action": "Serve appropriate content types and add X-Content-Type-Options: nosniff to application responses.",
+            "owner": "Application security",
+            "effort": "Review and scoped change",
+            "validation": "Reassess the same scope; verify the finding closes and compare the resulting path."
+          },
+          {
+            "priority": 3,
+            "finding_id": "DEMO-EXTRA-07",
+            "action": "Choose a SameSite policy appropriate to authentication and test cross-site flows.",
+            "owner": "Application security",
+            "effort": "Review and scoped change",
+            "validation": "Reassess the same scope; verify the finding closes and compare the resulting path."
+          },
+          {
+            "priority": 4,
+            "finding_id": "DEMO-EXTRA-08",
+            "action": "Return a generic error and retain details in access-controlled server logs.",
+            "owner": "Application security",
+            "effort": "Review and scoped change",
+            "validation": "Reassess the same scope; verify the finding closes and compare the resulting path."
+          }
+        ]
+      }
+    },
+    {
+      "id": "appendix",
+      "title": "Appendix",
+      "content": {
+        "methodology": "Illustrative Aster Commerce demonstration dataset. Persons, commits, deployments, snapshots and engine observations are supplied examples, not live customer or vendor-run evidence. All eleven export formats serialize this same report model.",
+        "engine_records": [
+          {
+            "engine_id": "runtime_http_probe",
+            "name": "HTTP posture review",
+            "category": "Application Runtime Scanning",
+            "homepage": "https://owasp.org/www-project-top-ten/",
+            "product": "dast",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-DAST-01",
+              "DEMO-DAST-02"
+            ],
+            "summary": "2 observations linked to combined findings"
+          },
+          {
+            "engine_id": "nuclei",
+            "name": "Nuclei",
+            "category": "Application Runtime Scanning",
+            "homepage": "https://nuclei.projectdiscovery.io/",
+            "product": "dast",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-DAST-01",
+              "DEMO-EXTRA-07",
+              "DEMO-EXTRA-08"
+            ],
+            "summary": "3 observations linked to combined findings"
+          },
+          {
+            "engine_id": "zap-baseline",
+            "name": "OWASP ZAP Baseline",
+            "category": "DAST / Web Security",
+            "homepage": "https://www.zaproxy.org/",
+            "product": "dast",
+            "status": "completed_in_demo",
+            "execution": "Illustrative normalized evidence dataset; no vendor process invoked",
+            "version": "Example dataset",
+            "finding_ids": [
+              "DEMO-DAST-01",
+              "DEMO-DAST-02",
+              "DEMO-EXTRA-07",
+              "DEMO-EXTRA-08"
+            ],
+            "summary": "4 observations linked to combined findings"
+          }
+        ],
+        "provenance_sources": [
+          "Gateway configuration diff + before/after HTTP observations + release manifest"
+        ],
+        "limitations": [
+          "Graph paths describe recorded scenario relationships; they do not establish real effective access or exploitation.",
+          "Observed HTTP hardening gaps are distinct from reproduced exploits.",
+          "Shadow-permission observations require workload-owner review."
+        ],
+        "primary_references": [
+          "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy",
+          "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Content-Type-Options",
+          "https://owasp.org/www-project-top-ten/"
+        ]
+      }
+    }
+  ]
+}
