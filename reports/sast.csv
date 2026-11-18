@@ -40,7 +40,7 @@ Report metadata,products[0],sast
 1. Executive summary,executive_summary.scan_pipeline_coverage[0].engine_id,codesentinelx
 1. Executive summary,executive_summary.scan_pipeline_coverage[0].name,CodeSentinelX
 1. Executive summary,executive_summary.scan_pipeline_coverage[0].category,"SAST, SCA, secrets and IaC"
-1. Executive summary,executive_summary.scan_pipeline_coverage[0].homepage,https://github.com/Sanket00410/CodeBaseScanner
+1. Executive summary,executive_summary.scan_pipeline_coverage[0].homepage,https://sanket00410.github.io/CodeBaseScanner/
 1. Executive summary,executive_summary.scan_pipeline_coverage[0].product,sast
 1. Executive summary,executive_summary.scan_pipeline_coverage[0].status,completed_in_demo
 1. Executive summary,executive_summary.scan_pipeline_coverage[0].execution,Illustrative normalized evidence dataset; no vendor process invoked
@@ -632,7 +632,7 @@ Advisory: DEMO-ADVISORY-001 (fictional, not a CVE)"
 3. SAST,sast.runs[0].engine_id,codesentinelx
 3. SAST,sast.runs[0].name,CodeSentinelX
 3. SAST,sast.runs[0].category,"SAST, SCA, secrets and IaC"
-3. SAST,sast.runs[0].homepage,https://github.com/Sanket00410/CodeBaseScanner
+3. SAST,sast.runs[0].homepage,https://sanket00410.github.io/CodeBaseScanner/
 3. SAST,sast.runs[0].product,sast
 3. SAST,sast.runs[0].status,completed_in_demo
 3. SAST,sast.runs[0].execution,Illustrative normalized evidence dataset; no vendor process invoked
@@ -779,7 +779,7 @@ Appendix,appendix.methodology,"Illustrative Aster Commerce demonstration dataset
 Appendix,appendix.engine_records[0].engine_id,codesentinelx
 Appendix,appendix.engine_records[0].name,CodeSentinelX
 Appendix,appendix.engine_records[0].category,"SAST, SCA, secrets and IaC"
-Appendix,appendix.engine_records[0].homepage,https://github.com/Sanket00410/CodeBaseScanner
+Appendix,appendix.engine_records[0].homepage,https://sanket00410.github.io/CodeBaseScanner/
 Appendix,appendix.engine_records[0].product,sast
 Appendix,appendix.engine_records[0].status,completed_in_demo
 Appendix,appendix.engine_records[0].execution,Illustrative normalized evidence dataset; no vendor process invoked

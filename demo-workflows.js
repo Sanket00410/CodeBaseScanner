@@ -20,7 +20,7 @@
     engine(key){
       const e=window.CSX_ENGINE_FIXTURES[key];if(!e)return;
       const findings=window.CSX_DEMO.findings.filter(f=>e.finding_ids.includes(f.id));
-      document.getElementById('evidence-content').innerHTML=`<h2>${esc(e.name)} · assessment evidence</h2><p>${esc(e.category)} · Aster Commerce demo dataset</p><p>${esc(e.summary)}</p>${findings.map(f=>`<article class="panel"><h3>${esc(f.title)}</h3><p>${esc(f.resource)}</p><pre>${esc(f.code)}</pre><p><strong>Remediation:</strong> ${esc(f.fix)}</p><p><strong>Responsible change:</strong> ${esc(f.commit)} · ${esc(f.deployment)} · ${esc(f.who)}</p></article>`).join('')}<p>These observations are retained in the combined ${e.product.toUpperCase()} report.</p><a href="${esc(e.homepage)}" target="_blank" rel="noopener">Engine project reference ↗</a>`;
+      document.getElementById('evidence-content').innerHTML=`<h2>${esc(e.name)} · assessment evidence</h2><p>${esc(e.category)} · Aster Commerce demo dataset</p><p>${esc(e.summary)}</p>${findings.map(f=>`<article class="panel"><h3>${esc(f.title)}</h3><p>${esc(f.resource)}</p><pre>${esc(f.code)}</pre><p><strong>Remediation:</strong> ${esc(f.fix)}</p><p><strong>Responsible change:</strong> ${esc(f.commit)} · ${esc(f.deployment)} · ${esc(f.who)}</p></article>`).join('')}<p>These observations are retained in the combined ${e.product.toUpperCase()} report.</p>`;
       const dialog=document.getElementById('evidence-dialog');dialog.showModal();dialog.scrollTop=0;
     },
     export(id){
